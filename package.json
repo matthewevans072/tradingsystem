@@ -12,7 +12,9 @@
     "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
     "test": "node --disable-warning=ExperimentalWarning --test \"tests/*.test.js\"",
     "backup": "node --disable-warning=ExperimentalWarning scripts/backup.js",
-    "briefing": "node --disable-warning=ExperimentalWarning scripts/run-briefing.js"
+    "briefing": "node --disable-warning=ExperimentalWarning scripts/run-briefing.js",
+    "lab:backtest": "node --disable-warning=ExperimentalWarning scripts/strategy-backtest.js",
+    "lab:compare-tv": "node --disable-warning=ExperimentalWarning scripts/strategy-compare-tv.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

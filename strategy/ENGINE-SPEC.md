@@ -214,3 +214,39 @@ cash, positions, openRisk, grossExposure }`.
   is the one used for the research results.
 - Without Bar Magnifier, TradingView resolves a bar touching both stop and
   target with its assumed intrabar path (`tv_path` in the engine).
+
+## 9. Engine interpretations (where the rules above are silent)
+
+1. Sizing and the planned risk at the fill include the currency-conversion
+   cost of both fills when `fxConversionPct > 0` and the currencies differ.
+2. Forced closes (`session_end_fallback`, `end_of_data`) are market fills at
+   the last close × `(1 − k)` plus commission.
+3. If an intraday flatten order cannot fill because no bar is left in the
+   session, the position is closed at that session's last close and stamped
+   at the session close, never held overnight.
+4. `limit_intrabar` entries filled inside the bar: the stop is always
+   checked on that bar; the target only when TradingView's assumed path puts
+   the high after the low.
+5. `tv_path` with the open exactly midway between high and low takes the low
+   first (stop).
+6. Lower-timeframe bars, when supplied for an ambiguous bar, are used under
+   every ambiguity setting; if no sub-bar touches either level the configured
+   rule applies and the exit is flagged `lower_timeframe_inconclusive`.
+7. The stress setting `entryWorseAtr` worsens only the fill price; sizing and
+   the maximum entry ignore it, and shares are reduced (or the entry skipped)
+   if the worse fill no longer fits the cash.
+8. Before `tradeFrom`, boxes still form and retire so the state matches a
+   full run, but nothing is journalled, no orders are placed and no equity
+   points are recorded.
+9. Event times are bar starts: a close decision carries the start of the bar
+   it closed, an open fill the start of the bar it filled in. A `signal` event
+   exists only for breakouts that pass the volume rule; `summary.breakouts`
+   counts every close above a frozen ceiling.
+10. Bars outside the regular session, off the 15-minute grid or with
+    inconsistent prices are ignored with a `data_warning`.
+11. Positions force-closed at the end of the data count in P/L and equity
+    but are excluded from per-trade statistics (expectancy, profit factor,
+    win rate, the bootstrap and trade counts).
+12. Every split, stress run and walk-forward fold warms up from
+    `splits.warmup.from`; each walk-forward out-of-sample quarter starts a
+    fresh simulated account and force-closes swing positions at quarter end.
