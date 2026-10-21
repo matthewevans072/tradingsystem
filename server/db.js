@@ -324,6 +324,11 @@ const MIGRATIONS = [
     cost_usd REAL
   );
   `,
+  // 3: event first-seen time (so refreshed events are not reported as new)
+  `
+  ALTER TABLE events ADD COLUMN first_seen_at TEXT;
+  UPDATE events SET first_seen_at = fetched_at;
+  `,
 ];
 
 export function openDb(file) {

@@ -58,6 +58,8 @@ export function loadConfig(overrides = {}) {
       effort: get('CHAT_EFFORT', 'high'),
       dailyBudgetUsd: get('CHAT_DAILY_BUDGET_USD', '') === '' ? 5 : Number(get('CHAT_DAILY_BUDGET_USD')),
       maxToolRounds: get('CHAT_MAX_TOOL_ROUNDS', '') === '' ? 8 : Number(get('CHAT_MAX_TOOL_ROUNDS')),
+      priceInput: get('CHAT_PRICE_INPUT', ''),
+      priceOutput: get('CHAT_PRICE_OUTPUT', ''),
     },
     smtp: {
       host: get('SMTP_HOST'),

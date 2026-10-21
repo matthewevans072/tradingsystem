@@ -39,12 +39,14 @@ const conf = (lvl) => ({ low: 'Low — limited evidence', moderate: 'Moderate �
 
 export function assessPosition(ctx, pos, { portfolio, catalogEntry, events, news, now = new Date() }) {
   const { db } = ctx;
-  const th = { ...DEFAULT_THRESHOLDS, ...getSetting(db, 'assessmentThresholds', {}) };
+  const userTh = getSetting(db, 'assessmentThresholds', {});
+  const th = { ...DEFAULT_THRESHOLDS, ...userTh };
+  const thLabel = userTh.reviewWeightPct != null ? `your ${th.reviewWeightPct}% review threshold` : `the ${th.reviewWeightPct}% review threshold (an app default, not a limit you set — change it in Settings)`;
   const sources = [];
   const notes = [];
   const out = {
     instrument_id: pos.instrument_id, symbol: pos.symbol, exchange: pos.exchange, currency: pos.currency,
-    strategy: pos.strategy, createdAt: nowIso(), method: 'rules',
+    strategy: pos.strategy, createdAt: now.toISOString(), method: 'rules',
   };
   const q = pos.quote;
   const cashCcy = portfolio.totals[pos.currency];
@@ -119,7 +121,7 @@ export function assessPosition(ctx, pos, { portfolio, catalogEntry, events, news
     if (weight != null && weight > th.reviewWeightPct && !diversifiedFund) {
       return finish({
         action: 'TRIM', horizon: 'Months (portfolio construction)',
-        reason: `This position is ${weight}% of the portfolio, above your ${th.reviewWeightPct}% review threshold, so one holding drives much of the result.`,
+        reason: `This position is ${weight}% of the portfolio, above ${thLabel}, so one holding drives much of the result.`,
         trigger: `Consider trimming toward ${th.reviewWeightPct}% if you want to cap single-position exposure; spreading it over several sessions reduces timing risk.`,
         invalidation: 'You intend this to be a concentrated core holding (for example a diversified broad-market ETF).',
         downside: 'A large decline in this one holding would dominate the portfolio’s result.', confidence: conf('moderate'), levels,
@@ -161,8 +163,8 @@ export function assessPosition(ctx, pos, { portfolio, catalogEntry, events, news
   if (weight != null && weight > th.reviewWeightPct) {
     return finish({
       action: 'TRIM', horizon: 'Days to weeks',
-      reason: `Position weight ${weight}% exceeds the ${th.reviewWeightPct}% review threshold for a single trade.`,
-      trigger: `Reduce toward ${th.reviewWeightPct}% if you want single-trade risk in line with your threshold.`,
+      reason: `Position weight ${weight}% exceeds ${thLabel} for a single trade.`,
+      trigger: `Reduce toward ${th.reviewWeightPct}% if you want single-trade risk within that threshold.`,
       invalidation: 'You accept the concentration deliberately and have a defined exit level.',
       downside: 'A single adverse move has an outsized effect on the whole portfolio.', confidence: conf('moderate'), levels,
     });
@@ -273,8 +275,15 @@ export function runAssessments(ctx, portfolio, { now = new Date() } = {}) {
     const inst = { symbol: pos.symbol, exchange: pos.exchange, currency: pos.currency, identity_status: pos.identityStatus };
     const entry = catalog.describeInstrument(inst);
     const a = assessPosition(ctx, pos, { portfolio, catalogEntry: entry, events, news, now });
-    db.prepare('INSERT INTO assessments (instrument_id, created_at, action, horizon, payload_json, method) VALUES (?,?,?,?,?,?)')
-      .run(pos.instrument_id, a.createdAt, a.action, a.horizon, JSON.stringify(a), a.method);
+    // Skip an identical repeat (same action and reasoning) within 30 minutes so
+    // the history shows real changes, not every run.
+    const last = db.prepare('SELECT created_at, payload_json FROM assessments WHERE instrument_id = ? ORDER BY id DESC LIMIT 1').get(pos.instrument_id);
+    const lastA = last ? JSON.parse(last.payload_json) : null;
+    const repeat = lastA && lastA.action === a.action && lastA.reason === a.reason && Math.abs(Date.parse(a.createdAt) - Date.parse(last.created_at)) < 30 * 60000;
+    if (!repeat) {
+      db.prepare('INSERT INTO assessments (instrument_id, created_at, action, horizon, payload_json, method) VALUES (?,?,?,?,?,?)')
+        .run(pos.instrument_id, a.createdAt, a.action, a.horizon, JSON.stringify(a), a.method);
+    }
     results.push(a);
   }
   return results;

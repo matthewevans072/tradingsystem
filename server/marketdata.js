@@ -6,7 +6,7 @@ import { createFinnhub } from './providers/finnhub.js';
 import { createSec } from './providers/sec.js';
 import { createBankOfCanada } from './providers/boc.js';
 import { createDemoProvider } from './providers/demo.js';
-import { getSetting, nowIso } from './db.js';
+import { getSetting, setSetting, nowIso } from './db.js';
 import { log } from './log.js';
 import { todayIn, addDays, NY } from './time.js';
 
@@ -193,21 +193,40 @@ export async function refreshIntraday(ctx, { date = todayIn(NY), instruments } =
   return { ok, failed };
 }
 
-export async function refreshEarnings(ctx, { days = 60 } = {}) {
+export async function refreshEarnings(ctx, { days = 60, lookbackDays = 10, symbols: only } = {}) {
   const p = ctx.providers.earnings;
   if (!p) return { ok: 0, message: 'No earnings source configured' };
-  const symbols = trackedInstruments(ctx.db).filter((i) => i.identity_status === 'confirmed').map((i) => i.symbol);
+  // Holdings plus watchlist names, so research questions have dates too.
+  const held = trackedInstruments(ctx.db).filter((i) => i.identity_status === 'confirmed').map((i) => i.symbol);
+  const watch = ctx.db.prepare('SELECT symbol FROM watchlist').all().map((r) => r.symbol);
+  let symbols = [...new Set([...held, ...watch])];
+  if (only?.length) symbols = symbols.filter((s) => only.includes(s)).concat(only.filter((s) => !symbols.includes(s)));
   if (!symbols.length) return { ok: 0 };
-  const from = todayIn(NY);
-  const to = addDays(from, days);
+  const today = todayIn(NY);
+  const from = addDays(today, -lookbackDays);
+  const to = addDays(today, days);
   try {
     const list = await p.getEarnings(symbols, from, to);
-    const st = ctx.db.prepare(`INSERT INTO events (instrument_id, symbol, type, date, time_hint, title, details_json, source, fetched_at)
-      VALUES ((SELECT id FROM instruments WHERE symbol = ? LIMIT 1), ?, 'earnings', ?, ?, ?, ?, ?, ?)
+    const now = nowIso();
+    const st = ctx.db.prepare(`INSERT INTO events (instrument_id, symbol, type, date, time_hint, title, details_json, source, fetched_at, first_seen_at)
+      VALUES ((SELECT id FROM instruments WHERE symbol = ? LIMIT 1), ?, 'earnings', ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(symbol, type, date, source) DO UPDATE SET time_hint = excluded.time_hint, details_json = excluded.details_json, fetched_at = excluded.fetched_at`);
-    for (const e of list) st.run(e.symbol, e.symbol, e.date, e.time_hint, `${e.symbol} earnings`, JSON.stringify(e.details), e.source, nowIso());
-    setStatus(ctx, 'earnings', { ok: true, message: `${list.length} upcoming earnings dates` });
-    return { ok: list.length };
+    for (const e of list) st.run(e.symbol, e.symbol, e.date, e.time_hint, `${e.symbol} earnings`, JSON.stringify(e.details), e.source, now, now);
+    // Future dates from this source that the provider no longer lists were superseded (e.g. a moved date).
+    const returned = new Set(list.map((e) => `${e.symbol}|${e.date}`));
+    const sources = [...new Set(list.map((e) => e.source))];
+    for (const src of sources) {
+      for (const row of ctx.db.prepare("SELECT id, symbol, date FROM events WHERE type = 'earnings' AND source = ? AND date >= ? AND date <= ?").all(src, today, to)) {
+        if (symbols.includes(row.symbol) && !returned.has(`${row.symbol}|${row.date}`)) ctx.db.prepare('DELETE FROM events WHERE id = ?').run(row.id);
+      }
+    }
+    // Coverage is kept per ticker, so checking one ticker leaves the others' record intact.
+    const prev = getSetting(ctx.db, 'earningsCoverage', null);
+    const bySymbol = only?.length && prev?.bySymbol ? { ...prev.bySymbol } : {};
+    for (const s of symbols) bySymbol[s] = { at: now, from, to };
+    setSetting(ctx.db, 'earningsCoverage', { symbols: Object.keys(bySymbol), bySymbol, from, to, at: now, source: p.name });
+    setStatus(ctx, 'earnings', { ok: true, message: `${list.length} earnings dates for ${symbols.length} symbols` });
+    return { ok: list.length, symbols: symbols.length };
   } catch (e) {
     setStatus(ctx, 'earnings', { ok: false, message: e.message });
     return { ok: 0, error: e.message };
@@ -228,8 +247,8 @@ export async function checkSplits(ctx) {
         if (s.date < first) continue;
         const applied = ctx.db.prepare("SELECT 1 FROM corporate_actions WHERE instrument_id = ? AND type = 'SPLIT' AND effective_date = ?").get(inst.id, s.date);
         if (applied) continue;
-        ctx.db.prepare(`INSERT OR IGNORE INTO events (instrument_id, symbol, type, date, title, details_json, source, fetched_at)
-          VALUES (?, ?, 'split', ?, ?, ?, ?, ?)`).run(inst.id, inst.symbol, s.date, `${inst.symbol} split ${s.from}:${s.to} — review`, JSON.stringify(s), p.name, nowIso());
+        ctx.db.prepare(`INSERT OR IGNORE INTO events (instrument_id, symbol, type, date, title, details_json, source, fetched_at, first_seen_at)
+          VALUES (?, ?, 'split', ?, ?, ?, ?, ?, ?)`).run(inst.id, inst.symbol, s.date, `${inst.symbol} split ${s.from}:${s.to} — review`, JSON.stringify(s), p.name, nowIso(), nowIso());
         found += 1;
       }
     } catch (e) {

@@ -85,8 +85,11 @@ export function createServer(cfg, { contexts, scheduler, version }) {
           // Newline-delimited JSON progress events, then the final result.
           res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
           const emit = (ev) => { try { res.write(JSON.stringify(ev) + '\n'); } catch { /* client gone */ } };
+          // Stop paying for a model call nobody will read.
+          const abort = new AbortController();
+          res.on('close', () => { if (!res.writableFinished) abort.abort(); });
           try {
-            const final = await out.__stream(emit);
+            const final = await out.__stream(emit, abort.signal);
             emit({ type: 'done', message: final });
           } catch (e) {
             emit({ type: 'error', error: redact(e.message || 'Error', cfg) });

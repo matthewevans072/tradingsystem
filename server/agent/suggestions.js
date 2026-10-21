@@ -33,7 +33,9 @@ export function suggestQuestions(ctx, { page, symbol } = {}) {
     return out;
   }
   if (page === 'overview' || !page) {
-    add(mover ? `Why is my portfolio ${mover.dailyPL >= 0 ? 'up' : 'down'} today?` : 'How is my portfolio doing today?');
+    // Neutral wording: one position's sign says nothing about the total, and
+    // outside market hours the latest session may not be today's.
+    add('How did my portfolio move in the latest session, and what drove it?');
     add('Which positions are most exposed to the same risks?');
     add('Which upcoming events should I pay attention to?');
   }

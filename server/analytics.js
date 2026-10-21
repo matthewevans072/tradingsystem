@@ -1,12 +1,17 @@
+import { zonedToUtc, addDays, NY } from './time.js';
 // Price-history statistics computed only from stored provider bars.
 export function dailyBars(db, instrumentId, limit = 260) {
   return db.prepare(`SELECT ts, o, h, l, c, v FROM bars WHERE instrument_id = ? AND interval = '1day' ORDER BY ts DESC LIMIT ?`)
     .all(instrumentId, limit).reverse();
 }
 
+// Bars for one New York calendar day (not a UTC day, which would mix in the
+// previous evening's after-hours bars).
 export function intradayBars(db, instrumentId, date) {
+  const from = zonedToUtc(date, 0, 0, NY).toISOString();
+  const to = zonedToUtc(addDays(date, 1), 0, 0, NY).toISOString();
   return db.prepare(`SELECT ts, o, h, l, c, v, session FROM bars WHERE instrument_id = ? AND interval = '5min' AND ts >= ? AND ts < ? ORDER BY ts`)
-    .all(instrumentId, `${date}T00:00:00Z`, `${date}T23:59:59Z`);
+    .all(instrumentId, from, to);
 }
 
 function sma(values, n) {

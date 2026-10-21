@@ -283,9 +283,9 @@ r('GET', '/api/events', (ctx, { query }) => {
 r('POST', '/api/events', (ctx, { body }) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || '')) throw new HttpError(400, 'Date must be YYYY-MM-DD');
   if (!String(body.title || '').trim()) throw new HttpError(400, 'Title required');
-  ctx.db.prepare(`INSERT INTO events (symbol, type, date, time_hint, title, details_json, source, source_url, fetched_at) VALUES (?,?,?,?,?,?,?,?,?)
+  ctx.db.prepare(`INSERT INTO events (symbol, type, date, time_hint, title, details_json, source, source_url, fetched_at, first_seen_at) VALUES (?,?,?,?,?,?,?,?,?,?)
                   ON CONFLICT(symbol, type, date, source) DO NOTHING`)
-    .run(body.symbol ? body.symbol.toUpperCase() : `MACRO-${Date.now()}`, body.type === 'earnings' ? 'earnings' : 'macro', body.date, body.time_hint || 'unknown', body.title.trim(), null, 'Entered manually', body.source_url || null, nowIso());
+    .run(body.symbol ? body.symbol.toUpperCase() : `MACRO-${Date.now()}`, body.type === 'earnings' ? 'earnings' : 'macro', body.date, body.time_hint || 'unknown', body.title.trim(), null, 'Entered manually', body.source_url || null, nowIso(), nowIso());
   return { ok: true };
 });
 r('DELETE', '/api/events/:id', (ctx, { params }) => { ctx.db.prepare("DELETE FROM events WHERE id = ? AND source = 'Entered manually'").run(Number(params.id)); return { ok: true }; });
@@ -463,8 +463,8 @@ r('GET', '/api/export', (ctx) => ({
 
 // ---------- Ask Signal Desk (chat agent) ----------
 
-import { createBackend, chatConfig, spentToday, PRICING } from './agent/backend.js';
-import { createConversation, listConversations, getConversation, deleteConversation, runChatTurn } from './agent/agent.js';
+import { createBackend, chatConfig, spentToday, priceFor } from './agent/backend.js';
+import { createConversation, listConversations, getConversation, deleteConversation, runChatTurn, isConversationBusy } from './agent/agent.js';
 import { confirmProposal, rejectProposal } from './agent/proposals.js';
 import { suggestQuestions } from './agent/suggestions.js';
 
@@ -485,8 +485,8 @@ r('GET', '/api/chat/status', (ctx) => {
   const cc = chatConfig(ctx.cfg);
   return {
     available: !!b.available, reason: b.available ? null : b.reason, backend: b.name, model: b.model || cc.model, effort: cc.effort,
-    dailyBudgetUsd: cc.dailyBudgetUsd, spentTodayUsd: Math.round(spentToday(ctx.db) * 10000) / 10000,
-    pricingPerMillionTokens: PRICING[cc.model] ? { input: PRICING[cc.model][0], output: PRICING[cc.model][1], cacheRead: PRICING[cc.model][2] } : null,
+    dailyBudgetUsd: cc.dailyBudgetUsd, spentTodayUsd: Math.round(spentToday(ctx.cfg).usd * 10000) / 10000, spendSharedAcrossWorkspaces: true,
+    pricingPerMillionTokens: (() => { const p = priceFor(cc.model, cc.priceOverride); return p ? { input: p[0], output: p[1], cacheRead: p[2], fromEnv: !priceFor(cc.model) } : null; })(),
     disclosure: CHAT_DISCLOSURE, workspace: ctx.mode,
   };
 });
@@ -499,6 +499,7 @@ r('GET', '/api/chat/conversations/:id', (ctx, { params }) => {
   return c;
 });
 r('DELETE', '/api/chat/conversations/:id', (ctx, { params }) => {
+  if (isConversationBusy(ctx, params.id)) throw new HttpError(409, 'This conversation is still answering a question. Delete it when the answer arrives.');
   if (!deleteConversation(ctx.db, Number(params.id))) throw new HttpError(404, 'Conversation not found');
   audit(ctx.db, 'chat_conversation', params.id, 'delete', null, null);
   return { ok: true };
@@ -506,12 +507,20 @@ r('DELETE', '/api/chat/conversations/:id', (ctx, { params }) => {
 r('POST', '/api/chat/conversations/:id/messages', (ctx, { params, body }) => {
   const conversationId = Number(params.id);
   if (!ctx.db.prepare('SELECT 1 FROM chat_conversations WHERE id = ?').get(conversationId)) throw new HttpError(404, 'Conversation not found');
+  if (isConversationBusy(ctx, conversationId)) throw new HttpError(409, 'This conversation is still answering the previous question.');
+  if (!String(body.text || '').trim()) throw new HttpError(400, 'Ask a question');
   const pageContext = body.pageContext && typeof body.pageContext === 'object'
     ? { page: String(body.pageContext.page || '').slice(0, 40) || null, symbol: body.pageContext.symbol ? String(body.pageContext.symbol).toUpperCase().slice(0, 15) : null }
     : null;
   return {
-    __stream: (emit) => runChatTurn(ctx, { conversationId, userText: body.text, pageContext, backend: backendFor(ctx), onEvent: emit }),
+    __stream: (emit, signal) => runChatTurn(ctx, { conversationId, userText: body.text, pageContext, backend: backendFor(ctx), onEvent: emit, signal }),
   };
 });
-r('POST', '/api/chat/proposals/:id/confirm', (ctx, { params }) => confirmProposal(ctx, Number(params.id)));
-r('POST', '/api/chat/proposals/:id/reject', (ctx, { params }) => rejectProposal(ctx, Number(params.id)));
+// The conversation id ties a confirmation to the panel that showed the proposal.
+const proposalConv = (body) => {
+  const id = Number(body?.conversationId);
+  if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'conversationId is required');
+  return id;
+};
+r('POST', '/api/chat/proposals/:id/confirm', (ctx, { params, body }) => confirmProposal(ctx, Number(params.id), { conversationId: proposalConv(body) }));
+r('POST', '/api/chat/proposals/:id/reject', (ctx, { params, body }) => rejectProposal(ctx, Number(params.id), { conversationId: proposalConv(body) }));

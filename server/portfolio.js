@@ -4,8 +4,12 @@
 // cost basis never changes when a split happens.
 import crypto from 'node:crypto';
 import { audit, nowIso, tx } from './db.js';
-import { todayIn, NY } from './time.js';
+import { todayIn, zonedParts, NY, TORONTO } from './time.js';
+import { exchangeGroup } from './calendar.js';
 import { assessFreshness } from './freshness.js';
+
+// How position weights are measured everywhere (Positions, rules, chat scenarios).
+export const WEIGHT_BASIS = 'Share of the CAD-equivalent market value of priced holdings (cash and unpriced positions excluded), the same basis as Positions and the concentration rules';
 
 const EPS = 1e-9;
 export const TRADE_TYPES = ['BASELINE', 'BUY', 'SELL'];
@@ -315,9 +319,20 @@ export function setCash(db, { account, currency, amount, asOf, source = 'manual'
 export function computePortfolio(db, { now = new Date(), catalog = null } = {}) {
   const today = todayIn(NY, now);
   const { lots, issues, cashFlows } = deriveLedger(db);
-  const yesterdayLedger = deriveLedger(db, { asOf: prevDate(today) });
-  const yMap = new Map(yesterdayLedger.lots.map((l) => [`${l.account_id}:${l.instrument_id}`, l]));
-  const todaysTrades = db.prepare(`SELECT * FROM transactions WHERE voided_at IS NULL AND trade_date = ? AND type IN ('BUY','SELL','BASELINE')`).all(today);
+  // Daily P/L is measured over the session the quote belongs to: shares held
+  // at the start and end of that session date, and trades dated that day,
+  // against the quote's previous close. (Outside market hours the latest quote
+  // belongs to the last session, not to the calendar day, and trades dated
+  // after that session are not part of its P/L.)
+  const ledgerCache = new Map();
+  const ledgerAsOf = (date) => {
+    if (!ledgerCache.has(date)) {
+      const led = deriveLedger(db, { asOf: date });
+      ledgerCache.set(date, new Map(led.lots.map((l) => [`${l.account_id}:${l.instrument_id}`, l])));
+    }
+    return ledgerCache.get(date);
+  };
+  const tradesOn = db.prepare(`SELECT * FROM transactions WHERE voided_at IS NULL AND trade_date = ? AND account_id = ? AND instrument_id = ? AND type IN ('BUY','SELL','BASELINE')`);
   const instruments = new Map(db.prepare('SELECT * FROM instruments').all().map((i) => [i.id, i]));
   const quotes = new Map(db.prepare('SELECT * FROM quotes').all().map((q) => [q.instrument_id, q]));
   const meta = new Map(db.prepare('SELECT * FROM position_meta').all().map((m) => [`${m.account_id}:${m.instrument_id}`, m]));
@@ -340,7 +355,7 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
     if (l.shares <= EPS) { closed.push(base); continue; }
     const q = quotes.get(l.instrument_id);
     const avgCost = l.cost / l.shares;
-    const pos = { ...base, shares: round(l.shares, 6), avgCost: round(avgCost, 4), costBasis: round(l.cost) };
+    const pos = { ...base, shares: round(l.shares, 6), avgCost: round(avgCost, 4), avgCostExact: avgCost, costBasis: round(l.cost) };
     if (q && q.price != null) {
       const mv = l.shares * q.price;
       pos.price = q.price;
@@ -348,14 +363,19 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
       pos.unrealizedPL = round(mv - l.cost);
       pos.unrealizedPct = l.cost > 0 ? round(((mv - l.cost) / l.cost) * 100) : null;
       if (q.prev_close != null) {
-        const sStart = sharesAt(yMap, key);
-        let flows = 0;
-        for (const t of todaysTrades) {
-          if (t.account_id !== l.account_id || t.instrument_id !== l.instrument_id) continue;
+        const sessionDate = q.quote_time ? zonedParts(new Date(q.quote_time), exchangeGroup(inst.exchange) === 'TSX' ? TORONTO : NY).date : today;
+        const sStart = sharesAt(ledgerAsOf(prevDate(sessionDate)), key);
+        const sEnd = sessionDate >= today ? l.shares : sharesAt(ledgerAsOf(sessionDate), key);
+        let flows = 0, bought = 0;
+        for (const t of tradesOn.all(sessionDate, l.account_id, l.instrument_id)) {
           flows += (t.type === 'SELL' ? 1 : -1) * t.quantity * t.price;
+          if (t.type !== 'SELL') bought += t.quantity * t.price;
         }
-        const daily = l.shares * q.price - sStart * q.prev_close + flows;
+        const daily = sEnd * q.price - sStart * q.prev_close + flows;
         pos.dailyPL = round(daily);
+        pos.dailyPLSession = sessionDate;
+        pos.dailyPLStartValue = sStart * q.prev_close + bought;
+        if (Math.abs(sEnd - l.shares) > EPS) pos.dailyPLNote = `Trades dated after the ${sessionDate} session are not part of that session's P/L.`;
         const startValue = sStart * q.prev_close;
         pos.dailyPct = startValue > 0 ? round((daily / startValue) * 100) : (q.change_pct ?? null);
       }
@@ -401,6 +421,8 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
       costBasisPriced: round(priced.reduce((s, p) => s + p.costBasis, 0)),
       unrealizedPL: round(priced.reduce((s, p) => s + p.unrealizedPL, 0)),
       dailyPL: round(priced.filter((p) => p.dailyPL != null).reduce((s, p) => s + p.dailyPL, 0)),
+      dailyPLStartValue: priced.filter((p) => p.dailyPL != null).reduce((s, p) => s + p.dailyPLStartValue, 0),
+      dailyPLPositions: priced.filter((p) => p.dailyPL != null).length,
       realizedPL: round([...positions, ...closed].filter((p) => p.currency === ccy).reduce((s, p) => s + (p.realizedPL || 0), 0)),
       cash: cashRows.length ? round(cashAmt) : null,
       cashAsOf: cashRows.length ? cashRows.map((c) => c.as_of).sort().at(-1) : null,
@@ -409,8 +431,9 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
     };
     const t = totals[ccy];
     t.unrealizedPct = t.costBasisPriced > 0 ? round((t.unrealizedPL / t.costBasisPriced) * 100) : null;
-    const prevValue = t.marketValue - t.dailyPL;
-    t.dailyPct = prevValue > 0 ? round((t.dailyPL / prevValue) * 100) : null;
+    // Percentage over the positions that have a measurable daily change only.
+    t.dailyPct = t.dailyPLStartValue > 0 ? round((t.dailyPL / t.dailyPLStartValue) * 100) : null;
+    t.dailyPLStartValue = round(t.dailyPLStartValue);
   }
 
   // Combined view only with a timestamped FX rate.
@@ -423,6 +446,7 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
       currency: 'CAD', fxRate: r, fxAsOf: fx.as_of, fxSource: fx.source,
       marketValue: round(mvCad), cash: round(cashCad), total: round(mvCad + cashCad),
       complete: totals.USD.complete && totals.CAD.complete,
+      weightBasis: WEIGHT_BASIS,
     };
     for (const p of positions) {
       if (p.marketValue == null) continue;
@@ -430,7 +454,7 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
     }
   }
   for (const p of positions) {
-    if (p.weightPct == null && p.marketValue != null) {
+    if (p.marketValue != null) {
       const t = totals[p.currency].marketValue;
       p.weightInCurrencyPct = t > 0 ? round((p.marketValue / t) * 100, 1) : null;
     }
