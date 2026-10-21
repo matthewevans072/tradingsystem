@@ -1,0 +1,843 @@
+//@version=6
+// =============================================================================
+//  Consolidation Breakout, strategy version 1.0.0 (cb-1.0.0)
+//  Signal Desk Strategy Lab. Pine Script v6 strategy for TradingView.
+//  SIMULATION ONLY. Research assumption, not a proven edge.
+// =============================================================================
+//
+//  WHAT THIS IS
+//  A single-symbol TradingView version of the Signal Desk consolidation-
+//  breakout rules: strategy/RULES.md, exact behaviour in
+//  strategy/ENGINE-SPEC.md, default settings from
+//  strategy/configs/cb-1.0.0.json. The rules are research assumptions taken
+//  from the owner's written brief. They are not a verified reproduction of
+//  the source video and not evidence of an edge. Signal Desk's own engine
+//  (server/strategy/) produces the research results. This script is a
+//  cross-check and an optional forward simulation inside TradingView.
+//
+//  FOUR DIFFERENT THINGS. THIS SCRIPT DOES ONLY THE FIRST TWO.
+//   1. Historical backtest: TradingView's broker emulator replays the rules
+//      on past bars (Strategy Tester / strategy report).               YES
+//   2. Forward simulation: the same emulator keeps simulating on each new
+//      bar while the chart, or a strategy alert's server-side copy, runs.
+//      The fills are still simulated.                                   YES
+//   3. TradingView Paper Trading: TradingView's separate virtual-money
+//      account, traded by hand from the Trading Panel. Pine strategies
+//      cannot send orders to it.                                        NO
+//   4. Real broker execution (for example Questrade, which TradingView
+//      integrates in its Trading Panel for manual trading). Pine strategies
+//      cannot send orders to integrated brokers, and this project does not
+//      trade.                                                           NO
+//  Nothing here places, routes or prepares a real or Paper Trading order.
+//  The optional alerts only send JSON to the owner's Signal Desk simulation
+//  receiver, which journals them and never trades.
+//
+//  NOT COMPILED
+//  This script was written without access to TradingView. It has NOT been
+//  compiled or run. Paste it into the Pine Editor, compile it, and report
+//  any error message with its line number (strategy/TRADINGVIEW-SETUP.md).
+//
+//  KNOWN DIFFERENCES FROM THE SIGNAL DESK ENGINE (ENGINE-SPEC.md section 8,
+//  plus details found while writing this script)
+//   a. Portfolio limits (3 positions, 1 % combined open risk, shared cash)
+//      cannot be enforced: each chart is its own single-symbol account.
+//      Only the per-trade risk and one position per symbol apply.
+//   b. No immediate-or-cancel order. The entry is a buy limit at the
+//      maximum entry L, active for one bar and cancelled at that bar's
+//      close. If the bar opens above L and later trades back through L,
+//      TradingView fills it inside the bar, where the engine's default
+//      (open_only) skips it. Such fills are labelled "intrabar limit fill -
+//      differs from Signal Desk engine". The engine's limit_intrabar option
+//      reproduces them for comparison.
+//   c. If the next bar opens at or below the stop, the engine skips the
+//      entry. TradingView is expected to fill the limit at the open (a limit
+//      fills at its price or better), after which the stop triggers. These
+//      fills are labelled and counted.
+//   d. Costs. TradingView applies one commission model. This script charges
+//      0.045 % per fill (set in strategy() below) to approximate commission
+//      plus half spread plus slippage. The engine charges $0.005/share (min
+//      $1, capped at 1 % of value) on every fill, and 4 bps only on market
+//      and stop fills, not on the target. The planning rules (maximum entry,
+//      cost/risk check, sizing) use the engine's cost inputs below.
+//   e. A bar that touches both the stop and the target: TradingView is
+//      expected to fill whichever level its assumed path inside the bar
+//      reaches first (the engine's tv_path option), or to use lower-timeframe
+//      data when bar magnifier / "Bar detalization: High" is on. That it
+//      resolves the tie this way is an inference, not a documented sentence.
+//      The engine's default is stop-first.
+//   f. backtest_fill_limits_assumption = 1 makes the target need one tick
+//      beyond it, as in the engine. It may also apply to the entry limit,
+//      so an open exactly at L, or within one tick of it, might not fill in
+//      TradingView where the engine fills it. Not verified; counted as
+//      "TradingView missed fills".
+//   g. ATR is Wilder's RMA starting from the first bar loaded on the chart.
+//      The engine starts from the first bar of its dataset, so the early
+//      values differ until the average settles.
+//   h. Sizing uses TradingView's strategy.equity (after its own commission)
+//      and keeps a small cash buffer so orders pass TradingView's funds
+//      check. It ignores the engine's 1 %-of-value commission cap.
+//   i. Session close is 16:00 ET, or 13:00 ET on NYSE early-close days,
+//      encoded by rule as in server/calendar.js. Holidays need no rule
+//      (there are no bars). How TradingView's own session data treats early
+//      closes is not verified.
+//   j. End of data: an open trade stays open in TradingView's report. The
+//      engine closes it at the last close and flags it end_of_data.
+//   k. Bars and volume come from TradingView's data feed, which can differ
+//      from Signal Desk's provider. Swing holds count sessions that have
+//      bars on the chart. The engine counts calendar trading sessions.
+//   l. box.allowWindowAcrossSessions is fixed at true (the cb-1.0.0 value):
+//      a window may span sessions. The engine's "false" option is not
+//      offered here. (As in the engine, a box that expires or is
+//      invalidated is retired before the scan for a new box at the same
+//      close; that is not a difference.)
+//   m. The optional test window (input group 0) limits new setups to a date
+//      range. It keeps validation and holdout results from being seen by
+//      accident. The engine selects dates with its own run settings.
+//   n. The stop and target (strategy.exit with from_entry) are placed in the
+//      same bar as the pending entry, so they can act on the entry bar.
+//      Whether Pine v6 attaches an exit to an entry that has not filled yet
+//      was not verified (only older manuals describe it). From the entry
+//      bar's close on, the same bracket is re-issued every bar regardless.
+//   o. Safety nets that the engine handles differently: if a time exit was
+//      missed and the position is still open on a later session's bar, it
+//      is closed at that bar's close ("missed_flatten", "max_hold_overdue");
+//      the engine would close it at the earlier session's last close.
+// =============================================================================
+
+// strategy() settings, each chosen to match the engine (ENGINE-SPEC.md).
+// What these notes say about TradingView's behaviour and its Properties tab
+// comes from search summaries of tradingview.com pages (RESEARCH-NOTES.md)
+// and was not independently verified; anything dated July 2026 was seen
+// only in those summaries of the release notes.
+//  - initial_capital 100000, currency USD: the hypothetical US$100,000
+//    simulated account (risk.hypotheticalStartingEquity). It is not the
+//    owner's money and is separate from the real portfolio.
+//  - default_qty_type strategy.fixed, default_qty_value 1: every order
+//    passes an explicit share quantity from the sizing rule, so the default
+//    size is never used.
+//  - pyramiding 1: one position per symbol, never added to.
+//  - process_orders_on_close false: an order created at a bar's close fills
+//    no earlier than the next bar's open, as in the engine. Reportedly
+//    (July 2026 release notes, not verified) the Properties tab now shows
+//    this as "Order execution delay"; do not choose "None", described there
+//    as filling on the closing tick.
+//  - calc_on_every_tick false: the script runs once per bar, at the close,
+//    on history and in realtime, so realtime behaves like history (no
+//    repainting from intrabar recalculation).
+//  - calc_on_order_fills false: no extra runs after fills (TradingView warns
+//    these can look ahead on historical bars).
+//  - use_bar_magnifier false: TradingView's assumed path inside each bar.
+//    Bar magnifier (reportedly renamed "Bar detalization: High" in July 2026,
+//    not verified) uses lower-timeframe data for fills inside a bar; the
+//    summaries say it needs a Premium or Ultimate plan (plan rules change,
+//    check them yourself).
+//  - fill_orders_on_standard_ohlc true: on a Heikin Ashi chart, fill at real
+//    prices. By default the script refuses new setups on non-standard
+//    charts anyway (input group 5).
+//  - backtest_fill_limits_assumption 1: a limit order (the target) fills only
+//    once price trades one tick through it (costs.limitFillTicksBeyond = 1).
+//    Reportedly (July 2026, not verified) the Properties tab now shows this
+//    as "Limit order execution".
+//  - margin_long / margin_short 100: no leverage and no margin (1:1).
+//    Reportedly (July 2026, not verified) the Properties tab now shows
+//    "Long leverage" / "Short leverage" instead.
+//  - slippage 0 and commission 0.045 % per fill: the engine's spread and
+//    slippage are in basis points of price, which TradingView's tick-based
+//    slippage cannot express. They are folded into a percent commission:
+//    2 bps half spread + 2 bps slippage + about 0.5 bp for $0.005 per share
+//    at a $100 price = about 4.5 bps = 0.045 %. See difference (d).
+//  - close_entries_rule "ANY": an exit closes the trade it names.
+//  - max_bars_back 500: history buffer for the touch-counting loop (lookback
+//    up to 200 bars) without runtime buffer errors.
+//  - max_boxes_count / max_labels_count / max_lines_count 500: the maximum
+//    according to the docs' search summaries. Past it, the oldest drawings
+//    are deleted.
+strategy("Consolidation Breakout v1.0.0 (simulation only)",
+  shorttitle = "CB 1.0.0",
+  overlay = true,
+  initial_capital = 100000,
+  currency = currency.USD,
+  default_qty_type = strategy.fixed,
+  default_qty_value = 1,
+  pyramiding = 1,
+  process_orders_on_close = false,
+  calc_on_every_tick = false,
+  calc_on_order_fills = false,
+  use_bar_magnifier = false,
+  fill_orders_on_standard_ohlc = true,
+  backtest_fill_limits_assumption = 1,
+  margin_long = 100,
+  margin_short = 100,
+  slippage = 0,
+  commission_type = strategy.commission.percent,
+  commission_value = 0.045,
+  close_entries_rule = "ANY",
+  max_bars_back = 500,
+  max_boxes_count = 500,
+  max_labels_count = 500,
+  max_lines_count = 500)
+
+// ----------------------------------------------------------------- constants
+string VERSION = "1.0.0"
+string TZ = "America/New_York"
+int ST_SCAN = 0      // looking for a box
+int ST_ARMED = 1     // a box is eligible and frozen
+int ST_PENDING = 2   // an entry order waits for the next bar
+int ST_POS = 3       // a position is open
+float PX_EPS = 1e-9  // the same price slack as server/strategy/boxes.js
+
+color C_ARMED = #2962FF
+color C_CONSUMED = #9C27B0
+color C_EXPIRED = #787B86
+color C_INVALID = #F23645
+color C_ACCEPT = #089981
+color C_REJECT = #FF9800
+color C_WARN = #FFEB3B
+
+// -------------------------------------------------------------------- inputs
+// Defaults = strategy/configs/cb-1.0.0.json. Changing any of them makes the
+// results a different strategy version (the table says so).
+
+string G_WIN = "0. Test window (protects validation and holdout data)"
+bool useWindow = input.bool(true, "Only look for new setups inside this window", group = G_WIN, tooltip = "VALIDATION-PLAN.md: 2022-2023 is development (trades may be inspected), 2024 validation, 2025-01-01 to 2026-06-30 holdout (one run per version, in the Strategy Lab). The Strategy Tester shows results for every loaded bar, so this window stops TradingView from showing validation or holdout results by accident. For a forward simulation, set the start to the day you begin and the end far in the future.")
+int winStart = input.time(timestamp("2022-01-01T00:00:00-05:00"), "Window start", group = G_WIN, tooltip = "New setups only on bars that start at or after this time. Default: start of the development period.")
+int winEnd = input.time(timestamp("2024-01-01T00:00:00-05:00"), "Window end (exclusive)", group = G_WIN, tooltip = "No new setups, and no breakout decisions, on bars that start at or after this time. Open positions are still managed. Default: end of the development period.")
+
+string G_BOX = "1. Box (consolidation)"
+int lookback = input.int(20, "Lookback window (bars)", minval = 5, maxval = 200, group = G_BOX, tooltip = "box.lookbackBars. The window is the last N completed bars, ending at the current bar. The breakout candle is always a later bar.")
+int atrLen = input.int(14, "ATR length (Wilder)", minval = 1, maxval = 100, group = G_BOX, tooltip = "box.atrLength. ta.atr: Wilder's RMA of true range.")
+float maxHeightAtr = input.float(3.0, "Maximum box height (x ATR)", minval = 0.1, step = 0.1, group = G_BOX, tooltip = "box.maxHeightAtr. Box height = ceiling - floor.")
+float minHeightAtr = input.float(0.0, "Minimum box height (x ATR)", minval = 0.0, step = 0.1, group = G_BOX, tooltip = "box.minHeightAtr.")
+float touchTolAtr = input.float(0.2, "Touch tolerance (x ATR)", minval = 0.0, step = 0.05, group = G_BOX, tooltip = "box.touchToleranceAtr. A high within this distance of the ceiling, or a low within it of the floor, is a touch.")
+int minTouches = input.int(2, "Minimum touches on each edge", minval = 1, maxval = 10, group = G_BOX, tooltip = "box.minTouchesEach.")
+int minBarsBetween = input.int(2, "Minimum bars between counted touches", minval = 0, maxval = 20, group = G_BOX, tooltip = "box.minBarsBetweenTouches. Touches are counted from the oldest bar; a touch counts if at least this many bars lie between it and the previous counted touch.")
+int expiryBars = input.int(10, "Setup expiry (bars)", minval = 1, maxval = 100, group = G_BOX, tooltip = "box.setupExpiryBars. The setup expires if no candle closes above the ceiling within this many bars.")
+bool invalidateBelow = input.bool(true, "Cancel the setup on a close below the floor", group = G_BOX, tooltip = "box.invalidateOnCloseBelowSupport.")
+
+string G_ENTRY = "2. Breakout and entry"
+float volMult = input.float(1.5, "Breakout volume must exceed (x average)", minval = 0.0, step = 0.05, group = G_ENTRY, tooltip = "entry.volumeMultiple. Strictly more than this multiple of the average of the previous bars.")
+int volLen = input.int(20, "Volume average length (previous bars)", minval = 1, maxval = 200, group = G_ENTRY, tooltip = "entry.volumeLookbackBars. If any of these volumes, or the breakout bar's, is missing or zero, the signal is skipped.")
+float maxGapAtr = input.float(0.5, "Highest entry above the breakout close (x ATR)", minval = 0.0, step = 0.05, group = G_ENTRY, tooltip = "entry.maxGapAtr. Gap limit G = close + this x ATR.")
+float minRR = input.float(2.0, "Minimum reward/risk at the entry", minval = 0.1, step = 0.1, group = G_ENTRY, tooltip = "entry.minRewardRisk, measured from the simulated entry price (open plus spread and slippage).")
+
+string G_EXIT = "3. Stop and target"
+float stopBufAtr = input.float(0.1, "Stop buffer below the breakout low (x ATR)", minval = 0.0, step = 0.05, group = G_EXIT, tooltip = "stop.atrBuffer. Stop = breakout candle's low - this x ATR. The stop never moves.")
+float minStopAtr = input.float(0.0, "Minimum risk per share (x ATR)", minval = 0.0, step = 0.05, group = G_EXIT, tooltip = "stop.minStopAtr. Risk at the reference entry (close plus spread and slippage) minus the stop.")
+float targetMult = input.float(1.0, "Target = ceiling + box height x", minval = 0.1, step = 0.1, group = G_EXIT, tooltip = "target.boxHeightMultiple. The target never moves.")
+float maxCostRiskPct = input.float(20.0, "Maximum round-trip cost (% of risk per share)", minval = 0.0, step = 1.0, group = G_EXIT, tooltip = "stop.maxCostToRiskPct.")
+
+string G_COST = "4. Cost assumptions (planning rules)"
+float commPerShare = input.float(0.005, "Commission per share (USD)", minval = 0.0, step = 0.001, group = G_COST, tooltip = "costs.commissionPerShare. Used for the cost check and sizing. The commission TradingView actually charges is the one in the Properties tab (0.045 % per fill by default).")
+float commMin = input.float(1.0, "Commission minimum per order (USD)", minval = 0.0, step = 0.5, group = G_COST, tooltip = "costs.commissionMinPerOrder. Used for sizing.")
+float halfSpreadBps = input.float(2.0, "Half bid/ask spread (bps)", minval = 0.0, step = 0.5, group = G_COST, tooltip = "costs.halfSpreadBps.")
+float slippageBps = input.float(2.0, "Slippage (bps)", minval = 0.0, step = 0.5, group = G_COST, tooltip = "costs.slippageBps.")
+
+string G_MODE = "5. Mode and session (US regular session, New York time)"
+string modeIn = input.string("Intraday", "Mode", options = ["Intraday", "Swing"], group = G_MODE, tooltip = "Two separate configurations, reported separately. Intraday: flat before the close, nothing held overnight. Swing: held overnight for up to the maximum number of sessions. Use one chart (or one copy of the strategy) per mode.")
+int flattenMin = input.int(15, "Flatten minutes before the close", minval = 0, maxval = 120, group = G_MODE, tooltip = "modes.*.flattenMinutesBeforeClose. A market exit is placed at the close of the first bar ending at or after the session close minus this, so it fills at the next bar's open (15:45 ET, or 12:45 ET on early-close days).")
+int noEntryMin = input.int(60, "Intraday: no new entries in the last N minutes", minval = 0, maxval = 390, group = G_MODE, tooltip = "entry.noNewEntriesMinutesBeforeClose. In Intraday mode a breakout bar that ends less than N minutes before the session close (later than close - N), or the session's last bar, is rejected. A bar ending exactly N minutes before the close is allowed, as in the engine.")
+int maxHoldSessions = input.int(10, "Swing: maximum hold (sessions, entry session = 1)", minval = 1, maxval = 100, group = G_MODE, tooltip = "modes.swing.maxHoldSessions. On this session the position is flattened like an intraday one.")
+bool requireRegular = input.bool(true, "Refuse new setups on non-standard or extended-hours charts", group = G_MODE, tooltip = "The rules use standard candles and regular-session bars only. Leave on.")
+
+string G_RISK = "6. Simulated risk (this chart only)"
+float riskPct = input.float(0.25, "Risk per trade (% of strategy equity)", minval = 0.01, maxval = 5.0, step = 0.05, group = G_RISK, tooltip = "risk.riskPerTradePct. Worst-case loss per share is taken at the maximum entry, so the planned risk can only be lower at the fill. Testing assumption, not an approved live limit.")
+float cashBufferPct = input.float(0.1, "Cash buffer for TradingView's own fees (%)", minval = 0.0, maxval = 5.0, step = 0.05, group = G_RISK, tooltip = "Not in the engine. Keeps a cash-limited order inside TradingView's funds check after its own commission. Affects only trades whose size is limited by cash.")
+
+string G_DISP = "7. Display"
+bool showBoxes = input.bool(true, "Boxes", group = G_DISP)
+bool showLabels = input.bool(true, "Decision labels", group = G_DISP)
+bool showLines = input.bool(true, "Entry, stop and target lines", group = G_DISP)
+bool showTable = input.bool(true, "Status table", group = G_DISP)
+string tablePosIn = input.string("Top right", "Table position", options = ["Top right", "Top left", "Bottom right", "Bottom left"], group = G_DISP)
+
+string G_ALERT = "8. Alerts (realtime only; Signal Desk simulation receiver only)"
+bool alertSetup = input.bool(false, "Also send setup alerts (eligible, expired, invalidated)", group = G_ALERT, tooltip = "order_placed, signal_rejected and entry_cancelled are always sent by alert(); entry and exit fills are sent by the order-fill alerts.")
+string webhookSecret = input.string("", "Webhook secret", group = G_ALERT, display = display.none, tooltip = "Copied into the secret field of every alert message for the Signal Desk receiver (LAB_WEBHOOK_SECRET). Use a random value made only for this receiver, never a password. It is stored with the script's inputs and inside every alert you create. Not shown on the chart's status line.")
+
+// ------------------------------------------------------------------- derived
+bool isIntraday = modeIn == "Intraday"
+string MODE_KEY = isIntraday ? "intraday" : "swing"
+// k: the fraction of the price paid on market and stop fills (costs.js slipFactor).
+float kCost = (halfSpreadBps + slippageBps) / 10000.0
+string tablePos = switch tablePosIn
+    "Top left" => position.top_left
+    "Bottom right" => position.bottom_right
+    "Bottom left" => position.bottom_left
+    => position.top_right
+
+bool defaultsOk = lookback == 20 and atrLen == 14 and maxHeightAtr == 3.0 and minHeightAtr == 0.0 and touchTolAtr == 0.2 and minTouches == 2 and minBarsBetween == 2 and expiryBars == 10 and invalidateBelow and volMult == 1.5 and volLen == 20 and maxGapAtr == 0.5 and minRR == 2.0 and stopBufAtr == 0.1 and minStopAtr == 0.0 and targetMult == 1.0 and maxCostRiskPct == 20.0 and commPerShare == 0.005 and commMin == 1.0 and halfSpreadBps == 2.0 and slippageBps == 2.0 and flattenMin == 15 and noEntryMin == 60 and maxHoldSessions == 10 and riskPct == 0.25
+
+// ------------------------------------------- indicators (every bar, global)
+// All ta.* and math.sum calls run on every bar at global scope, never only
+// inside a condition, so their history is complete.
+float atrNow = ta.atr(atrLen)                 // Wilder's ATR of the current (completed) bar
+float hiW = ta.highest(high, lookback)        // ceiling of the window ending at this bar
+float loW = ta.lowest(low, lookback)          // floor of the window ending at this bar
+float volSma = ta.sma(volume, volLen)
+float avgVolPrev = volSma[1]                  // mean volume of the previous volLen bars
+// Count of missing or non-positive volumes over the breakout bar and the
+// volLen bars before it (the engine needs all volLen + 1 of them).
+float volBadNow = (na(volume) or volume <= 0) ? 1.0 : 0.0
+float volBadCount = math.sum(volBadNow, volLen + 1)
+
+// ------------------------------------------------------- session and time
+// NYSE 13:00 ET early closes, by the rule in server/calendar.js
+// (nyseEarlyCloses): July 3 and December 24 when they fall Monday to
+// Thursday, and the day after Thanksgiving (the Friday after the fourth
+// Thursday of November, which is always a November Friday dated 23 to 29).
+// When July 3 or December 24 is a Friday it is a holiday, so there are no bars.
+isEarlyClose(int m, int d, int dow) =>
+    bool monThu = dow >= dayofweek.monday and dow <= dayofweek.thursday
+    bool jul3 = m == 7 and d == 3 and monThu
+    bool dayAfterThanksgiving = m == 11 and dow == dayofweek.friday and d >= 23 and d <= 29
+    bool dec24 = m == 12 and d == 24 and monThu
+    jul3 or dayAfterThanksgiving or dec24
+
+int barY = year(time, TZ)
+int barM = month(time, TZ)
+int barD = dayofmonth(time, TZ)
+int barDow = dayofweek(time, TZ)
+int dayKey = barY * 10000 + barM * 100 + barD
+bool earlyClose = isEarlyClose(barM, barD, barDow)
+int sessCloseMin = earlyClose ? 13 * 60 : 16 * 60
+int barEndMs = na(time_close) ? time + timeframe.in_seconds() * 1000 : time_close
+int barEndMin = hour(barEndMs, TZ) * 60 + minute(barEndMs, TZ)
+// The next bar is in another session (server/strategy/sessions.js isLast).
+bool lastBarOfSession = session.islastbar_regular or barEndMin >= sessCloseMin
+// Time exits (engine timeExit): the first bar ending AT OR AFTER (session
+// close - flattenMin), so the 15:30 bar (ending 15:45) places the flatten.
+bool inFlattenWindow = barEndMin >= sessCloseMin - flattenMin
+// No new entries (ENGINE-SPEC section 4, engine onBreakout): the breakout
+// candle closes LATER THAN noEntryMin before the close (strictly greater),
+// so a candle ending exactly at 15:00 is still allowed with the defaults.
+bool inNoEntryWindow = barEndMin > sessCloseMin - noEntryMin
+bool inWindow = not useWindow or (time >= winStart and time < winEnd)
+
+// Chart checks. Extended-hours bars would enter the windows and the ATR.
+var bool sawExtendedBar = false
+if timeframe.isintraday and (session.ispremarket or session.ispostmarket or not session.ismarket)
+    sawExtendedBar := true
+bool ethShown = syminfo.session == session.extended or sawExtendedBar
+bool nonStandard = not chart.is_standard
+bool blockNew = requireRegular and (ethShown or nonStandard)
+bool tf15 = timeframe.isintraday and timeframe.in_seconds() == 900
+var int firstBarTime = time
+
+// ---------------------------------------------------------- persistent state
+var int st = ST_SCAN
+var int nextWindowStartMin = 0
+
+// The frozen box (ENGINE-SPEC section 3).
+var int boxSeq = 0
+var string bId = ""
+var float bR = na
+var float bS = na
+var float bH = na
+var float bA = na
+var int bStartT = na
+var int bEndT = na
+var int bEnd = na
+var int bUp = 0
+var int bLo = 0
+var string bUpT = ""
+var string bLoT = ""
+var box bBox = na
+
+// The order plan and the trade.
+var int sigSeq = 0
+var string entryId = ""
+var string exitId = ""
+var float pStop = na
+var float pTarget = na
+var float pMaxEntry = na
+var float pGap = na
+var float pRR = na
+var string pBinding = ""
+var int pQty = 0
+var int closedAtSignal = 0
+var float fillPrice = na
+var int entryDayKey = 0
+var int lastHeldDayKey = 0
+var int sessionsHeld = 0
+var bool timeExitIssued = false
+var line lnEntry = na
+var line lnStop = na
+var line lnTarget = na
+var string lastEvent = "none yet"
+
+// Counters for the table.
+var int cntSetups = 0
+var int cntConsumed = 0
+var int cntExpired = 0
+var int cntInvalidated = 0
+var int cntSignals = 0
+var int cntRejected = 0
+var int rjWindow = 0
+var int rjVolNa = 0
+var int rjVolLow = 0
+var int rjTarget = 0
+var int rjStop = 0
+var int rjCost = 0
+var int rjTime = 0
+var int rjSize = 0
+var int cntFilled = 0
+var int cntCancelled = 0
+var int cntIntrabar = 0
+var int cntAtStop = 0
+var int cntMissed = 0
+var int exStop = 0
+var int exTarget = 0
+var int exTime = 0
+var int exOther = 0
+
+// ------------------------------------------------------------------ helpers
+fmtP(float x) => na(x) ? "n/a" : str.tostring(x, format.mintick)
+fmtN(float x, string f) => na(x) ? "n/a" : str.tostring(x, f)
+hhmm(int t) => str.format_time(t, "HH:mm", TZ)
+
+// Which limit set the maximum entry: JSON uses the engine's codes ("gap",
+// "reward_risk"); labels use words.
+bindTxt(string b) => b == "gap" ? "gap" : "reward/risk"
+
+// JSON. Numbers are written with str.tostring(x, "0.########"): always a
+// leading digit, no thousands separator, no exponent, unquoted; na becomes
+// null. str.format is not used for numbers because its number formatting
+// may add grouping separators. Strings are quoted and escaped (backslash,
+// double quote, newline).
+jStr(string s) =>
+    string r = str.replace_all(s, "\\", "\\\\")
+    r := str.replace_all(r, "\"", "\\\"")
+    r := str.replace_all(r, "\n", "\\n")
+    "\"" + r + "\""
+jNum(float x) => na(x) ? "null" : str.tostring(x, "0.########")
+jInt(int x) => na(x) ? "null" : str.tostring(x, "0")
+jOpt(string s) => s == "" ? "null" : jStr(s)
+
+// Fields shared by every event of the current box / order.
+jBody(float o, float c, float stopV, float targetV, float maxEntryV, float gapV, float rrV, float entryV, string binding, int qty, float vol, float avgVol, string reason) =>
+    string s = ',"prices":{"open":' + jNum(o)
+    s := s + ',"close":' + jNum(c)
+    s := s + ',"resistance":' + jNum(bR)
+    s := s + ',"support":' + jNum(bS)
+    s := s + ',"height":' + jNum(bH)
+    s := s + ',"boxAtr":' + jNum(bA)
+    s := s + ',"atr":' + jNum(atrNow)
+    s := s + ',"stop":' + jNum(stopV)
+    s := s + ',"target":' + jNum(targetV)
+    s := s + ',"maxEntry":' + jNum(maxEntryV)
+    s := s + ',"gapLimit":' + jNum(gapV)
+    s := s + ',"rrLimit":' + jNum(rrV)
+    s := s + ',"entry":' + jNum(entryV) + '}'
+    s := s + ',"touchesUpper":' + jInt(bUp) + ',"touchesLower":' + jInt(bLo)
+    s := s + ',"binding":' + jOpt(binding)
+    s := s + ',"qty":' + jInt(qty)
+    s := s + ',"volume":' + jNum(vol)
+    s := s + ',"avgVolume":' + jNum(avgVol)
+    s := s + ',"reason":' + jOpt(reason)
+    s
+
+// One alert message. barTime is the open time (UNIX ms) of the bar at whose
+// close the message was built: for alert() events the bar that just closed;
+// for order-fill events the bar on which the order was (re)issued, so the
+// fill itself happens on a later bar. timenow is the script's clock at that
+// moment. Alert placeholders such as {{timenow}} are not used inside these
+// messages: whether TradingView expands them in alert() and alert_message
+// text was not verified, and an unexpanded placeholder would break the JSON.
+jEnvelope(string event, string setupId, string orderId, string body) =>
+    string s = '{"source":"tradingview","strategy":"consolidation-breakout","version":' + jStr(VERSION)
+    s := s + ',"mode":' + jStr(MODE_KEY) + ',"event":' + jStr(event)
+    s := s + ',"symbol":' + jStr(syminfo.ticker) + ',"exchange":' + jStr(syminfo.prefix)
+    s := s + ',"timeframe":' + jStr(timeframe.period)
+    s := s + ',"barTime":' + jInt(time) + ',"barCloseTime":' + jInt(time_close) + ',"timenow":' + jInt(timenow)
+    s := s + ',"setupId":' + jOpt(setupId) + ',"orderId":' + jOpt(orderId)
+    s := s + body
+    s := s + ',"secret":' + jStr(webhookSecret) + '}'
+    s
+
+tRow(table t, int r, string k, string v, color vc) =>
+    table.cell(t, 0, r, k, text_color = color.silver, text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, r, v, text_color = vc, text_size = size.small, text_halign = text.align_left)
+
+// ========================================================== the state machine
+// Everything below runs only at the close of a completed bar. With
+// calc_on_every_tick = false a strategy runs at bar close anyway; the gate
+// also keeps an unfinished last bar from deciding anything.
+bool confirmed = barstate.isconfirmed
+
+if confirmed
+    // ---- 1. Pending entry: resolved at the close of the bar after the signal.
+    if st == ST_PENDING
+        bool openNow = strategy.position_size > 0
+        bool doneSameBar = strategy.closedtrades > closedAtSignal
+        if openNow or doneSameBar
+            cntFilled += 1
+            if openNow
+                fillPrice := strategy.opentrades.entry_price(strategy.opentrades - 1)
+            else
+                fillPrice := strategy.closedtrades.entry_price(strategy.closedtrades - 1)
+            string note = ""
+            if open > pMaxEntry + PX_EPS
+                cntIntrabar += 1
+                note := "intrabar limit fill — differs from Signal Desk engine\nopened " + fmtP(open) + " above the max entry " + fmtP(pMaxEntry) + ", filled " + fmtP(fillPrice)
+            if open <= pStop
+                cntAtStop += 1
+                note := note + (note == "" ? "" : "\n") + "opened " + fmtP(open) + " at or below the stop: the Signal Desk engine skips this entry"
+            if showLabels and note != ""
+                label.new(bar_index, low, note, yloc = yloc.belowbar, style = label.style_label_up, color = C_WARN, textcolor = color.black, size = size.small)
+            if showLines and not na(lnEntry)
+                line.set_y1(lnEntry, fillPrice)
+                line.set_y2(lnEntry, fillPrice)
+                line.set_style(lnEntry, line.style_solid)
+            entryDayKey := dayKey
+            lastHeldDayKey := dayKey
+            sessionsHeld := 1
+            timeExitIssued := false
+            lastEvent := entryId + " filled at " + fmtP(fillPrice)
+            st := ST_POS
+        else
+            // TradingView has no immediate-or-cancel order: cancel the unfilled
+            // limit (and its bracket) at the close of its only bar.
+            strategy.cancel(entryId)
+            strategy.cancel(exitId)
+            cntCancelled += 1
+            string why = ""
+            if open > pMaxEntry
+                why := "opened at " + fmtP(open) + ", above the maximum entry " + fmtP(pMaxEntry) + " (" + bindTxt(pBinding) + " limit), and did not trade back through it"
+            else if open <= pStop
+                why := "opened at " + fmtP(open) + ", at or below the stop " + fmtP(pStop) + " (the engine skips this too)"
+            else
+                cntMissed += 1
+                why := "not filled by TradingView although the open " + fmtP(open) + " was at or below the maximum entry " + fmtP(pMaxEntry) + "; the engine would fill at the open"
+            if showLabels
+                label.new(bar_index, high, "entry cancelled (" + entryId + ")\n" + why, yloc = yloc.abovebar, style = label.style_label_down, color = C_EXPIRED, textcolor = color.white, size = size.small)
+            alert(jEnvelope("entry_cancelled", bId, entryId, jBody(open, close, pStop, pTarget, pMaxEntry, pGap, pRR, na, pBinding, pQty, volume, avgVolPrev, why)), alert.freq_once_per_bar_close)
+            lastEvent := entryId + " cancelled: " + why
+            st := ST_SCAN
+
+    // ---- 2. Open position: exits, session count, time exits.
+    if st == ST_POS
+        if strategy.position_size <= 0
+            int ci = strategy.closedtrades - 1
+            string how = ""
+            float xPx = na
+            if ci >= 0
+                how := strategy.closedtrades.exit_comment(ci)
+                xPx := strategy.closedtrades.exit_price(ci)
+            if how == "stop"
+                exStop += 1
+            else if how == "target"
+                exTarget += 1
+            else if how == "flatten" or how == "max_hold" or how == "session_end_fallback" or how == "max_hold_overdue" or how == "missed_flatten"
+                exTime += 1
+            else
+                exOther += 1
+            if showLines and not na(lnEntry)
+                line.set_x2(lnEntry, bar_index)
+                line.set_x2(lnStop, bar_index)
+                line.set_x2(lnTarget, bar_index)
+            strategy.cancel(exitId)
+            lastEvent := entryId + " closed (" + how + ") at " + fmtP(xPx)
+            st := ST_SCAN
+        else
+            if dayKey != lastHeldDayKey
+                sessionsHeld += 1
+                lastHeldDayKey := dayKey
+            // Re-issue the bracket with the SAME frozen stop and target every
+            // bar. They are never moved, widened or trailed. Only the alert
+            // text is refreshed so its barTime stays current.
+            string xLoss = jEnvelope("exit_filled", bId, exitId, jBody(na, close, pStop, pTarget, pMaxEntry, pGap, pRR, fillPrice, pBinding, pQty, na, na, "stop"))
+            string xProfit = jEnvelope("exit_filled", bId, exitId, jBody(na, close, pStop, pTarget, pMaxEntry, pGap, pRR, fillPrice, pBinding, pQty, na, na, "target"))
+            strategy.exit(exitId, from_entry = entryId, stop = pStop, limit = pTarget, comment_loss = "stop", comment_profit = "target", alert_message = xLoss, alert_loss = xLoss, alert_profit = xProfit)
+            // Time exits (ENGINE-SPEC section 5): market orders filled at the
+            // next bar's open, except the fallbacks, which fill at this close.
+            bool finalSession = isIntraday or sessionsHeld >= maxHoldSessions
+            string tKey = isIntraday ? "flatten" : "max_hold"
+            if isIntraday and dayKey != entryDayKey
+                // Safety net: an intraday position is never held overnight.
+                strategy.close_all(comment = "missed_flatten", alert_message = jEnvelope("exit_filled", bId, exitId, jBody(na, close, pStop, pTarget, pMaxEntry, pGap, pRR, fillPrice, pBinding, pQty, na, na, "missed_flatten")), immediately = true)
+                lastEvent := entryId + " closed at this close: intraday position found in a new session"
+            else if not isIntraday and sessionsHeld > maxHoldSessions
+                strategy.close_all(comment = "max_hold_overdue", alert_message = jEnvelope("exit_filled", bId, exitId, jBody(na, close, pStop, pTarget, pMaxEntry, pGap, pRR, fillPrice, pBinding, pQty, na, na, "max_hold_overdue")), immediately = true)
+                lastEvent := entryId + " closed at this close: past the maximum hold"
+            else if finalSession and lastBarOfSession
+                // The flatten bar was missing and the next bar is in another
+                // session: close at this bar's close (flagged in the comment).
+                strategy.close_all(comment = "session_end_fallback", alert_message = jEnvelope("exit_filled", bId, exitId, jBody(na, close, pStop, pTarget, pMaxEntry, pGap, pRR, fillPrice, pBinding, pQty, na, na, "session_end_fallback")), immediately = true)
+                lastEvent := entryId + " closed at the session's last close (fallback)"
+            else if finalSession and inFlattenWindow and not timeExitIssued
+                strategy.close_all(comment = tKey, alert_message = jEnvelope("exit_filled", bId, exitId, jBody(na, close, pStop, pTarget, pMaxEntry, pGap, pRR, fillPrice, pBinding, pQty, na, na, tKey)))
+                timeExitIssued := true
+                lastEvent := entryId + " " + tKey + " order placed: fills at the next bar's open"
+            if showLines and not na(lnEntry)
+                line.set_x2(lnEntry, bar_index)
+                line.set_x2(lnStop, bar_index)
+                line.set_x2(lnTarget, bar_index)
+
+    // ---- 3. Armed box: breakout, invalidation or expiry (bars after it froze).
+    if st == ST_ARMED and bar_index > bEnd
+        if close > bR
+            // The breakout candle. The box is consumed whatever happens next.
+            cntConsumed += 1
+            nextWindowStartMin := math.max(bEnd + 1, bar_index + 1)
+            float stopPx = low - stopBufAtr * atrNow
+            float targetPx = bR + targetMult * bH
+            float gapLim = close + maxGapAtr * atrNow
+            float rrLim = ((targetPx + minRR * stopPx) / (1 + minRR)) / (1 + kCost)
+            float rawMax = math.min(gapLim, rrLim)
+            // Rounded down to the tick (a tiny slack keeps an exact multiple exact).
+            float maxEntry = math.round_to_mintick(math.floor(rawMax / syminfo.mintick + PX_EPS) * syminfo.mintick)
+            string binding = gapLim <= rrLim ? "gap" : "reward_risk"
+            float refRisk = close * (1 + kCost) - stopPx
+            float costPS = close * kCost + stopPx * kCost + 2 * commPerShare
+            // Reward/risk at the limit, only when the limit is above the stop
+            // (as the engine's rewardRiskAtMaxEntry): no division by zero.
+            float rrAtMax = maxEntry > stopPx ? (targetPx - maxEntry * (1 + kCost)) / (maxEntry * (1 + kCost) - stopPx) : na
+            float volRatio = na
+            int qty = 0
+            string reason = ""
+            if not inWindow
+                reason := "outside the test window"
+                rjWindow += 1
+            else if na(volBadCount) or volBadCount > 0 or na(avgVolPrev) or avgVolPrev <= 0
+                reason := "volume unavailable"
+                rjVolNa += 1
+            else
+                volRatio := volume / avgVolPrev
+                if not (volume > volMult * avgVolPrev)
+                    reason := "breakout volume " + str.tostring(volRatio, "0.00") + "x average (needs more than " + str.tostring(volMult, "0.0#") + "x)"
+                    rjVolLow += 1
+            if reason == ""
+                if close >= targetPx
+                    reason := "close " + fmtP(close) + " already at or past the target " + fmtP(targetPx)
+                    rjTarget += 1
+                else if maxEntry <= stopPx
+                    reason := "maximum entry " + fmtP(maxEntry) + " at or below the stop " + fmtP(stopPx)
+                    rjStop += 1
+                else if stopPx <= 0
+                    reason := "stop is not positive"
+                    rjStop += 1
+                else if refRisk < minStopAtr * atrNow
+                    reason := "risk per share below " + str.tostring(minStopAtr, "0.0#") + " ATR"
+                    rjStop += 1
+                else if costPS > maxCostRiskPct / 100 * refRisk
+                    reason := "round-trip cost " + (refRisk > 0 ? str.tostring(costPS / refRisk * 100, "0.0") + "% of risk" : "with no risk per share") + " (maximum " + str.tostring(maxCostRiskPct, "0.#") + "%)"
+                    rjCost += 1
+                else if isIntraday and inNoEntryWindow
+                    // Checked before the last-bar rule, in the engine's order.
+                    reason := "intraday: signal bar ends " + hhmm(barEndMs) + " ET, less than " + str.tostring(noEntryMin) + " minutes before the close"
+                    rjTime += 1
+                else if isIntraday and lastBarOfSession
+                    reason := "intraday: last bar of the session (the next bar is in another session)"
+                    rjTime += 1
+                else
+                    // Sizing (ENGINE-SPEC section 6) at the worst acceptable entry L:
+                    // worst-case loss plus both commissions within the risk budget,
+                    // cost within the cash. No margin, no leverage.
+                    // Largest n with n x worstLoss + 2 x max(commMin, commPerShare x n)
+                    // <= budget (the engine allows the same 1e-9 slack).
+                    float eq = strategy.equity
+                    float budget = eq * riskPct / 100
+                    float worstLoss = maxEntry * (1 + kCost) - stopPx * (1 - kCost)
+                    int sA = int(math.floor((budget + PX_EPS) / (worstLoss + 2 * commPerShare)))
+                    int sRisk = commPerShare * sA >= commMin ? sA : math.min(sA, int(math.floor((budget + PX_EPS - 2 * commMin) / worstLoss)))
+                    int sCash = int(math.floor((eq * (1 - cashBufferPct / 100) - commMin) / (maxEntry * (1 + kCost) + commPerShare)))
+                    qty := math.max(0, math.min(sRisk, sCash))
+                    if na(qty) or qty < 1
+                        reason := "size below one share"
+                        rjSize += 1
+            string tip = bId + ": window " + str.format_time(bStartT, "yyyy-MM-dd HH:mm", TZ) + " to " + str.format_time(bEndT, "yyyy-MM-dd HH:mm", TZ) + " ET (bar start times)\nceiling " + fmtP(bR) + ", floor " + fmtP(bS) + ", height " + fmtN(bH / bA, "0.00") + " ATR\nupper touches: " + bUpT + "\nlower touches: " + bLoT + "\nATR now " + fmtP(atrNow) + ", volume " + fmtN(volRatio, "0.00") + "x average"
+            if reason == ""
+                sigSeq += 1
+                entryId := "CB" + str.tostring(sigSeq)
+                exitId := "CB" + str.tostring(sigSeq) + "x"
+                pStop := stopPx
+                pTarget := targetPx
+                pMaxEntry := maxEntry
+                pGap := gapLim
+                pRR := rrLim
+                pBinding := binding
+                pQty := qty
+                fillPrice := na
+                closedAtSignal := strategy.closedtrades
+                string planBody = jBody(open, close, stopPx, targetPx, maxEntry, gapLim, rrLim, na, binding, qty, volume, avgVolPrev, "")
+                // A buy limit at L for the next bar only: it fills at the next
+                // open if that open is at or below L (cancelled at the next close).
+                strategy.entry(entryId, strategy.long, qty = qty, limit = maxEntry, comment = entryId, alert_message = jEnvelope("entry_filled", bId, entryId, planBody))
+                // The bracket is placed now so it can act on the entry bar too.
+                string xLoss0 = jEnvelope("exit_filled", bId, exitId, jBody(na, close, stopPx, targetPx, maxEntry, gapLim, rrLim, na, binding, qty, na, na, "stop"))
+                string xProfit0 = jEnvelope("exit_filled", bId, exitId, jBody(na, close, stopPx, targetPx, maxEntry, gapLim, rrLim, na, binding, qty, na, na, "target"))
+                strategy.exit(exitId, from_entry = entryId, stop = stopPx, limit = targetPx, comment_loss = "stop", comment_profit = "target", alert_message = xLoss0, alert_loss = xLoss0, alert_profit = xProfit0)
+                alert(jEnvelope("order_placed", bId, entryId, planBody), alert.freq_once_per_bar_close)
+                cntSignals += 1
+                lastEvent := entryId + " buy limit " + fmtP(maxEntry) + " x " + str.tostring(qty) + " for the next bar"
+                st := ST_PENDING
+                if showLabels
+                    string txt = "BREAKOUT " + bId + ": buy limit <= " + fmtP(maxEntry) + "\nstop " + fmtP(stopPx) + "  target " + fmtP(targetPx) + "\nR/R at the limit " + fmtN(rrAtMax, "0.00") + "  " + str.tostring(qty) + " sh  (" + bindTxt(binding) + " limit)\nvolume " + fmtN(volRatio, "0.00") + "x average"
+                    label.new(bar_index, high, txt, yloc = yloc.abovebar, style = label.style_label_down, color = C_ACCEPT, textcolor = color.white, size = size.small, tooltip = tip)
+                if showLines
+                    lnEntry := line.new(bar_index, maxEntry, bar_index + 1, maxEntry, color = color.new(color.gray, 0), style = line.style_dotted, width = 1)
+                    lnStop := line.new(bar_index, stopPx, bar_index + 1, stopPx, color = C_INVALID, style = line.style_solid, width = 1)
+                    lnTarget := line.new(bar_index, targetPx, bar_index + 1, targetPx, color = C_ACCEPT, style = line.style_solid, width = 1)
+            else
+                cntRejected += 1
+                alert(jEnvelope("signal_rejected", bId, "", jBody(open, close, stopPx, targetPx, maxEntry, gapLim, rrLim, na, binding, na, volume, avgVolPrev, reason)), alert.freq_once_per_bar_close)
+                lastEvent := bId + " breakout rejected: " + reason
+                st := ST_SCAN
+                if showLabels
+                    label.new(bar_index, high, "BREAKOUT " + bId + " rejected\n" + reason, yloc = yloc.abovebar, style = label.style_label_down, color = C_REJECT, textcolor = color.black, size = size.small, tooltip = tip)
+            if showBoxes and not na(bBox)
+                box.set_right(bBox, bar_index)
+                box.set_border_color(bBox, C_CONSUMED)
+                box.set_bgcolor(bBox, color.new(C_CONSUMED, 88))
+                box.set_text(bBox, bId + " consumed: " + (reason == "" ? "order" : "rejected"))
+                box.set_text_color(bBox, C_CONSUMED)
+        else if invalidateBelow and close < bS
+            cntInvalidated += 1
+            nextWindowStartMin := bEnd + 1
+            lastEvent := bId + " invalidated: closed below the floor"
+            st := ST_SCAN
+            if alertSetup
+                alert(jEnvelope("setup_invalidated", bId, "", jBody(open, close, na, na, na, na, na, na, "", na, volume, na, "closed below support")), alert.freq_once_per_bar_close)
+            if showBoxes and not na(bBox)
+                box.set_right(bBox, bar_index)
+                box.set_border_color(bBox, C_INVALID)
+                box.set_bgcolor(bBox, color.new(C_INVALID, 90))
+                box.set_text(bBox, bId + " invalidated")
+                box.set_text_color(bBox, C_INVALID)
+        else if bar_index - bEnd >= expiryBars
+            cntExpired += 1
+            nextWindowStartMin := bEnd + 1
+            lastEvent := bId + " expired"
+            st := ST_SCAN
+            if alertSetup
+                alert(jEnvelope("setup_expired", bId, "", jBody(open, close, na, na, na, na, na, na, "", na, volume, na, "no close above the ceiling within " + str.tostring(expiryBars) + " bars")), alert.freq_once_per_bar_close)
+            if showBoxes and not na(bBox)
+                box.set_right(bBox, bar_index)
+                box.set_border_color(bBox, C_EXPIRED)
+                box.set_bgcolor(bBox, color.new(C_EXPIRED, 90))
+                box.set_text(bBox, bId + " expired")
+                box.set_text_color(bBox, C_EXPIRED)
+        else if showBoxes and not na(bBox)
+            box.set_right(bBox, bar_index)
+
+    // ---- 4. Scanning: look for a new box (never while a box, order or
+    //         position is active; window must start at or after nextWindowStartMin).
+    if st == ST_SCAN and not blockNew and inWindow
+        int wStart = bar_index - lookback + 1
+        bool warm = bar_index + 1 >= math.max(lookback, atrLen + 1) and atrNow > 0 and not na(hiW) and not na(loW)
+        if warm and wStart >= nextWindowStartMin
+            float hgt = hiW - loW
+            if hgt > 0 and hgt <= maxHeightAtr * atrNow + PX_EPS and hgt >= minHeightAtr * atrNow - PX_EPS
+                float tol = touchTolAtr * atrNow
+                int upN = 0
+                int loN = 0
+                int lastUp = -1000000
+                int lastLo = -1000000
+                string upT = ""
+                string loT = ""
+                // Oldest bar first; a touch counts if at least minBarsBetween
+                // bars lie between it and the previous counted touch.
+                for n = 0 to lookback - 1
+                    int off = lookback - 1 - n
+                    int idx = bar_index - off
+                    if high[off] >= hiW - tol - PX_EPS and idx - lastUp >= minBarsBetween + 1
+                        upN += 1
+                        lastUp := idx
+                        upT := upT + (upT == "" ? "" : ", ") + str.format_time(time[off], "MM-dd HH:mm", TZ)
+                    if low[off] <= loW + tol + PX_EPS and idx - lastLo >= minBarsBetween + 1
+                        loN += 1
+                        lastLo := idx
+                        loT := loT + (loT == "" ? "" : ", ") + str.format_time(time[off], "MM-dd HH:mm", TZ)
+                if upN >= minTouches and loN >= minTouches
+                    // Eligible: freeze ceiling, floor, height and ATR.
+                    boxSeq += 1
+                    bId := "B" + str.tostring(boxSeq)
+                    bR := hiW
+                    bS := loW
+                    bH := hgt
+                    bA := atrNow
+                    bStartT := time[lookback - 1]
+                    bEndT := time
+                    bEnd := bar_index
+                    bUp := upN
+                    bLo := loN
+                    bUpT := upT
+                    bLoT := loT
+                    cntSetups += 1
+                    lastEvent := bId + " eligible: height " + fmtN(hgt / atrNow, "0.00") + " ATR, touches " + str.tostring(upN) + " up / " + str.tostring(loN) + " down"
+                    st := ST_ARMED
+                    if showBoxes
+                        bBox := box.new(left = wStart, top = hiW, right = bar_index, bottom = loW, border_color = C_ARMED, border_width = 1, bgcolor = color.new(C_ARMED, 88), text = bId + " " + fmtN(hgt / atrNow, "0.0") + " ATR, " + str.tostring(upN) + "/" + str.tostring(loN) + " touches", text_size = size.tiny, text_color = C_ARMED, text_halign = text.align_left, text_valign = text.align_top)
+                    if alertSetup
+                        alert(jEnvelope("setup_eligible", bId, "", jBody(open, close, na, na, na, na, na, na, "", na, volume, na, "height " + fmtN(hgt / atrNow, "0.00") + " ATR")), alert.freq_once_per_bar_close)
+
+// --------------------------------------------- data window / chart export
+// Not drawn on the chart. They appear in the Data Window and may be included
+// in "Download chart data" (not verified), which helps the engine comparison.
+plot(volume, "Volume", color = color.gray, display = display.data_window)
+plot(atrNow, "CB ATR", color = color.gray, display = display.data_window)
+plot(avgVolPrev, "CB average volume of previous bars", color = color.gray, display = display.data_window)
+plot(st == ST_ARMED ? bR : na, "CB armed ceiling", color = C_ARMED, style = plot.style_linebr, display = display.data_window)
+plot(st == ST_ARMED ? bS : na, "CB armed floor", color = C_ARMED, style = plot.style_linebr, display = display.data_window)
+plot(st, "CB state (0 scan, 1 armed, 2 pending, 3 position)", color = color.gray, display = display.data_window)
+
+// --------------------------------------------------------------- the table
+var table tbl = na
+// Drawn on the last bar, and also on the last confirmed historical bar: while
+// the market is open the newest bar may not be calculated until it closes.
+if showTable and (barstate.islast or barstate.islastconfirmedhistory)
+    if na(tbl)
+        tbl := table.new(tablePos, 2, 16, bgcolor = color.new(#131722, 5), frame_color = color.new(color.gray, 40), frame_width = 1, border_color = color.new(color.gray, 75), border_width = 1)
+    color cTxt = color.white
+    string modeTxt = isIntraday ? "Intraday: flat at the open of the bar starting " + str.tostring(flattenMin) + " min before the close; no entries from signal bars ending less than " + str.tostring(noEntryMin) + " min before the close" : "Swing: up to " + str.tostring(maxHoldSessions) + " sessions; flat " + str.tostring(flattenMin) + " min before the close on the last one; gaps through the stop fill at the open"
+    modeTxt := modeTxt + "\nToday's close " + (earlyClose ? "13:00 ET (early close by rule)" : "16:00 ET")
+    string boxTxt = str.tostring(lookback) + " bars, ATR " + str.tostring(atrLen) + ", height <= " + fmtN(maxHeightAtr, "0.0#") + " ATR, touches >= " + str.tostring(minTouches) + " each (tolerance " + fmtN(touchTolAtr, "0.0#") + " ATR, " + str.tostring(minBarsBetween) + "+ bars apart), expiry " + str.tostring(expiryBars) + " bars"
+    string entryTxt = "close > ceiling, volume > " + fmtN(volMult, "0.0#") + "x average of " + str.tostring(volLen) + ", entry <= close + " + fmtN(maxGapAtr, "0.0#") + " ATR, R/R >= " + fmtN(minRR, "0.0#") + "\nstop = breakout low - " + fmtN(stopBufAtr, "0.0#") + " ATR, target = ceiling + " + fmtN(targetMult, "0.0#") + " x height (never moved)"
+    string riskTxt = fmtN(riskPct, "0.0#") + " % of equity per trade; planning costs " + fmtN(kCost * 10000, "0.0") + " bps + $" + fmtN(commPerShare, "0.000") + "/share (min $" + fmtN(commMin, "0.00") + "); cost <= " + fmtN(maxCostRiskPct, "0") + " % of risk\nTradingView charges the Properties commission on every fill"
+    string winTxt = useWindow ? str.format_time(winStart, "yyyy-MM-dd", TZ) + " to " + str.format_time(winEnd, "yyyy-MM-dd", TZ) + " (new setups only)" : "off: every loaded bar"
+    string setupsTxt = str.tostring(cntSetups) + " eligible: " + str.tostring(cntConsumed) + " consumed, " + str.tostring(cntExpired) + " expired, " + str.tostring(cntInvalidated) + " invalidated"
+    string brkTxt = str.tostring(cntSignals) + " orders placed, " + str.tostring(cntRejected) + " rejected"
+    string rjTxt = "volume missing " + str.tostring(rjVolNa) + ", volume too low " + str.tostring(rjVolLow) + ", past target " + str.tostring(rjTarget) + ", stop/limit " + str.tostring(rjStop) + "\ncost " + str.tostring(rjCost) + ", time of day " + str.tostring(rjTime) + ", size " + str.tostring(rjSize) + ", outside window " + str.tostring(rjWindow)
+    string entTxt = str.tostring(cntFilled) + " filled, " + str.tostring(cntCancelled) + " cancelled (not filled within one bar)"
+    string diffTxt = "intrabar limit fills " + str.tostring(cntIntrabar) + ", fills at or below the stop " + str.tostring(cntAtStop) + ", TradingView missed fills " + str.tostring(cntMissed)
+    string exTxt = "stop " + str.tostring(exStop) + ", target " + str.tostring(exTarget) + ", time " + str.tostring(exTime) + ", other " + str.tostring(exOther)
+    string nowTxt = ""
+    if st == ST_SCAN
+        nowTxt := "scanning" + (blockNew ? " (new setups blocked: see warnings)" : not inWindow ? " (outside the test window)" : "")
+    else if st == ST_ARMED
+        nowTxt := bId + " armed: ceiling " + fmtP(bR) + ", floor " + fmtP(bS) + ", " + str.tostring(expiryBars - (bar_index - bEnd)) + " bars left"
+    else if st == ST_PENDING
+        nowTxt := entryId + ": buy limit <= " + fmtP(pMaxEntry) + " x " + str.tostring(pQty) + " for the next bar; stop " + fmtP(pStop) + ", target " + fmtP(pTarget)
+    else
+        nowTxt := entryId + " long " + fmtN(strategy.position_size, "0") + " at " + fmtP(fillPrice) + "; stop " + fmtP(pStop) + ", target " + fmtP(pTarget) + (isIntraday ? "" : "; session " + str.tostring(sessionsHeld) + " of " + str.tostring(maxHoldSessions))
+    string warn = ""
+    if ethShown
+        warn := warn + "Extended hours on the chart: turn ETH off (regular session only).\n"
+    if nonStandard
+        warn := warn + "Non-standard chart type: use standard candles.\n"
+    if not tf15
+        warn := warn + "Timeframe is not 15 minutes: the rules are defined for 15-minute bars.\n"
+    if syminfo.timezone != TZ
+        warn := warn + "Exchange time zone is " + syminfo.timezone + ": session rules assume US stocks (New York).\n"
+    if syminfo.currency != "USD"
+        warn := warn + "Symbol priced in " + syminfo.currency + ": the strategy account is USD and converts.\n"
+    if useWindow and (firstBarTime >= winEnd or time < winStart)
+        warn := warn + "No loaded bar is inside the test window: see TRADINGVIEW-SETUP.md (Deep Backtesting, or change the window).\n"
+    if not defaultsOk
+        warn := warn + "Inputs differ from cb-1.0.0: these results are not version 1.0.0.\n"
+    tRow(tbl, 0, "SIMULATION ONLY", "TradingView broker emulator. No real or Paper Trading orders.", C_WARN)
+    tRow(tbl, 1, "Strategy", "consolidation-breakout v" + VERSION + (defaultsOk ? " (cb-1.0.0 defaults)" : " (inputs changed)"), defaultsOk ? cTxt : C_REJECT)
+    tRow(tbl, 2, "Mode", modeTxt, cTxt)
+    tRow(tbl, 3, "Box", boxTxt, cTxt)
+    tRow(tbl, 4, "Entry and exit", entryTxt, cTxt)
+    tRow(tbl, 5, "Risk and costs", riskTxt, cTxt)
+    tRow(tbl, 6, "Test window", winTxt, cTxt)
+    tRow(tbl, 7, "Setups", setupsTxt, cTxt)
+    tRow(tbl, 8, "Breakouts", brkTxt, cTxt)
+    tRow(tbl, 9, "Rejections", rjTxt, cTxt)
+    tRow(tbl, 10, "Entries", entTxt, cTxt)
+    tRow(tbl, 11, "Engine differences", diffTxt, cntIntrabar + cntAtStop + cntMissed > 0 ? C_WARN : cTxt)
+    tRow(tbl, 12, "Exits", exTxt, cTxt)
+    tRow(tbl, 13, "Now", nowTxt, cTxt)
+    tRow(tbl, 14, "Last event", lastEvent, cTxt)
+    tRow(tbl, 15, "Warnings", warn == "" ? "none" : warn, warn == "" ? cTxt : C_REJECT)

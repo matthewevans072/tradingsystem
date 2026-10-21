@@ -73,7 +73,7 @@ off unless `LAB_WEBHOOK_SECRET` (at least 24 random characters) and
 `POST /tradingview`, and is meant to sit behind a tunnel or reverse proxy that
 the owner sets up deliberately and that forwards that one path only. It:
 
-- requires the secret in the JSON body (TradingView cannot add headers), compared in constant time;
+- requires a random token in the JSON body, compared in constant time. TradingView advises against putting credentials in webhook URLs or messages and recommends authenticated endpoints (`RESEARCH-NOTES.md` §6); the token here is not a login to anything, only a filter for this simulation receiver, and anyone who obtained it could only add log entries. The stronger, documented option is to have the HTTPS proxy in front of the receiver require TradingView's client certificate (sent over HTTPS only) and allow only TradingView's published source addresses;
 - caps the body at 8 KB and the rate at 60 requests a minute;
 - validates the payload, rejects signals whose bar is too old or in the future;
 - deduplicates by strategy, version, mode, symbol, event, bar time and order id;
