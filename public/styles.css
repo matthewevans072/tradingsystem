@@ -321,7 +321,8 @@ body.chat-open .main { margin-right: min(460px, 100vw); }
 .chat-intro { color: var(--text-2); font-size: 13px; }
 .conv-link { text-align: left; color: var(--text); text-decoration: none; padding: 0; }
 .disclosure ul { margin: 6px 0; }
-@media (max-width: 1100px) { body.chat-open .main { margin-right: 0; } }
+/* Below 1101px a drawer opened beside the chat would sit under it: it goes on top (toast stays above). */
+@media (max-width: 1100px) { body.chat-open .main { margin-right: 0; } body.chat-open .overlay { z-index: 85; } }
 @media (max-width: 820px) {
   .ask-btn { bottom: calc(70px + env(safe-area-inset-bottom)); right: 14px; padding: 10px 14px; }
   .chat-panel { width: 100vw; z-index: 80; }

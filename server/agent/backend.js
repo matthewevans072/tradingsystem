@@ -104,7 +104,9 @@ function usageFile(cfg) {
 
 function readStore(cfg) {
   const f = usageFile(cfg);
-  if (stores.has(f)) return stores.get(f);
+  // A corrupt record is re-read on every check, so deleting or repairing the
+  // file (as the pause message says) takes effect without a restart.
+  if (stores.has(f) && !stores.get(f).corrupt) return stores.get(f);
   let s = { days: {} };
   if (fs.existsSync(f)) {
     try {
@@ -192,6 +194,28 @@ export class BackendError extends Error {
   constructor(kind, message) { super(message); this.kind = kind; }
 }
 
+const MAX_TOKENS = 16000;
+
+// Output streamed before a call fails is billed, but the usage in
+// message_start carries a placeholder output count until message_delta. It is
+// estimated from the streamed text, tool input and thinking (about 4
+// characters a token, rounded up). Thinking is billed in full but streamed as
+// a summary or not at all, so a call that started a thinking block is charged
+// max_tokens. Both err high, as the daily cap should.
+function countStreamed(ev, s) {
+  if (ev.type === 'message_delta') s.final = true;
+  else if (ev.type === 'content_block_start' && /thinking/.test(ev.content_block?.type || '')) s.thinking = true;
+  else if (ev.type === 'content_block_delta') s.chars += (ev.delta?.text || ev.delta?.partial_json || ev.delta?.thinking || '').length;
+}
+
+function partialUsage(stream, s) {
+  const m = stream?.currentMessage;
+  if (!m?.usage) return null;
+  if (s.final) return m;
+  const estimate = s.thinking ? MAX_TOKENS : Math.min(MAX_TOKENS, Math.ceil(s.chars / 4));
+  return { ...m, usage: { ...m.usage, output_tokens: Math.max(m.usage.output_tokens || 0, estimate) } };
+}
+
 // Drop the parts of a response that must not be echoed back or acted on.
 // After a mid-output fallback, thinking and tool_use blocks before the last
 // `fallback` boundary belong to the declined attempt; the marker itself is an
@@ -227,11 +251,12 @@ export function createBackend(cfg) {
     return clientPromise;
   };
   // Request options some models may not accept. If the API rejects one, the
-  // call is retried once without it and the option stays off for this run.
+  // call is retried without it and the option stays off for this run (each
+  // option at most once, so a model rejecting several still gets an answer).
   const off = new Set();
   const params = ({ system, tools, messages }) => ({
     model: cc.model,
-    max_tokens: 16000,
+    max_tokens: MAX_TOKENS,
     ...(off.has('fallbacks') ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
     // Explicit breakpoint after the static system prompt (and tools), plus
     // automatic caching for the growing tool-loop tail.
@@ -251,23 +276,24 @@ export function createBackend(cfg) {
       const { signal } = req;
       for (let attempt = 0; ; attempt++) {
         let stream = null;
+        const streamed = { chars: 0, thinking: false, final: false };
         try {
           stream = c.beta.messages.stream(params(req), signal ? { signal } : undefined);
+          stream.on('streamEvent', (ev) => countStreamed(ev, streamed));
           return await stream.finalMessage();
         } catch (e) {
-          if (e instanceof Anthropic.BadRequestError && attempt === 0) {
+          if (e instanceof Anthropic.BadRequestError && attempt < 3) {
             const opt = optionIn(e.message || '');
             if (opt && !off.has(opt)) { off.add(opt); continue; }
           }
-          throw mapError(e, Anthropic, signal, stream);
+          throw mapError(e, Anthropic, signal, partialUsage(stream, streamed));
         }
       }
     },
   };
 
-  function mapError(e, Anthropic, signal, stream) {
+  function mapError(e, Anthropic, signal, partial) {
     // Tokens already streamed are billed even when the call fails.
-    const partial = stream?.currentMessage?.usage ? stream.currentMessage : null;
     const err = (kind, message) => Object.assign(new BackendError(kind, message), { partial });
     if (signal?.aborted || e instanceof Anthropic.APIUserAbortError) return err('aborted', 'Stopped: the request was cancelled.');
     if (e instanceof Anthropic.AuthenticationError) return err('auth', 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in .env.');

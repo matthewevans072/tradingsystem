@@ -52,16 +52,23 @@ export function initChat() {
     }
     if (state.open && (app.page !== state.lastPage || app.selectedSymbol !== state.lastSymbol)) refreshSuggestions();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.open && !document.querySelector('.overlay.open')) toggle(false); });
+  // Escape closes the panel only from inside it (or with nothing focused): page fields keep their own Escape.
+  document.addEventListener('keydown', (e) => {
+    const a = document.activeElement;
+    if (e.key === 'Escape' && state.open && !document.querySelector('.overlay.open') && (!a || a === document.body || els.panel.contains(a))) toggle(false);
+  });
 }
 
 async function toggle(open) {
+  const inside = els.panel.contains(document.activeElement);
+  // The panel is rebuilt on reopening; its place in the thread is kept.
+  if (!open) { remember(); mount(els.panel); }
   state.open = open;
   els.panel.hidden = !open;
   els.btn.hidden = open;
   els.btn.setAttribute('aria-expanded', String(open));
   document.body.classList.toggle('chat-open', open);
-  if (!open) { els.btn.focus(); return; }
+  if (!open) { if (inside) els.btn.focus(); return; }
   render();
   await load();
   focusInput();
@@ -166,6 +173,7 @@ async function send(text) {
   } catch (e) {
     failure = e.message;
   }
+  const refused = !!failure;
   // The workspace changed while answering: the answer is saved there; leave this view alone.
   if (epoch !== state.epoch) return;
   state.inflight = null;
@@ -180,8 +188,13 @@ async function send(text) {
   }
   // A failure the server did not record (e.g. the connection dropped) is shown in the thread.
   if (failure && state.current?.id === conv.id) {
-    const answered = state.current.messages.some((m) => m.role === 'assistant' && m.createdAt >= askedAt.slice(0, 19));
-    if (!answered) state.current.messages.push({ role: 'assistant', status: 'error', error: failure, createdAt: new Date().toISOString() });
+    const msgs = state.current.messages;
+    const answered = msgs.some((m) => m.role === 'assistant' && m.createdAt >= askedAt.slice(0, 19));
+    // A question the server never recorded (busy in another tab, error, dropped connection) stays in
+    // the thread and goes back in the box, so it can be asked again without retyping.
+    if (refused && !msgs.some((m) => m.role === 'user' && m.text === q && m.createdAt >= askedAt.slice(0, 19))) msgs.push({ role: 'user', text: q, createdAt: askedAt });
+    if (!answered) msgs.push({ role: 'assistant', status: 'error', error: failure, createdAt: new Date().toISOString() });
+    if (refused && !state.draft) state.draft = q;
   }
   render();
   if (state.current?.id === conv.id) {
@@ -198,6 +211,30 @@ function scrollToEnd() {
 function focusInput() {
   const t = els.panel.querySelector('textarea');
   if (t && !t.disabled) t.focus();
+}
+
+// render() replaces every control in the panel: put focus back on the same control (data-focus),
+// else the question box. Not if the user has meanwhile moved on to the page.
+function refocus(key) {
+  const a = document.activeElement;
+  if (a && a !== document.body && !els.panel.contains(a)) return;
+  const q = (s) => els.panel.querySelector(s);
+  (q(`[data-focus="${key}"]:not(:disabled)`) || q('textarea:not(:disabled)') || (state.view === 'history' ? q('[data-focus="history"]') : null))?.focus();
+}
+
+// The thread's open sections and scroll position survive re-renders and closing the panel.
+let kept = null;
+function remember() {
+  const list = els.panel.querySelector('.chat-messages[data-conv]');
+  if (!list) return;
+  kept = { conv: list.dataset.conv, top: list.scrollTop, atEnd: list.scrollTop + list.clientHeight >= list.scrollHeight - 4,
+    open: [...list.querySelectorAll('details[open]')].map((d) => d.dataset.key) };
+}
+
+function restore(list) {
+  if (!kept || kept.conv !== list.dataset.conv) return;
+  for (const d of list.querySelectorAll('details')) if (kept.open.includes(d.dataset.key)) d.open = true;
+  list.scrollTop = kept.atEnd ? list.scrollHeight : kept.top;
 }
 
 function showPanelError(msg) {
@@ -223,24 +260,27 @@ function openHolding(e, symbol) {
 
 function render() {
   if (!state.open) return;
+  remember();
+  const focused = els.panel.contains(document.activeElement) ? document.activeElement.dataset.focus || '' : null;
   const s = state.status;
   const busyHere = state.inflight && state.inflight.id === state.current?.id;
   const head = h('header', { class: 'chat-head' },
     h('div', { class: 'chat-title' }, h('span', { class: 'ask-ico', 'aria-hidden': 'true' }, '✦'), h('strong', {}, 'Ask Signal Desk'),
       app.workspace === 'demo' ? badge('Demo data', 'warn') : null),
     h('div', { class: 'row' },
-      h('button', { class: 'icon-btn', title: 'Saved conversations', 'aria-label': 'Saved conversations', 'aria-pressed': String(state.view === 'history'), onclick: () => { state.view = state.view === 'history' ? 'chat' : 'history'; render(); } }, '☰'),
-      h('button', { class: 'icon-btn', title: 'New conversation', 'aria-label': 'New conversation', onclick: newConversation }, '+'),
+      h('button', { class: 'icon-btn', title: 'Saved conversations', 'aria-label': 'Saved conversations', 'aria-pressed': String(state.view === 'history'), dataset: { focus: 'history' }, onclick: () => { state.view = state.view === 'history' ? 'chat' : 'history'; render(); } }, '☰'),
+      h('button', { class: 'icon-btn', title: 'New conversation', 'aria-label': 'New conversation', dataset: { focus: 'new' }, onclick: newConversation }, '+'),
       h('button', { class: 'icon-btn', title: 'Close', 'aria-label': 'Close Ask Signal Desk', onclick: () => toggle(false) }, '✕')));
 
   if (state.view === 'history') {
     mount(els.panel, head, historyView());
+    if (focused != null) refocus(focused);
     return;
   }
-  const body = h('div', { class: 'chat-messages' });
+  const body = h('div', { class: 'chat-messages', dataset: state.current ? { conv: `${app.workspace}/${state.current.id}` } : null });
   if (state.loadError) {
     body.append(h('div', { class: 'notice danger', role: 'alert' }, h('strong', {}, 'Could not load Ask Signal Desk. '), state.loadError,
-      h('div', { class: 'mt' }, h('button', { class: 'btn small', onclick: () => { state.loadError = null; render(); load(); } }, 'Try again'))));
+      h('div', { class: 'mt' }, h('button', { class: 'btn small', dataset: { focus: 'retry' }, onclick: async () => { state.loadError = null; render(); await load(); refocus('retry'); } }, 'Try again'))));
   } else if (!s) body.append(h('div', { class: 'state loading' }, h('span', { class: 'spinner' }), 'Loading…'));
   else if (!s.available) body.append(unavailableView(s));
   const msgs = state.current?.messages || [];
@@ -260,7 +300,10 @@ function render() {
       h('span', {}, 'Read-only. Never places trades.'),
       s?.available ? h('span', {}, ` · ${s.model}${s.dailyBudgetUsd ? ` · today ~US$${(s.spentTodayUsd || 0).toFixed(2)} of US$${s.dailyBudgetUsd} (both workspaces)` : ''}`) : null,
       ' · ', h('button', { class: 'linklike small', onclick: showDisclosure }, 'What is sent to the model?')));
+  body.querySelectorAll('details').forEach((d, i) => { d.dataset.key = i; });
   mount(els.panel, head, body, foot);
+  restore(body);
+  if (focused != null) refocus(focused);
   renderProgress();
 }
 
@@ -406,6 +449,9 @@ function scenarioCard(s) {
       Object.keys(s.cashChanges || {}).length
         ? kv(Object.entries(s.cashChanges).map(([k, c]) => [`Cash ${k}`, c.before != null ? `${fmt.money(c.before)} → ${fmt.money(c.after)} (${fmt.signedMoney(c.change)})` : `${fmt.signedMoney(c.change)} (no balance recorded)`]))
         : null,
+      s.ifTypicalFee ? h('details', { class: 'more' }, h('summary', {}, 'With your usual fees'),
+        kv(Object.entries(s.ifTypicalFee.cashChanges || {}).map(([k, c]) => [`Cash ${k}`, c.after != null ? `${fmt.money(c.before)} → ${fmt.money(c.after)} (${fmt.signedMoney(c.change)})` : c.change != null ? `${fmt.signedMoney(c.change)} (no balance recorded)` : 'no fee history for a leg'])),
+        h('div', { class: 'small muted' }, `${s.ifTypicalFee.feesCharged.map((f) => `step ${f.leg} ${f.symbol}: ${fmt.money(f.fee)}`).join(', ')}. ${s.ifTypicalFee.note}`)) : null,
       s.weightsAfter?.length ? h('details', { class: 'more' }, h('summary', {}, 'Weights after the whole plan'),
         kv(s.weightsAfter.map((w) => { const b = (s.weightsBefore || []).find((x) => x.symbol === w.symbol && x.account === w.account); return [w.symbol, `${b ? pct1(b.weightPct) : '—'} → ${pct1(w.weightPct)}`]; }))) : null);
   }
@@ -417,6 +463,7 @@ function scenarioCard(s) {
 }
 
 async function decideProposal(p, action, buttons) {
+  const hadFocus = buttons.includes(document.activeElement);
   buttons.forEach((b) => { b.disabled = true; });
   const convId = state.current.id;
   const epoch = state.epoch;
@@ -443,6 +490,8 @@ async function decideProposal(p, action, buttons) {
     if (same) same.localError = error;
   }
   render();
+  // Disabling the buttons dropped focus: back to the same button if still pending, else the question box.
+  if (hadFocus) refocus(`${action}-${p.id}`);
   // Pages showing records re-read them after a confirmed change.
   if (ok && action === 'confirm') window.dispatchEvent(new CustomEvent('sd:records-changed'));
 }
@@ -461,8 +510,8 @@ function proposalCard(p) {
     d.reminder ? h('div', { class: 'small muted' }, d.reminder) : null,
     h('div', { class: 'small muted' }, `Requested in your words: "${p.userQuote}"`));
   if (p.status === 'pending') {
-    const ok = h('button', { class: 'btn small primary' }, 'Confirm and save');
-    const no = h('button', { class: 'btn small' }, 'Reject');
+    const ok = h('button', { class: 'btn small primary', dataset: { focus: `confirm-${p.id}` } }, 'Confirm and save');
+    const no = h('button', { class: 'btn small', dataset: { focus: `reject-${p.id}` } }, 'Reject');
     ok.addEventListener('click', () => decideProposal(p, 'confirm', [ok, no]));
     no.addEventListener('click', () => decideProposal(p, 'reject', [ok, no]));
     card.append(h('div', { class: 'row mt' }, ok, no));

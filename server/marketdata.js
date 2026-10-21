@@ -9,6 +9,7 @@ import { createDemoProvider } from './providers/demo.js';
 import { getSetting, setSetting, nowIso } from './db.js';
 import { log } from './log.js';
 import { todayIn, addDays, NY } from './time.js';
+import { exchangeGroup } from './calendar.js';
 
 export const DEFAULT_PROVIDER_SETTINGS = {
   twelvedata: { perMinute: 8, perDay: 800, delayMinutesUS: 15, delayMinutesCA: 15, extendedHours: false },
@@ -133,9 +134,12 @@ export async function refreshFx(ctx) {
   const fx = ctx.providers.fx;
   if (!fx) return null;
   try {
-    const r = await fx.getUsdCad();
-    ctx.db.prepare('INSERT OR REPLACE INTO fx_rates (pair, rate, as_of, source, fetched_at) VALUES (?,?,?,?,?)')
-      .run(r.pair, r.rate, r.as_of, r.source, nowIso());
+    // Every observation returned is stored (upsert by date), not just the
+    // latest, so a business day missed while the app was off leaves no gap.
+    const rows = fx.getUsdCadRecent ? await fx.getUsdCadRecent() : [await fx.getUsdCad()];
+    const st = ctx.db.prepare('INSERT OR REPLACE INTO fx_rates (pair, rate, as_of, source, fetched_at) VALUES (?,?,?,?,?)');
+    for (const x of rows) st.run(x.pair, x.rate, x.as_of, x.source, nowIso());
+    const r = rows.at(-1);
     setStatus(ctx, 'fx', { ok: true, message: `USD/CAD ${r.rate} (${r.source}, ${r.as_of})` });
     return r;
   } catch (e) {
@@ -196,26 +200,38 @@ export async function refreshIntraday(ctx, { date = todayIn(NY), instruments } =
 export async function refreshEarnings(ctx, { days = 60, lookbackDays = 10, symbols: only } = {}) {
   const p = ctx.providers.earnings;
   if (!p) return { ok: 0, message: 'No earnings source configured' };
-  // Holdings plus watchlist names, so research questions have dates too.
-  const held = trackedInstruments(ctx.db).filter((i) => i.identity_status === 'confirmed').map((i) => i.symbol);
-  const watch = ctx.db.prepare('SELECT symbol FROM watchlist').all().map((r) => r.symbol);
-  let symbols = [...new Set([...held, ...watch])];
-  if (only?.length) symbols = symbols.filter((s) => only.includes(s)).concat(only.filter((s) => !symbols.includes(s)));
-  if (!symbols.length) return { ok: 0 };
+  // Holdings plus watchlist names, so research questions have dates too. Each
+  // is a listing (symbol + exchange): the same ticker on another exchange can
+  // be a different company.
+  const held = trackedInstruments(ctx.db).filter((i) => i.identity_status === 'confirmed');
+  const watch = ctx.db.prepare(`SELECT w.symbol, w.exchange, i.id, i.provider_symbol FROM watchlist w
+    LEFT JOIN instruments i ON i.symbol = w.symbol AND i.exchange = w.exchange`).all();
+  const listings = new Map();
+  for (const i of [...held, ...watch]) listings.set(`${i.symbol}|${i.exchange}`, { id: i.id ?? null, symbol: i.symbol, exchange: i.exchange, provider_symbol: i.provider_symbol ?? null });
+  let instruments = [...listings.values()];
+  // A named ticker that is neither held nor watched is checked as a US listing.
+  if (only?.length) instruments = instruments.filter((i) => only.includes(i.symbol)).concat(only.filter((s) => !instruments.some((i) => i.symbol === s)).map((s) => ({ id: null, symbol: s, exchange: null, provider_symbol: null })));
+  if (!instruments.length) return { ok: 0 };
+  const symbols = [...new Set(instruments.map((i) => i.symbol))];
   const today = todayIn(NY);
   const from = addDays(today, -lookbackDays);
   const to = addDays(today, days);
   try {
-    const list = await p.getEarnings(symbols, from, to);
+    // Providers return { events, notCovered } (listings they cannot check); a plain list is events only.
+    const res = await p.getEarnings(instruments, from, to);
+    const { events: list, notCovered = [] } = Array.isArray(res) ? { events: res } : res;
+    // Events are linked to the listing they were matched to, not to any instrument with that ticker.
+    const idFor = (e) => (e.instrument_id !== undefined ? e.instrument_id
+      : instruments.find((i) => i.symbol === e.symbol && (!e.exchange || exchangeGroup(i.exchange) === exchangeGroup(e.exchange)))?.id ?? null);
     const now = nowIso();
     const existing = ctx.db.prepare("SELECT * FROM events WHERE type = 'earnings' AND symbol = ? AND date = ? AND source = ?");
     const insert = ctx.db.prepare(`INSERT INTO events (instrument_id, symbol, type, date, time_hint, title, details_json, source, fetched_at, first_seen_at)
-      VALUES ((SELECT id FROM instruments WHERE symbol = ? LIMIT 1), ?, 'earnings', ?, ?, ?, ?, ?, ?, ?)`);
-    const update = ctx.db.prepare('UPDATE events SET time_hint = ?, details_json = ?, fetched_at = ? WHERE id = ?');
+      VALUES (?, ?, 'earnings', ?, ?, ?, ?, ?, ?, ?)`);
+    const update = ctx.db.prepare('UPDATE events SET instrument_id = ?, time_hint = ?, details_json = ?, fetched_at = ? WHERE id = ?');
     for (const e of list) {
       const row = existing.get(e.symbol, e.date, e.source);
       const details = { ...(e.details || {}) };
-      if (!row) { insert.run(e.symbol, e.symbol, e.date, e.time_hint, `${e.symbol} earnings`, JSON.stringify(details), e.source, now, now); continue; }
+      if (!row) { insert.run(idFor(e), e.symbol, e.date, e.time_hint, `${e.symbol} earnings`, JSON.stringify(details), e.source, now, now); continue; }
       // Keep a history of changes to timing and estimates so "what changed" can report them.
       const old = row.details_json ? JSON.parse(row.details_json) : {};
       const changes = [...(old.changes || [])];
@@ -223,10 +239,11 @@ export async function refreshEarnings(ctx, { days = 60, lookbackDays = 10, symbo
       for (const k of ['epsEstimate', 'revenueEstimate', 'epsActual', 'revenueActual']) {
         if (details[k] != null && old[k] !== details[k]) changes.push({ field: k, from: old[k] ?? null, to: details[k], at: now });
       }
-      update.run(e.time_hint, JSON.stringify({ ...details, ...(old.previousDate ? { previousDate: old.previousDate, dateChangedAt: old.dateChangedAt } : {}), ...(changes.length ? { changes: changes.slice(-10) } : {}) }), now, row.id);
+      update.run(idFor(e), e.time_hint, JSON.stringify({ ...details, ...(old.previousDate ? { previousDate: old.previousDate, dateChangedAt: old.dateChangedAt } : {}), ...(changes.length ? { changes: changes.slice(-10) } : {}) }), now, row.id);
     }
     // Future dates from this source that the provider no longer lists were superseded (a moved
-    // date): the new date remembers the old one.
+    // date): the new date remembers the old one. The same drops dates stored for a listing that
+    // is not covered (an earlier bare-ticker match), unless a covered listing still returns them.
     const returned = new Set(list.map((e) => `${e.symbol}|${e.date}`));
     const sources = [...new Set(list.map((e) => e.source))];
     for (const src of sources) {
@@ -244,10 +261,18 @@ export async function refreshEarnings(ctx, { days = 60, lookbackDays = 10, symbo
     // Coverage is kept per ticker, so checking one ticker leaves the others' record intact.
     const prev = getSetting(ctx.db, 'earningsCoverage', null);
     const bySymbol = only?.length && prev?.bySymbol ? { ...prev.bySymbol } : {};
-    for (const s of symbols) bySymbol[s] = { at: now, from, to };
-    setSetting(ctx.db, 'earningsCoverage', { symbols: Object.keys(bySymbol), bySymbol, from, to, at: now, source: p.name });
-    setStatus(ctx, 'earnings', { ok: true, message: `${list.length} earnings dates for ${symbols.length} symbols` });
-    return { ok: list.length, symbols: symbols.length };
+    const uncovered = only?.length && prev?.notCovered ? { ...prev.notCovered } : {};
+    // A ticker counts as checked only when every listing of it asked about was covered;
+    // otherwise get_events must not read "no date" into the silence.
+    const missed = new Map(notCovered.map((n) => [n.symbol, n]));
+    for (const s of symbols) {
+      if (missed.has(s)) { delete bySymbol[s]; uncovered[s] = { exchange: missed.get(s).exchange, reason: missed.get(s).reason, at: now }; }
+      else { bySymbol[s] = { at: now, from, to }; delete uncovered[s]; }
+    }
+    setSetting(ctx.db, 'earningsCoverage', { symbols: Object.keys(bySymbol), bySymbol, notCovered: uncovered, from, to, at: now, source: p.name });
+    const checked = symbols.filter((s) => !missed.has(s)).length;
+    setStatus(ctx, 'earnings', { ok: true, message: `${list.length} earnings dates for ${checked} symbols${missed.size ? `; not covered: ${[...missed.keys()].join(', ')}` : ''}` });
+    return { ok: list.length, symbols: checked, notCovered };
   } catch (e) {
     setStatus(ctx, 'earnings', { ok: false, message: e.message });
     return { ok: 0, error: e.message };

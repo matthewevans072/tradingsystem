@@ -59,13 +59,24 @@ export function createFinnhub({ apiKey, plan = {}, fetchImpl } = {}) {
       return results;
     },
 
-    async getEarnings(symbols, from, to) {
-      const out = [];
-      for (const s of symbols) {
-        const d = await call('/calendar/earnings', { from, to, symbol: s });
+    // instruments: { id, symbol, exchange, provider_symbol }. The earnings
+    // calendar is queried by US ticker: a TSX listing is not covered (its bare
+    // ticker can be a different US company, and an empty answer for '.TO'
+    // would read as "no date"), so it is reported back as not covered.
+    async getEarnings(instruments, from, to) {
+      const events = [], notCovered = [];
+      for (const inst of instruments) {
+        if (exchangeGroup(inst.exchange) === 'TSX') {
+          notCovered.push({ symbol: inst.symbol, exchange: inst.exchange, reason: 'non-US listing not covered by Finnhub' });
+          continue;
+        }
+        const sym = providerSymbol(inst);
+        const d = await call('/calendar/earnings', { from, to, symbol: sym });
         for (const e of d.earningsCalendar || []) {
-          out.push({
-            symbol: e.symbol, date: e.date, time_hint: ['bmo', 'amc', 'dmh'].includes(e.hour) ? e.hour : 'unknown',
+          if (String(e.symbol).toUpperCase() !== sym.toUpperCase()) continue;
+          events.push({
+            instrument_id: inst.id ?? null, symbol: inst.symbol, exchange: inst.exchange ?? null,
+            date: e.date, time_hint: ['bmo', 'amc', 'dmh'].includes(e.hour) ? e.hour : 'unknown',
             details: {
               epsEstimate: toNum(e.epsEstimate), epsActual: toNum(e.epsActual),
               revenueEstimate: toNum(e.revenueEstimate), revenueActual: toNum(e.revenueActual), quarter: e.quarter, year: e.year,
@@ -74,7 +85,7 @@ export function createFinnhub({ apiKey, plan = {}, fetchImpl } = {}) {
           });
         }
       }
-      return out;
+      return { events, notCovered };
     },
 
     async getNews(symbol, from, to) {

@@ -222,10 +222,14 @@ export function setStrategy(db, accountId, instrumentId, strategy, thesis) {
 
 // ---------- position derivation ----------
 
-export function deriveLedger(db, { asOf } = {}) {
+// `extra` holds transaction-shaped rows that are not in the database (a
+// proposed trade being previewed); they are replayed as if saved.
+export function deriveLedger(db, { asOf, extra = [] } = {}) {
   const txs = db.prepare(`SELECT t.*, a.name AS account_name FROM transactions t JOIN accounts a ON a.id = t.account_id
                           WHERE t.voided_at IS NULL ${asOf ? 'AND t.trade_date <= ?' : ''}
-                          ORDER BY t.trade_date, t.id`).all(...(asOf ? [asOf] : []));
+                          ORDER BY t.trade_date, t.id`).all(...(asOf ? [asOf] : []))
+    .concat(extra.filter((t) => !asOf || t.trade_date <= asOf))
+    .sort((a, b) => (a.trade_date < b.trade_date ? -1 : a.trade_date > b.trade_date ? 1 : a.id - b.id));
   const splits = db.prepare(`SELECT * FROM corporate_actions WHERE type = 'SPLIT' ${asOf ? 'AND effective_date <= ?' : ''}
                              ORDER BY effective_date`).all(...(asOf ? [asOf] : []));
   const lots = new Map(); // key account:instrument
@@ -339,6 +343,7 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
     return ledgerCache.get(date);
   };
   const tradesOn = db.prepare(`SELECT * FROM transactions WHERE voided_at IS NULL AND trade_date = ? AND account_id = ? AND instrument_id = ? AND type IN ('BUY','SELL','BASELINE')`);
+  const splitsOn = db.prepare("SELECT ratio_from, ratio_to FROM corporate_actions WHERE type = 'SPLIT' AND instrument_id = ? AND effective_date = ?");
   const instruments = new Map(db.prepare('SELECT * FROM instruments').all().map((i) => [i.id, i]));
   const quotes = new Map(db.prepare('SELECT * FROM quotes').all().map((q) => [q.instrument_id, q]));
   const meta = new Map(db.prepare('SELECT * FROM position_meta').all().map((m) => [`${m.account_id}:${m.instrument_id}`, m]));
@@ -370,20 +375,31 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
       pos.unrealizedPct = l.cost > 0 ? round(((mv - l.cost) / l.cost) * 100) : null;
       if (q.prev_close != null) {
         const sessionDate = q.quote_time ? zonedParts(new Date(q.quote_time), exchangeGroup(inst.exchange) === 'TSX' ? TORONTO : NY).date : today;
-        const sStart = sharesAt(ledgerAsOf(prevDate(sessionDate)), key);
+        // Quote feeds adjust the previous close on a split's effective date, so
+        // the start shares are counted in post-split units.
+        let sStart = sharesAt(ledgerAsOf(prevDate(sessionDate)), key);
+        for (const s of splitsOn.all(l.instrument_id, sessionDate)) sStart *= s.ratio_to / s.ratio_from;
         const sEnd = sessionDate >= today ? l.shares : sharesAt(ledgerAsOf(sessionDate), key);
-        let flows = 0, bought = 0;
-        for (const t of tradesOn.all(sessionDate, l.account_id, l.instrument_id)) {
-          flows += (t.type === 'SELL' ? 1 : -1) * t.quantity * t.price;
-          if (t.type !== 'SELL') bought += t.quantity * t.price;
+        const trades = tradesOn.all(sessionDate, l.account_id, l.instrument_id);
+        if (sStart <= EPS && !trades.length) {
+          // Not held during the session the quote belongs to (e.g. bought before today's open).
+          pos.dailyPL = null;
+          pos.dailyPct = null;
+          pos.dailyPLNote = `Not held during the ${sessionDate} session the latest quote belongs to, so there is no daily change yet.`;
+        } else {
+          let flows = 0, bought = 0;
+          for (const t of trades) {
+            flows += (t.type === 'SELL' ? 1 : -1) * t.quantity * t.price;
+            if (t.type !== 'SELL') bought += t.quantity * t.price;
+          }
+          const daily = sEnd * q.price - sStart * q.prev_close + flows;
+          pos.dailyPL = round(daily);
+          pos.dailyPLSession = sessionDate;
+          // Same denominator as the totals: start value plus what was bought that session.
+          pos.dailyPLStartValue = sStart * q.prev_close + bought;
+          if (Math.abs(sEnd - l.shares) > EPS) pos.dailyPLNote = `Trades dated after the ${sessionDate} session are not part of that session's P/L.`;
+          pos.dailyPct = pos.dailyPLStartValue > 0 ? round((daily / pos.dailyPLStartValue) * 100) : null;
         }
-        const daily = sEnd * q.price - sStart * q.prev_close + flows;
-        pos.dailyPL = round(daily);
-        pos.dailyPLSession = sessionDate;
-        pos.dailyPLStartValue = sStart * q.prev_close + bought;
-        if (Math.abs(sEnd - l.shares) > EPS) pos.dailyPLNote = `Trades dated after the ${sessionDate} session are not part of that session's P/L.`;
-        const startValue = sStart * q.prev_close;
-        pos.dailyPct = startValue > 0 ? round((daily / startValue) * 100) : (q.change_pct ?? null);
       }
       pos.quote = publicQuote(q, now, inst.exchange);
     } else {

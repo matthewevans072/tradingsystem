@@ -120,23 +120,36 @@ export function createTwelveData({ apiKey, plan = {}, fetchImpl } = {}) {
       });
     },
 
-    async getEarnings(symbols, from, to) {
+    // instruments: { id, symbol, exchange, provider_symbol }. Each calendar row
+    // names its exchange, so a ticker matches only its own listing (T on the
+    // TSX is not T on the NYSE). A calendar with no Canadian rows at all does
+    // not cover Canada on this plan: TSX listings are reported as not covered.
+    async getEarnings(instruments, from, to) {
       const d = await call('/earnings_calendar', { start_date: from, end_date: to }, 1);
-      const want = new Set(symbols.map((s) => s.toUpperCase()));
-      const out = [];
-      for (const [date, list] of Object.entries(d.earnings || {})) {
-        for (const e of list) {
-          if (!want.has(String(e.symbol).toUpperCase())) continue;
+      const rows = Object.entries(d.earnings || {}).flatMap(([date, list]) => list.map((e) => ({ ...e, date })));
+      // A row without an exchange is taken as a US listing; other markets match nothing.
+      const rowGroup = (e) => (!e.exchange ? 'NYSE' : exchangeGroup(e.exchange) === 'TSX' ? 'TSX' : /^(NYSE|NASDAQ|AMEX|CBOE|BATS|OTC)/i.test(e.exchange) ? 'NYSE' : null);
+      const canada = rows.some((e) => rowGroup(e) === 'TSX');
+      const events = [], notCovered = [];
+      for (const inst of instruments) {
+        const g = exchangeGroup(inst.exchange);
+        if (g === 'TSX' && !canada) {
+          notCovered.push({ symbol: inst.symbol, exchange: inst.exchange, reason: 'non-US listing not covered by Twelve Data' });
+          continue;
+        }
+        const sym = (inst.provider_symbol || inst.symbol).split(':')[0].toUpperCase();
+        for (const e of rows) {
+          if (String(e.symbol).toUpperCase() !== sym || rowGroup(e) !== g) continue;
           const t = String(e.time || '').toLowerCase();
-          out.push({
-            symbol: e.symbol, date, exchange: e.exchange || null,
+          events.push({
+            instrument_id: inst.id ?? null, symbol: inst.symbol, date: e.date, exchange: e.exchange || inst.exchange || null,
             time_hint: t.includes('pre') || t.includes('before') ? 'bmo' : t.includes('after') ? 'amc' : 'unknown',
             details: { epsEstimate: toNum(e.eps_estimate), epsActual: toNum(e.eps_actual), surprisePct: toNum(e.surprise_prc) },
             source: 'Twelve Data earnings calendar',
           });
         }
       }
-      return out;
+      return { events, notCovered };
     },
 
     async getSplits(inst) {

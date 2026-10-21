@@ -2,7 +2,8 @@
 // they read a computed portfolio and return scenarios; they never touch stored
 // records. Every figure the agent states about a hypothetical comes from here.
 import { round, WEIGHT_BASIS } from '../portfolio.js';
-import { formatNy } from '../time.js';
+import { isTradingDay } from '../calendar.js';
+import { formatNy, addDays } from '../time.js';
 
 const EPS = 1e-9;
 const FRACTION_STEP = 1e-4; // fractional-share precision used by brokers
@@ -99,7 +100,9 @@ export function simulateTrade(portfolio, req) {
   }
   const pos = sameSymbol.find((p) => p.account === account) || null;
   if (side === 'sell' && !pos) throw new Error(`No open position in ${symbol}${account ? ` in ${account}` : ''} to sell.`);
-  if (pos && pos.identityStatus !== 'confirmed' && req.price == null) {
+  // A ticker not held now is checked against the user's own instrument record, if any.
+  const identity = pos ? pos.identityStatus : req.identityStatus;
+  if (identity && identity !== 'confirmed' && req.price == null) {
     throw new Error(`${symbol}'s instrument identity is not confirmed, so it has no trusted quote. Confirm it first or give an assumed price.`);
   }
   const currency = pos?.currency || sameSymbol[0]?.currency || req.currency;
@@ -282,7 +285,7 @@ function applyConversion(p, leg) {
   const from = String(leg.from_currency || '').toUpperCase(), to = String(leg.to_currency || '').toUpperCase();
   if (!['USD', 'CAD'].includes(from) || !['USD', 'CAD'].includes(to) || from === to) throw new Error('Conversion needs from_currency and to_currency of USD/CAD.');
   const amount = Number(leg.amount);
-  if (!(amount > 0)) throw new Error('Conversion amount must be positive');
+  if (!(amount > 0)) throw new Error('Conversion amount must be a positive number, "proceeds" or "available_cash".');
   const accts = accountsKnown(p);
   const account = leg.account || (accts.length === 1 ? accts[0] : null);
   if (!account) throw new Error(`Specify which account the conversion happens in (${accts.join(', ') || 'no accounts recorded'}).`);
@@ -306,37 +309,56 @@ function applyConversion(p, leg) {
 }
 
 // Several legs applied in order; returns each leg and the combined cash effect.
-// A buy leg's cash_amount may be "proceeds" (cash the earlier legs added to that
-// account and currency) or "available_cash" (that account's recorded cash then).
+// A buy leg's cash_amount, or a convert leg's amount, may be "proceeds" (cash the
+// earlier legs added to that account and currency) or "available_cash" (that
+// account's cash at that step), both before any fees not given.
 export function simulateTrades(portfolio, legs, extra = () => ({})) {
   if (!Array.isArray(legs) || !legs.length || legs.length > 6) throw new Error('Give 1 to 6 legs.');
   let p = portfolio;
   const results = [];
   const cashOf = (pf, account, currency) => (pf.cash || []).find((c) => c.account === account && c.currency === currency)?.amount ?? 0;
+  const fromPlan = (kind, field, account, currency) => {
+    const amount = kind === 'proceeds' ? cashOf(p, account, currency) - cashOf(portfolio, account, currency)
+      : kind === 'available_cash' ? cashOf(p, account, currency) : NaN;
+    if (Number.isNaN(amount)) throw new Error(`${field} must be a number, "proceeds" or "available_cash".`);
+    if (!(amount > 0)) throw new Error(kind === 'proceeds' ? `The earlier legs add no ${currency} cash to ${account}; add a sell or convert leg in ${currency} first.` : `${account} has no ${currency} cash available at this step.`);
+    const beforeFees = results.some((r) => r.feesKnown === false) ? ', before fees' : '';
+    return { amount, source: kind === 'proceeds' ? `the ${round(amount)} ${currency} raised by the earlier legs${beforeFees}` : `the ${round(amount)} ${currency} available in ${account} at this step${beforeFees}` };
+  };
   for (const [i, leg] of legs.entries()) {
     try {
       if (leg.side === 'convert') {
-        const r = applyConversion(p, leg);
+        const from = String(leg.from_currency || '').toUpperCase();
+        let conv = leg, source = null;
+        if (['proceeds', 'available_cash'].includes(leg.amount) && ['USD', 'CAD'].includes(from)) {
+          const accts = accountsKnown(p);
+          const account = leg.account || (accts.length === 1 ? accts[0] : null);
+          if (!account) throw new Error(`Specify which account the conversion happens in (${accts.join(', ') || 'no accounts recorded'}).`);
+          const f = fromPlan(leg.amount, 'amount', account, from);
+          conv = { ...leg, account, amount: f.amount };
+          source = f.source;
+        }
+        const r = applyConversion(p, conv);
+        if (source) r.result.cashAmountSource = source;
         results.push(r.result);
         p = r.portfolio;
         continue;
       }
       const ex = extra(leg) || {};
       let req = { ...leg, ...ex };
+      let source = null;
       if (typeof leg.cash_amount === 'string') {
-        if (leg.side !== 'buy') throw new Error('"proceeds" and "available_cash" apply to buy legs.');
+        if (leg.side !== 'buy') throw new Error('"proceeds" and "available_cash" apply to buy and convert legs.');
         const held = p.positions.filter((x) => x.symbol === String(leg.symbol || '').toUpperCase());
         const account = leg.account || (held.length === 1 ? held[0].account : accountsKnown(p).length === 1 ? accountsKnown(p)[0] : null);
         const currency = held[0]?.currency || ex.currency;
         if (!account || !currency) throw new Error('Name the account for this buy leg.');
-        const amount = leg.cash_amount === 'proceeds' ? cashOf(p, account, currency) - cashOf(portfolio, account, currency)
-          : leg.cash_amount === 'available_cash' ? cashOf(p, account, currency) : NaN;
-        if (Number.isNaN(amount)) throw new Error('cash_amount must be a number, "proceeds" or "available_cash".');
-        if (!(amount > 0)) throw new Error(leg.cash_amount === 'proceeds' ? `The earlier legs add no ${currency} cash to ${account}; add a sell or convert leg in ${currency} first.` : `${account} has no ${currency} cash available at this step.`);
-        req = { ...req, account, cash_amount: amount };
+        const f = fromPlan(leg.cash_amount, 'cash_amount', account, currency);
+        req = { ...req, account, cash_amount: f.amount };
+        source = f.source;
       }
       const sc = simulateTrade(p, req);
-      if (typeof leg.cash_amount === 'string') sc.cashAmountSource = leg.cash_amount === 'proceeds' ? `the ${round(req.cash_amount)} ${sc.currency} raised by the earlier legs` : `the ${round(req.cash_amount)} ${sc.currency} available in ${sc.account} at this step`;
+      if (source) sc.cashAmountSource = source;
       // Leg weights would describe the plan half-way through; the final ones are weightsAfter.
       delete sc.weightBeforePct; delete sc.weightAfterPct;
       results.push(sc);
@@ -345,20 +367,43 @@ export function simulateTrades(portfolio, legs, extra = () => ({})) {
       throw new Error(`Leg ${i + 1}: ${e.message}`);
     }
   }
+  // "With your usual fee": every leg without a given commission is charged its
+  // account's usual fee, keeping the share counts and amounts above. The earlier
+  // legs' fees come out of the same cash, so each leg's cashAfter counts them too.
+  const owed = {}; // "account currency" -> usual fees so far, null when a leg has none
+  for (const r of results) {
+    if (r.side === 'convert' || r.feesKnown) continue;
+    const k = `${r.account} ${r.currency}`;
+    const sofar = k in owed ? owed[k] : 0;
+    if (r.ifTypicalFee?.cashAfter != null) r.ifTypicalFee.cashAfter = sofar == null ? null : round(r.ifTypicalFee.cashAfter - sofar);
+    owed[k] = sofar != null && r.ifTypicalFee ? sofar + r.ifTypicalFee.fee : null;
+  }
   // Every cash balance in the accounts the plan touches, changed or not.
   const accounts = new Set(results.map((r) => r.account).filter(Boolean));
   const cashChanges = {};
+  const typicalCash = {};
   for (const c of p.cash.filter((x) => accounts.has(x.account))) {
+    const k = `${c.account} ${c.currency}`;
     const before = (portfolio.cash || []).find((x) => x.account === c.account && x.currency === c.currency);
-    cashChanges[`${c.account} ${c.currency}`] = { before: before ? round(before.amount) : null, after: before ? round(c.amount) : null, change: round(c.amount - (before ? before.amount : 0)) };
+    cashChanges[k] = { before: before ? round(before.amount) : null, after: before ? round(c.amount) : null, change: round(c.amount - (before ? before.amount : 0)) };
+    const fees = k in owed ? owed[k] : 0;
+    typicalCash[k] = { before: cashChanges[k].before, after: before && fees != null ? round(c.amount - fees) : null, change: fees != null ? round(c.amount - (before ? before.amount : 0) - fees) : null };
   }
+  const charged = results.map((r, i) => (r.side !== 'convert' && !r.feesKnown && r.ifTypicalFee ? { leg: i + 1, symbol: r.symbol, fee: r.ifTypicalFee.fee } : null)).filter(Boolean);
+  const ifTypicalFee = charged.length ? {
+    feesCharged: charged, cashChanges: typicalCash,
+    note: 'The whole plan with your usual recent fee charged on each leg that has no commission given (same share counts and amounts as the legs above). A balance is null when a leg in it has no fee history.',
+  } : null;
   const weights = (pf) => (pf.combined
     ? pf.positions.filter((x) => x.marketValue != null).map((x) => ({ symbol: x.symbol, account: x.account, weightPct: round(((x.marketValue * toCadRate(pf, x.currency)) / pf.combined.marketValue) * 100, 1) }))
     : null);
   // A negative balance means the plan needs money the records don't show.
   const warnings = p.cash.filter((c) => c.amount < -0.005).map((c) => `${c.account} ${c.currency} cash would end at ${round(c.amount)}: the plan needs ${round(-c.amount)} ${c.currency} more than the recorded balance (new money, another sale or a conversion). Margin is never assumed.`);
   if (results.some((r) => r.feesKnown === false)) warnings.push('Some legs have no commission given, so their cash figures are before fees.');
-  return { kind: 'hypothetical', legs: results, cashChanges, warnings, weightsBefore: weights(portfolio), weightsAfter: weights(p), weightBasis: p.combined ? WEIGHT_BASIS : null, savedToRecords: false };
+  for (const [k, c] of Object.entries(typicalCash)) {
+    if (ifTypicalFee && c.after != null && c.after < -0.005 && !(cashChanges[k].after < -0.005)) warnings.push(`With your usual fees, ${k} cash would end at ${c.after}: the plan would need ${round(-c.after)} ${k.split(' ').at(-1)} more than the recorded balance.`);
+  }
+  return { kind: 'hypothetical', legs: results, cashChanges, ifTypicalFee, warnings, weightsBefore: weights(portfolio), weightsAfter: weights(p), weightBasis: p.combined ? WEIGHT_BASIS : null, savedToRecords: false };
 }
 
 // What a price move would do to positions (and the portfolio), e.g. an
@@ -496,9 +541,28 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
   };
 }
 
+// Positions measured over different sessions (a quote not refreshed since an
+// earlier day, or an exchange closed for a holiday): which is which, since the
+// latest-session totals add them together.
+export function sessionMixNote(positions) {
+  const measured = positions.filter((p) => p.dailyPL != null && p.dailyPLSession);
+  const sessions = [...new Set(measured.map((p) => p.dailyPLSession))].sort().reverse();
+  if (sessions.length < 2) return null;
+  const label = (p) => (measured.some((x) => x.symbol === p.symbol && x.exchange !== p.exchange) ? `${p.symbol} (${p.exchange})` : p.symbol);
+  const parts = sessions.map((s, i) => `${s}${i ? '' : ' (latest)'} for ${[...new Set(measured.filter((p) => p.dailyPLSession === s).map(label))].join(', ')}`);
+  return `These latest-session figures span ${sessions.length} sessions: ${parts.join('; ')}. The totals add these moves together, so they are not one session's change; positions under an earlier date have no quote from the latest session (not refreshed since, or their exchange was closed).`;
+}
+
+// Days the Bank of Canada publishes a USD/CAD rate: Toronto exchange business
+// days, less the federal holidays it also observes (Sept 30, Nov 11).
+function bocBusinessDay(d) {
+  return isTradingDay(d, 'TSX') && !['09-30', '11-11'].includes(d.slice(5));
+}
+
 // Attribution of the latest session's P/L by position, per currency, with a
 // combined CAD figure at the stored rate and the currency effect between the
-// last two daily reference rates (only when those rates are current).
+// last two daily reference rates (only when those are consecutive and the
+// later one is this session's).
 export function dailyAttribution(portfolio, { fxPrev, sessionDate } = {}) {
   const out = {};
   const rate = portfolio.combined?.fxRate ?? null;
@@ -515,7 +579,7 @@ export function dailyAttribution(portfolio, { fxPrev, sessionDate } = {}) {
       pctBasis: 'Over positions with a measurable change (previous close available)',
       shareBasis: `shareOfCurrencyGrossMovePct: share of the summed absolute moves of ${ccy} positions. shareOfPortfolioGrossMovePct: share of the summed absolute moves of all positions in CAD. shareOfNetMovePct: this position's CAD move as a % of the portfolio's net CAD move (positive = it moved the same way as the total; shares can exceed 100% when others moved the opposite way).`,
       contributions: ps.map((p) => ({
-        symbol: p.symbol, account: p.account, dailyPL: p.dailyPL, dailyPct: p.dailyPct, session: p.dailyPLSession || null,
+        symbol: p.symbol, exchange: p.exchange, account: p.account, dailyPL: p.dailyPL, dailyPct: p.dailyPct, session: p.dailyPLSession || null,
         shareOfCurrencyGrossMovePct: gross > 0 ? round((Math.abs(p.dailyPL) / gross) * 100, 1) : null,
         shareOfPortfolioGrossMovePct: grossCad ? round(((Math.abs(p.dailyPL) * toCad(p)) / grossCad) * 100, 1) : null,
         shareOfNetMovePct: netCad ? round(((p.dailyPL * toCad(p)) / netCad) * 100, 1) : null,
@@ -537,11 +601,15 @@ export function dailyAttribution(portfolio, { fxPrev, sessionDate } = {}) {
       note: 'Price moves only: USD P/L converted at the stored daily reference rate. It does not include the currency effect below. The percentage is over positions with a previous close.',
     };
   }
-  const sessions = [...new Set(portfolio.positions.map((p) => p.dailyPLSession).filter(Boolean))];
+  const sessions = [...new Set(portfolio.positions.map((p) => p.dailyPLSession).filter(Boolean))].sort();
   let fx = null;
   if (portfolio.fx && sessionDate) {
-    // Only a rate change into this session's own reference rate belongs with this session's P/L.
-    if (portfolio.fx.as_of === sessionDate && fxPrev) {
+    // Only a one-day change into this session's own reference rate belongs with
+    // this session's P/L; rates missing in between would make it a multi-day move.
+    const gap = [];
+    for (let d = fxPrev ? addDays(fxPrev.as_of, 1) : portfolio.fx.as_of, n = 0; d < portfolio.fx.as_of && n < 400; d = addDays(d, 1), n += 1) if (bocBusinessDay(d)) gap.push(d);
+    const gapText = gap.length > 3 ? `${gap.length} business days (${gap[0]} to ${gap.at(-1)})` : gap.join(', ');
+    if (portfolio.fx.as_of === sessionDate && fxPrev && !gap.length) {
       const usdMv = portfolio.totals.USD.marketValue || 0;
       const usdCash = portfolio.totals.USD.cash || 0;
       fx = {
@@ -554,10 +622,16 @@ export function dailyAttribution(portfolio, { fxPrev, sessionDate } = {}) {
       fx = {
         unavailable: true,
         note: portfolio.fx.as_of < sessionDate
-          ? `The USD/CAD reference rate for the ${sessionDate} session is not stored yet (latest is ${portfolio.fx.as_of}; the Bank of Canada publishes each day's rate in the late afternoon), so this session's currency effect is not known.`
-          : `The latest stored USD/CAD rate (${portfolio.fx.as_of}) is from after the ${sessionDate} session, so it cannot measure that session's currency effect.`,
+          ? (bocBusinessDay(sessionDate)
+            ? `The USD/CAD reference rate for the ${sessionDate} session is not stored yet (latest is ${portfolio.fx.as_of}; the Bank of Canada publishes each day's rate in the late afternoon), so this session's currency effect is not known.`
+            : `The Bank of Canada publishes no USD/CAD rate for ${sessionDate} (a Canadian holiday), so this session's currency effect is not measured.`)
+          : portfolio.fx.as_of > sessionDate
+            ? `The latest stored USD/CAD rate (${portfolio.fx.as_of}) is from after the ${sessionDate} session, so it cannot measure that session's currency effect.`
+            : !fxPrev
+              ? `No USD/CAD rate before ${portfolio.fx.as_of} is stored, so this session's currency effect is not known.`
+              : `The stored USD/CAD rates are from ${fxPrev.as_of} and ${portfolio.fx.as_of}, but the Bank of Canada ${gap.length > 1 ? `rates for ${gapText} in between are` : `rate for ${gapText} in between is`} not stored. The change between them spans more than the ${sessionDate} session, so this session's currency effect is not shown.`,
       };
     }
   }
-  return { sessionsMeasured: sessions, byCurrency: out, combinedCad, fx };
+  return { sessionsMeasured: sessions, sessionNote: sessionMixNote(portfolio.positions), byCurrency: out, combinedCad, fx };
 }

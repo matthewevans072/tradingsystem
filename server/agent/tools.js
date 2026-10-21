@@ -15,7 +15,7 @@ import { todayIn, addDays, zonedToUtc, formatNy, weekdayOf, zonedParts, NY } fro
 import { getSetting } from '../db.js';
 import { alertSettings } from '../alerts.js';
 import { untrusted } from './ledger.js';
-import { simulateTrade, simulateTrades, priceMoveImpact, riskOverlap, dailyAttribution } from './calc.js';
+import { simulateTrade, simulateTrades, priceMoveImpact, riskOverlap, dailyAttribution, sessionMixNote } from './calc.js';
 import { createProposal, PROPOSAL_TYPES } from './proposals.js';
 import { CATEGORIES } from '../catalog.js';
 
@@ -39,12 +39,12 @@ export const TOOL_DEFS = [
   },
   {
     name: 'get_portfolio',
-    description: "The user's saved portfolio records with current valuations: per-currency totals (USD and CAD are never mixed), combined CAD total only with a dated FX rate, available cash per account and currency (with confirmation status), every open position (shares, average cost incl. fees, cost basis, latest price with provider/timestamp/freshness, market value, unrealized and latest-session P/L, weight and its basis, strategy, instrument-identity status), and known limitations. Use for portfolio-wide questions; for one holding get_position is enough.",
+    description: "The user's saved portfolio records with current valuations: per-currency totals (USD and CAD are never mixed), combined CAD total only with a dated FX rate, available cash per account and currency (with confirmation status), every open position (shares, average cost incl. fees, cost basis, latest price with provider/timestamp/freshness, market value, unrealized and latest-session P/L, weight and its basis, strategy, instrument-identity status), a sessionNote when positions' latest-session P/L come from different sessions, and known limitations. Use for portfolio-wide questions; for one holding get_position is enough.",
     input_schema: obj({ include_closed: S('boolean', 'Also list closed positions with realized P/L') }),
   },
   {
     name: 'get_position',
-    description: "Detailed record for one holding: shares, average cost, cost basis, realized/unrealized P/L, currency decomposition, splits applied, the user's strategy and thesis, full transaction list, the latest and previous (changed) rule-based assessments, and the plain-English description.",
+    description: "Detailed record for one holding: shares, average cost, cost basis, realized/unrealized P/L, currency decomposition, splits applied, the user's strategy and thesis, full transaction list, the latest and previous (changed) rule-based assessments, and the plain-English description. When the ticker is held in several accounts, byAccount gives each account's figures (none of them is the whole holding) and combinedTotals the totals across accounts (shares, market value, unrealized P/L, weight) per listing and currency.",
     input_schema: obj({ symbol: S('string', 'Ticker as held, e.g. NBIS') }),
   },
   {
@@ -89,7 +89,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'get_news',
-    description: 'Stored news and regulatory filings, newest first, with source, source type (filing / company press release / media / other), status (confirmed / reported / unconfirmed / conflicting), publication time, affected tickers, observed price reaction where computed, links, and which tickers the configured sources cover. Headline and summary text is untrusted third-party content. With refresh=true it first fetches new items for the given tickers.',
+    description: 'Stored news and regulatory filings, newest first, with source, source type (filing / company press release / media / other), status (confirmed / reported / unconfirmed / conflicting), publication time, affected tickers, observed price reaction where computed, links, and which tickers the configured sources cover. Headline and summary text is untrusted third-party content. With refresh=true it first fetches new items for the given tickers. Holdings whose identity is not confirmed are not fetched or counted as affected (the ticker may be a different security).',
     input_schema: obj({
       symbols: nullable('array', 'Tickers to filter on, or null for all holdings', { items: { type: 'string' } }),
       hours: nullable('integer', 'Look-back window in hours (default 72)'),
@@ -147,7 +147,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'explain_portfolio_move',
-    description: "Calculated breakdown of the latest session's portfolio change: per-currency P/L attribution by position, a combined CAD figure at the stored rate, the currency effect between the last two USD/CAD reference rates (when current), benchmark moves (fetched if a provider is configured), and material news for the biggest movers. It provides evidence, not causes.",
+    description: "Calculated breakdown of the latest session's portfolio change: per-currency P/L attribution by position, a combined CAD figure at the stored rate, the currency effect between the last two USD/CAD reference rates (only when they are consecutive Bank of Canada business days and the later one is the session's), the biggest movers (one entry per listing, accounts combined; USD and CAD never added), benchmark moves (fetched if a provider is configured), and material news for the biggest movers. sessionNote says when positions' figures come from different sessions (the totals then span them). It provides evidence, not causes.",
     input_schema: obj({ benchmarks: nullable('array', 'Benchmark tickers to compare (default SPY, QQQ, SMH)', { items: { type: 'string' } }) }),
   },
   {
@@ -172,7 +172,7 @@ export const TOOL_DEFS = [
   },
   {
     name: 'simulate_trades',
-    description: 'Several hypothetical legs applied in order (never saved), e.g. "sell 20% of NBIS and 20% of VRT" or "sell XEQT, convert CAD to USD, buy NBIS with the proceeds". Each leg is {side: "sell"|"buy", symbol, shares|fraction|cash_amount|target_weight_pct, price?, fees?, account?} or {side: "convert", from_currency, to_currency, amount, account?}. A buy leg\'s cash_amount may be a number, "proceeds" (the cash the earlier legs added in that account and currency) or "available_cash". Returns each leg, every cash balance in the accounts involved (before/after), weights before and after the whole plan, and warnings (e.g. cash going negative).',
+    description: 'Several hypothetical legs applied in order (never saved), e.g. "sell 20% of NBIS and 20% of VRT" or "sell XEQT, convert CAD to USD, buy NBIS with the proceeds". Each leg is {side: "sell"|"buy", symbol, shares|fraction|cash_amount|target_weight_pct, price?, fees?, account?, exchange?} or {side: "convert", from_currency, to_currency, amount, account?}. A buy leg\'s cash_amount, or a convert leg\'s amount, may be a number, "proceeds" (the cash the earlier legs added in that account and currency, before fees not given) or "available_cash". Returns each leg, every cash balance in the accounts involved (before/after), ifTypicalFee (the whole plan with the user\'s usual fee on each leg that has no commission given), weights before and after the whole plan, and warnings (e.g. cash going negative).',
     input_schema: { type: 'object', additionalProperties: false, properties: { legs: { type: 'array', items: { type: 'object' }, description: '1 to 6 legs' } }, required: ['legs'] },
   },
   {
@@ -277,7 +277,7 @@ function portfolioRef(L, portfolio, tool = 'get_portfolio') {
 
 function quoteRef(L, symbol, q, tool, live = true) {
   if (!q || q.price == null) return null;
-  return L.add({ key: `quote:${symbol}:${q.quoteTime}`, kind: 'market_data', label: `${symbol} quote ${q.price}`, source: q.provider, asOf: q.quoteTime, fetchedAt: q.fetchedAt, freshness: q.freshness, updating: live ? null : false, symbol, tool, note: live ? q.timeliness : `${q.timeliness || 'stored'}; not updating (no provider configured)` });
+  return L.add({ key: `quote:${symbol}:${q.quoteTime}:${q.price}`, kind: 'market_data', label: `${symbol} quote ${q.price}`, source: q.provider, asOf: q.quoteTime, fetchedAt: q.fetchedAt, freshness: q.freshness, updating: live ? null : false, symbol, tool, note: live ? q.timeliness : `${q.timeliness || 'stored'}; not updating (no provider configured)` });
 }
 
 function newsRef(L, n, tool) {
@@ -313,6 +313,15 @@ function catalogLookup(ctx, symbol, exchange) {
   const matches = ctx.catalog.all().filter((e) => e.symbol === sym);
   if (matches.length === 1) return ctx.catalog.lookup(sym, matches[0].exchange);
   return null;
+}
+
+// The user's own instrument record for a ticker not held now (e.g. sold earlier):
+// the only row, or the one on that exchange or traded in that account.
+function ownInstrument(db, symbol, { account, exchange } = {}) {
+  let rows = db.prepare('SELECT * FROM instruments WHERE symbol = ?').all(String(symbol || '').toUpperCase());
+  if (exchange) rows = rows.filter((i) => i.exchange.toUpperCase() === String(exchange).toUpperCase());
+  if (rows.length > 1 && account) rows = rows.filter((i) => db.prepare('SELECT 1 FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE a.name = ? AND t.instrument_id = ? AND t.voided_at IS NULL LIMIT 1').get(account, i.id));
+  return rows.length === 1 ? rows[0] : null;
 }
 
 // Company names ("Vertiv") to catalog entries.
@@ -377,6 +386,13 @@ export function createToolbox(ctx, { ledger, turn }) {
     const q = r.quotes[0];
     return q?.available ? { price: q.price, provider: q.provider, quoteTime: q.quoteTime, freshness: q.freshness, timeliness: q.timeliness, delayMinutes: q.delayMinutes } : null;
   };
+  // Stored quote for one of the user's instruments, in the same shape (none while its identity is unconfirmed).
+  const ownQuote = (i, tool) => {
+    const q = i.identity_status === 'confirmed' ? publicQuote(db.prepare('SELECT * FROM quotes WHERE instrument_id = ?').get(i.id), now(), i.exchange) : null;
+    if (q?.price == null) return null;
+    qref(i.symbol, q, tool);
+    return { price: q.price, provider: q.provider, quoteTime: q.quoteTime, freshness: q.freshness, timeliness: q.timeliness, delayMinutes: q.delayMinutes };
+  };
   const portfolio = () => {
     const p = computePortfolio(db, { now: now(), catalog: ctx.catalog });
     p.accounts = db.prepare('SELECT name FROM accounts').all().map((a) => a.name);
@@ -423,7 +439,7 @@ export function createToolbox(ctx, { ledger, turn }) {
         ref, cashRef, fxRef, asOf: p.asOf, asOfET: et(p.asOf),
         workspace: ctx.mode === 'demo' ? 'DEMO — synthetic data' : 'real',
         limitations: p.limitations, ledgerIssues: p.issues.map((i) => i.message),
-        totals: p.totals, combinedCad: p.combined, fx: p.fx ? { rate: p.fx.rate, asOf: p.fx.as_of, source: p.fx.source } : null,
+        totals: p.totals, sessionNote: sessionMixNote(p.positions), combinedCad: p.combined, fx: p.fx ? { rate: p.fx.rate, asOf: p.fx.as_of, source: p.fx.source } : null,
         weightBasis: p.combined ? p.combined.weightBasis : 'No USD/CAD rate stored: only weightWithinCurrencyPct is available.',
         accounts: p.accounts,
         cash: p.cash.map((c) => ({ account: c.account, currency: c.currency, amount: c.amount, asOf: c.as_of, confirmed: !!c.confirmed })),
@@ -455,15 +471,65 @@ export function createToolbox(ctx, { ledger, turn }) {
         return { held: false, message: `No position in ${String(symbol).toUpperCase()} is recorded.`, ref: statusRef(L, `No ${String(symbol).toUpperCase()} position recorded`, 'get_position') };
       }
       const pos = matches[0];
-      const ref = L.add({ key: `position:${pos.key}:${p.asOf}`, kind: 'portfolio_record', label: `${pos.symbol} position record`, source: 'Signal Desk ledger', asOf: p.asOf, symbol: pos.symbol, tool: 'get_position' });
+      const several = matches.length > 1;
+      const ref = several
+        ? L.add({ key: `position:${pos.symbol}:all:${p.asOf}`, kind: 'portfolio_record', label: `${pos.symbol} records in ${matches.map((x) => x.account).join(', ')}`, source: 'Signal Desk ledger', asOf: p.asOf, symbol: pos.symbol, tool: 'get_position' })
+        : L.add({ key: `position:${pos.key}:${p.asOf}`, kind: 'portfolio_record', label: `${pos.symbol} position record`, source: 'Signal Desk ledger', asOf: p.asOf, symbol: pos.symbol, tool: 'get_position' });
       const tx = db.prepare(`SELECT t.trade_date, t.type, t.quantity, t.price, t.fees, t.currency, t.source, t.note, t.unconfirmed_fields, t.created_at, a.name AS account
                              FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.instrument_id = ? AND t.voided_at IS NULL ORDER BY t.trade_date DESC, t.id DESC LIMIT 40`).all(pos.instrument_id);
-      const meta = db.prepare('SELECT strategy, thesis, updated_at FROM position_meta WHERE account_id = ? AND instrument_id = ?').get(pos.account_id, pos.instrument_id);
       const rows = db.prepare('SELECT payload_json FROM assessments WHERE instrument_id = ? ORDER BY id DESC LIMIT 20').all(pos.instrument_id).map((r) => JSON.parse(r.payload_json));
       const assessments = distinctAssessments(rows).slice(0, 3);
       const d = ctx.catalog.describeInstrument({ symbol: pos.symbol, exchange: pos.exchange, currency: pos.currency, identity_status: pos.identityStatus });
+      // One account's holding (the whole holding only when one account holds the ticker).
+      const holding = (x) => {
+        const meta = db.prepare('SELECT strategy, thesis, updated_at FROM position_meta WHERE account_id = ? AND instrument_id = ?').get(x.account_id, x.instrument_id);
+        return {
+          shares: x.shares, averageCost: x.avgCost, costBasis: x.costBasis, fees: x.fees, realizedPL: x.realizedPL,
+          price: x.price, marketValue: x.marketValue, unrealizedPL: x.unrealizedPL, unrealizedPct: x.unrealizedPct,
+          latestSessionPL: x.dailyPL, latestSessionPct: x.dailyPct, latestSessionDate: x.dailyPLSession || null,
+          latestSessionPLCad: x.dailyPL != null && (x.currency === 'CAD' || p.combined) ? round(x.dailyPL * (x.currency === 'CAD' ? 1 : p.combined.fxRate)) : null,
+          latestSessionNote: x.dailyPLNote || null,
+          weightPct: x.weightPct ?? null, weightWithinCurrencyPct: x.weightInCurrencyPct ?? null,
+          currencyDecomposition: x.fxDecomposition || x.fxNote || null, splitsApplied: x.splitsApplied,
+          strategy: meta?.strategy || 'unclassified', thesis: meta?.thesis ? ownerNote(meta.thesis, 1000) : null, thesisSavedAt: meta?.updated_at || null,
+        };
+      };
+      // Several accounts: each account's figures, and totals across accounts per
+      // listing (one currency each), computed here.
+      let accounts = null;
+      if (several) {
+        const sum = (xs, f) => (xs.every((x) => x[f] != null) ? xs.reduce((s, x) => s + x[f], 0) : null);
+        const listings = [...new Set(matches.map((x) => `${x.exchange}|${x.currency}`))].map((k) => matches.filter((x) => `${x.exchange}|${x.currency}` === k));
+        accounts = {
+          heldInAccounts: matches.map((x) => x.account),
+          note: `${pos.symbol} is held in ${matches.length} accounts. byAccount gives each account's own figures (none of them is the whole holding); combinedTotals gives the totals across accounts, per listing and currency (USD and CAD are never added).`,
+          byAccount: matches.map((x) => ({
+            ref: L.add({ key: `position:${x.key}:${p.asOf}`, kind: 'portfolio_record', label: `${x.symbol} position record (${x.account})`, source: 'Signal Desk ledger', asOf: p.asOf, symbol: x.symbol, tool: 'get_position' }),
+            account: x.account, exchange: x.exchange, currency: x.currency, identityConfirmed: x.identityStatus === 'confirmed', ...holding(x),
+            quoteRef: x.identityStatus === 'confirmed' ? qref(x.symbol, x.quote, 'get_position') : null,
+          })),
+          combinedTotals: listings.map((xs) => {
+            const x0 = xs[0];
+            const shares = xs.reduce((s, x) => s + x.shares, 0), cost = xs.reduce((s, x) => s + x.costBasis, 0);
+            const mv = sum(xs, 'marketValue'), upl = sum(xs, 'unrealizedPL'), dpl = sum(xs, 'dailyPL');
+            const rate = p.combined ? (x0.currency === 'CAD' ? 1 : p.combined.fxRate) : null;
+            return {
+              ref: L.add({ key: `position-total:${x0.symbol}:${x0.exchange}:${p.asOf}`, kind: 'calculation', label: `${x0.symbol} (${x0.exchange}) totals across ${xs.map((x) => x.account).join(', ')}`, source: 'Signal Desk calculation from your holdings', asOf: p.asOf, symbol: x0.symbol, tool: 'get_position' }),
+              exchange: x0.exchange, currency: x0.currency, accounts: xs.map((x) => x.account),
+              totalShares: round(shares, 6), combinedCostBasis: round(cost), combinedAverageCost: shares > 0 ? round(cost / shares, 4) : null,
+              combinedMarketValue: mv != null ? round(mv) : null, combinedUnrealizedPL: upl != null ? round(upl) : null,
+              combinedUnrealizedPct: upl != null && cost > 0 ? round((upl / cost) * 100) : null,
+              combinedLatestSessionPL: dpl != null ? round(dpl) : null,
+              combinedWeightPct: mv != null && rate != null && p.combined.marketValue > 0 ? round(((mv * rate) / p.combined.marketValue) * 100, 1) : null,
+              combinedWeightWithinCurrencyPct: mv != null && p.totals[x0.currency].marketValue > 0 ? round((mv / p.totals[x0.currency].marketValue) * 100, 1) : null,
+            };
+          }),
+          listingsNote: listings.length > 1 ? `${pos.symbol} is held on several listings (${listings.map((xs) => `${xs[0].exchange}, ${xs[0].currency}`).join('; ')}); the quote, description, transactions and assessments below are for ${pos.exchange}.` : null,
+        };
+      }
       return {
-        ref, symbol: pos.symbol, exchange: pos.exchange, currency: pos.currency, account: pos.account,
+        ref, symbol: pos.symbol, exchange: pos.exchange, currency: pos.currency,
+        ...(several ? accounts : { account: pos.account }),
         identityConfirmed: pos.identityStatus === 'confirmed', identityNote: pos.identityNote ? ownerNote(pos.identityNote, 200) : null,
         identityHelp: pos.identityStatus !== 'confirmed' ? {
           meaning: 'The exchange and currency shown are what was entered; they are not confirmed, so the position is not priced or described.',
@@ -471,21 +537,15 @@ export function createToolbox(ctx, { ledger, turn }) {
           ambiguity: d?.ambiguity || null,
           howToConfirm: 'Open the holding in Positions and confirm the exchange, currency and issuer from a brokerage statement.',
         } : null,
-        shares: pos.shares, averageCost: pos.avgCost, costBasis: pos.costBasis, fees: pos.fees, realizedPL: pos.realizedPL,
-        price: pos.price, marketValue: pos.marketValue, unrealizedPL: pos.unrealizedPL, unrealizedPct: pos.unrealizedPct,
-        latestSessionPL: pos.dailyPL, latestSessionPct: pos.dailyPct, latestSessionDate: pos.dailyPLSession || null,
-        latestSessionPLCad: pos.dailyPL != null && (pos.currency === 'CAD' || p.combined) ? round(pos.dailyPL * (pos.currency === 'CAD' ? 1 : p.combined.fxRate)) : null,
-        latestSessionNote: pos.dailyPLNote || null,
-        weightPct: pos.weightPct ?? null, weightWithinCurrencyPct: pos.weightInCurrencyPct ?? null, weightBasis: p.combined?.weightBasis || 'within currency only (no FX rate)',
-        currencyDecomposition: pos.fxDecomposition || pos.fxNote || null, splitsApplied: pos.splitsApplied,
-        strategy: meta?.strategy || 'unclassified', thesis: meta?.thesis ? ownerNote(meta.thesis, 1000) : null, thesisSavedAt: meta?.updated_at || null,
+        ...(several ? { price: pos.price } : holding(pos)),
+        weightBasis: p.combined?.weightBasis || 'within currency only (no FX rate)',
         quote: pos.identityStatus !== 'confirmed' ? { available: false, reason: 'Instrument identity not confirmed by the user, so it is not priced.' } : qm(pos.quote),
         quoteRef: qref(pos.symbol, pos.quote, 'get_position'),
         description: d?.oneLiner || null,
         transactions: tx.map((t) => ({ ...t, note: t.note ? ownerNote(t.note, 200) : null, unconfirmed_fields: t.unconfirmed_fields ? JSON.parse(t.unconfirmed_fields) : null })),
         assessments: assessments.map((a) => fmtAssessment(L, a, 'get_position')),
         assessmentsNote: REPEATS_NOTE,
-        otherAccountsSameTicker: matches.length > 1 ? matches.slice(1).map((m) => ({ account: m.account, shares: m.shares })) : [],
+        ...(several ? {} : { otherAccountsSameTicker: [] }),
       };
     },
 
@@ -671,17 +731,22 @@ export function createToolbox(ctx, { ledger, turn }) {
       const syms = symbols?.length ? symbols.map((s) => String(s).toUpperCase()) : null;
       const configured = !!(ctx.providers.finnhub || ctx.providers.sec);
       let refreshResult = null;
-      const held = new Set(portfolio().positions.map((p) => p.symbol));
-      const targets = (syms || [...held]).map((s) => {
-        const i = db.prepare('SELECT symbol, exchange, identity_status FROM instruments WHERE symbol = ?').get(s);
+      const positions = portfolio().positions;
+      // Holdings whose identity is unconfirmed are not fetched, like scheduled news: the
+      // ticker may belong to a different security.
+      const held = new Set(positions.filter((p) => p.identityStatus === 'confirmed').map((p) => p.symbol));
+      const unconfirmed = new Set(positions.map((p) => p.symbol).filter((s) => !held.has(s)));
+      const targets = (syms || [...held, ...unconfirmed]).map((s) => {
+        const rows = db.prepare('SELECT symbol, exchange, identity_status FROM instruments WHERE symbol = ?').all(s);
+        const i = rows.find((r) => r.identity_status === 'confirmed') || rows[0];
         const c = i || ctx.catalog.all().find((e) => e.symbol === s && !e.requiresConfirmation);
-        return { symbol: s, exchange: c?.exchange || null, us: c ? exchangeGroup(c.exchange) === 'NYSE' : null };
+        return { symbol: s, exchange: c?.exchange || null, us: c ? exchangeGroup(c.exchange) === 'NYSE' : null, confirmed: !unconfirmed.has(s) && (!i || i.identity_status === 'confirmed') };
       });
-      const coverage = targets.map((t) => ({ symbol: t.symbol, covered: configured && t.us === true, reason: !configured ? 'no news or filing source configured' : t.us === false ? 'non-US listing: configured sources (Finnhub company news, SEC EDGAR) do not cover it' : t.us == null ? 'exchange unknown' : null }));
+      const coverage = targets.map((t) => ({ symbol: t.symbol, covered: configured && t.us === true && t.confirmed, reason: !t.confirmed ? 'identity not confirmed' : !configured ? 'no news or filing source configured' : t.us === false ? 'non-US listing: configured sources (Finnhub company news, SEC EDGAR) do not cover it' : t.us == null ? 'exchange unknown' : null }));
       if (refresh) {
         if (!configured) refreshResult = { ok: false, note: 'No news or filing sources are configured; only stored items are shown.' };
         else {
-          const list = targets.filter((t) => t.us).slice(0, 8).map((t) => ({ symbol: t.symbol, exchange: t.exchange }));
+          const list = targets.filter((t) => t.us && t.confirmed).slice(0, 8).map((t) => ({ symbol: t.symbol, exchange: t.exchange }));
           if (!list.length) refreshResult = { ok: false, note: 'None of these tickers is covered by the configured sources.' };
           else if (cooldown(ctx, `news:${list.map((x) => x.symbol).join(',')}`)) {
             const r = await ingestNews(ctx, { symbols: list, now: now(), days: Math.ceil((v(hours) || 72) / 24) });
@@ -701,7 +766,7 @@ export function createToolbox(ctx, { ledger, turn }) {
         items: items.slice(0, 25).map((n) => ({
           ref: newsRef(L, n, 'get_news'), title: untrusted(n.title, 300), summary: untrusted(n.summary, 500),
           source: untrusted(cleanName(n.source_name || n.provider), 60), sourceType: n.source_type, status: n.status, importance: n.importance,
-          flags: injectionFlags(n.title, n.summary, n.source_name),
+          flags: [...injectionFlags(n.title, n.summary, n.source_name), ...n.symbols.filter((s) => unconfirmed.has(s)).map((s) => `Tagged ${s}, a holding whose identity is not confirmed: it may be about a different security with that ticker, so it is not counted as affecting your holding.`)],
           publishedAt: n.published_at, publishedAtET: et(n.published_at), fetchedAtET: et(n.fetched_at), eventDate: n.event_at, symbols: n.symbols, affectsHoldings: n.symbols.filter((s) => held.has(s)),
           url: n.url, similarReportsGrouped: n.related?.length || 0,
           observedReaction: n.reaction || null,
@@ -901,21 +966,24 @@ export function createToolbox(ctx, { ledger, turn }) {
       const prevFx = db.prepare('SELECT * FROM fx_rates WHERE pair = ? AND as_of < ? ORDER BY as_of DESC LIMIT 1').get('USDCAD', p.fx?.as_of || '9999');
       const attribution = dailyAttribution(p, { fxPrev: prevFx, sessionDate: lastSession });
       const ref = L.add({ key: `attrib:${p.asOf}`, kind: 'calculation', label: 'Latest-session P/L attribution by position', source: 'Signal Desk calculation from stored quotes and your holdings', asOf: p.asOf, tool: 'explain_portfolio_move' });
+      // A ticker listed on two exchanges (or two companies sharing one) is labelled with its exchange.
+      const label = (x) => (p.positions.some((y) => y.symbol === x.symbol && y.exchange !== x.exchange) ? `${x.symbol} (${x.exchange})` : x.symbol);
       const quoteRefs = {};
-      for (const x of p.positions) quoteRefs[x.symbol] = qref(x.symbol, x.quote, 'explain_portfolio_move');
+      for (const x of p.positions) quoteRefs[label(x)] = qref(x.symbol, x.quote, 'explain_portfolio_move');
       const bm = await handlers.get_quotes({ symbols: (benchmarks?.length ? benchmarks : ['SPY', 'QQQ', 'SMH']).slice(0, 4), refresh: false, exchange_hint: null });
-      // Movers: one entry per ticker (accounts combined), compared in CAD when a
-      // rate exists, otherwise the largest in each currency.
-      const bySymbol = new Map();
+      // Movers: one entry per instrument (accounts combined, never across
+      // currencies), compared in CAD when a rate exists, otherwise the largest in each currency.
+      const byInstrument = new Map();
       for (const ccy of ['USD', 'CAD']) {
         for (const c of attribution.byCurrency[ccy].contributions) {
-          const m = bySymbol.get(c.symbol) || { symbol: c.symbol, currency: ccy, dailyPL: 0, dailyPLCad: 0 };
+          const k = `${c.symbol}|${c.exchange}|${ccy}`;
+          const m = byInstrument.get(k) || { symbol: c.symbol, exchange: c.exchange, label: label(c), currency: ccy, dailyPL: 0, dailyPLCad: 0 };
           m.dailyPL += c.dailyPL;
-          m.dailyPLCad = c.dailyPLCad != null ? m.dailyPLCad + c.dailyPLCad : null;
-          bySymbol.set(c.symbol, m);
+          m.dailyPLCad = m.dailyPLCad != null && c.dailyPLCad != null ? m.dailyPLCad + c.dailyPLCad : null;
+          byInstrument.set(k, m);
         }
       }
-      const all = [...bySymbol.values()];
+      const all = [...byInstrument.values()];
       const rate = p.combined?.fxRate;
       let movers;
       if (rate) {
@@ -930,12 +998,15 @@ export function createToolbox(ctx, { ledger, turn }) {
       const material = related.filter((n) => n.importance >= 2);
       const news = material.map((n) => ({ ref: newsRef(L, n, 'explain_portfolio_move'), title: untrusted(n.title, 300), summary: untrusted(n.summary, 400), source: untrusted(cleanName(n.source_name || n.provider), 60), sourceType: n.source_type, status: n.status, importance: n.importance, publishedAtET: et(n.published_at), symbols: n.symbols, observedReaction: n.reaction || null, flags: injectionFlags(n.title, n.summary) }))
         .sort((x, y) => y.importance - x.importance);
+      const notToday = sessions.length && sessions.at(-1) !== todayIn(NY, now())
+        ? (sessions.length > 1 ? `The latest session measured is ${sessions.at(-1)}, not today.` : `Figures are for the ${sessions.at(-1)} session (latest quotes), not today.`)
+        : null;
       return {
         ref, quoteRefs, asOf: p.asOf, asOfET: et(p.asOf), sessionsMeasured: sessions,
-        sessionNote: sessions.length && sessions.at(-1) !== todayIn(NY, now()) ? `Figures are for the ${sessions.at(-1)} session (latest quotes), not today.` : null,
+        sessionNote: [notToday, attribution.sessionNote].filter(Boolean).join(' ') || null,
         attribution, benchmarks: bm.quotes,
-        biggestMovers: movers.map((m) => ({ symbol: m.symbol, dailyPL: round(m.dailyPL), currency: m.currency, dailyPLCad: m.dailyPLCad != null ? round(m.dailyPLCad) : null })),
-        moversBasis: rate ? 'Largest moves in CAD terms (accounts combined), each at least 5% of the total movement.' : 'No USD/CAD rate stored: the largest moves in each currency, not compared across currencies.',
+        biggestMovers: movers.map((m) => ({ symbol: m.symbol, exchange: m.exchange, label: m.label, dailyPL: round(m.dailyPL), currency: m.currency, dailyPLCad: m.dailyPLCad != null ? round(m.dailyPLCad) : null })),
+        moversBasis: rate ? 'Largest moves in CAD terms (one entry per listing, accounts combined), each at least 5% of the total movement.' : 'No USD/CAD rate stored: the largest moves in each currency (one entry per listing, accounts combined), not compared across currencies.',
         newsForBiggestMovers: news,
         otherNews: related.length - material.length ? `${related.length - material.length} lower-importance item(s) for these tickers are not listed here; use get_news to see them.` : null,
         newsSourcesConfigured: !!(ctx.providers.finnhub || ctx.providers.sec),
@@ -962,10 +1033,13 @@ export function createToolbox(ctx, { ledger, turn }) {
     async simulate_trade(args) {
       const p = portfolio();
       const a = Object.fromEntries(['symbol', 'side', 'shares', 'fraction', 'cash_amount', 'target_weight_pct', 'price', 'fees', 'account'].map((k) => [k, v(args[k])]));
-      const quote = !findPositions(p, a.symbol).length && a.price == null ? await quoteFor(a.symbol) : null;
-      const cat = catalogLookup(ctx, a.symbol, null);
+      const held = findPositions(p, a.symbol).length > 0;
       const acct = a.account || findPositions(p, a.symbol)[0]?.account || (p.accounts.length === 1 ? p.accounts[0] : null);
-      const scenario = simulateTrade(p, { ...a, quote, currency: cat?.currency, exchange: cat?.exchange, typicalFee: acct ? typicalFee(db, acct) : null });
+      // Not held now: the user's own instrument record (e.g. sold earlier) comes before the catalog.
+      const own = held ? null : ownInstrument(db, a.symbol, { account: acct });
+      const quote = held || a.price != null ? null : own ? ownQuote(own, 'simulate_trade') : await quoteFor(a.symbol);
+      const cat = own ? null : catalogLookup(ctx, a.symbol, null);
+      const scenario = simulateTrade(p, { ...a, quote, currency: own?.currency ?? cat?.currency, exchange: own?.exchange ?? cat?.exchange, identityStatus: own?.identity_status, typicalFee: acct ? typicalFee(db, acct) : null });
       return registerScenario(p, scenario, a);
     },
 
@@ -973,15 +1047,20 @@ export function createToolbox(ctx, { ledger, turn }) {
       const p = portfolio();
       if (!Array.isArray(legs)) throw new Error('legs must be an array');
       const clean = legs.map((l) => (l && typeof l === 'object' ? Object.fromEntries(Object.entries(l).map(([k, x]) => [k, v(x)])) : {}));
-      // Quotes for tickers bought but not held (stored or fetched), like simulate_trade.
-      const quotes = {};
+      const acctOf = (leg) => leg.account || findPositions(p, leg.symbol)[0]?.account || (p.accounts.length === 1 ? p.accounts[0] : null);
+      // Tickers not held: the user's own instrument record, then the catalog; quotes
+      // for those bought (stored or fetched), like simulate_trade.
+      const pre = new Map();
       for (const leg of clean) {
-        if (leg.side === 'buy' && leg.symbol && leg.price == null && !findPositions(p, leg.symbol).length) quotes[String(leg.symbol).toUpperCase()] = await quoteFor(leg.symbol);
+        if (leg.side === 'convert' || !leg.symbol || findPositions(p, leg.symbol).length) continue;
+        const own = ownInstrument(db, leg.symbol, { account: acctOf(leg), exchange: leg.exchange });
+        pre.set(leg, { own, quote: leg.side === 'buy' && leg.price == null ? (own ? ownQuote(own, 'simulate_trades') : await quoteFor(leg.symbol)) : null });
       }
       const result = simulateTrades(p, clean, (leg) => {
-        const acct = leg.account || findPositions(p, leg.symbol)[0]?.account || (p.accounts.length === 1 ? p.accounts[0] : null);
-        const cat = leg.symbol ? catalogLookup(ctx, leg.symbol, null) : null;
-        return { currency: cat?.currency, exchange: cat?.exchange, typicalFee: acct ? typicalFee(db, acct) : null, quote: quotes[String(leg.symbol || '').toUpperCase()] || null };
+        const acct = acctOf(leg);
+        const { own, quote } = pre.get(leg) || {};
+        const cat = !own && leg.symbol ? catalogLookup(ctx, leg.symbol, leg.exchange || null) : null;
+        return { currency: own?.currency ?? cat?.currency, exchange: own?.exchange ?? cat?.exchange ?? leg.exchange, identityStatus: own?.identity_status, typicalFee: acct ? typicalFee(db, acct) : null, quote: quote || null };
       });
       const id = `S${turn.scenarios.length + turn.priorScenarioCount + 1}`;
       const ref = L.add({ key: `scenario:${id}`, kind: 'calculation', label: `Hypothetical multi-leg scenario ${id} (${result.legs.length} legs)`, source: 'Signal Desk trade calculator', asOf: now().toISOString(), tool: 'simulate_trades', note: 'hypothetical — not saved' });
