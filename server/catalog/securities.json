@@ -1,0 +1,1993 @@
+{
+  "generatedAt": "2026-10-21",
+  "notes": "Compiled 2026-10-21. METHOD: direct page fetching (WebFetch and curl) was blocked in the build environment (DNS failure / proxy 403), so every entry was checked through WebSearch results restricted to official domains (company investor-relations sites, fund-issuer pages, SEC EDGAR). 'verified' therefore means 'matched against official-source excerpts returned by search', not a full read of the page. Numeric figures are only those seen in those official excerpts; general business descriptions also draw on long-standing public facts and are kept conservative. Relationships are listed only where an official source was located; an empty list means none was verified, not that none exists. CHANGES FOUND: (1) SPCX: since June 12, 2026 it is SpaceX (Space Exploration Technologies Corp.) Class A stock on Nasdaq, and also a CIBC SpaceX CDR (CAD-hedged) on the TSX; the former SPCX fund (The SPAC and New Issue ETF) changed its ticker to SPCK on April 7, 2026. (2) Modine (MOD) completed the spin-off/combination of its Performance Technologies business with Gentherm on Oct 1, 2026 and plans to rename itself Modexus Solutions (shareholder vote pending; NYSE ticker expected to stay MOD). (3) Teck (TECK / TECK.B) merger of equals with Anglo American is pending (Anglo targets completion by March 2027; China approval outstanding); on completion Teck shares are to be exchanged at 1.3301 Anglo shares each. (4) iShares SOXX 3-for-1 forward split: split-adjusted trading from Nov 5, 2026. (5) Invesco QQQ converted from a unit investment trust to an open-end ETF in Dec 2025 (ticker unchanged). (6) Western Digital rebranded as 'WD' in Feb 2026; legal name and ticker WDC unchanged. (7) Constellation closed its Calpine acquisition Jan 7, 2026; Eaton closed Boyd Thermal Mar 12, 2026; Arm began selling its own chip (Arm AGI CPU). Dual listings: CLS (NYSE and TSX, same symbol), CCJ (NYSE) = CCO (TSX), TECK (NYSE) = TECK.B (TSX). This catalog is descriptive research data, not investment advice.",
+  "securities": [
+    {
+      "symbol": "NVDA",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "NVIDIA Corporation",
+      "type": "stock",
+      "category": "compute",
+      "oneLiner": "Designs GPUs, networking and software used for AI and graphics computing.",
+      "business": "NVIDIA designs graphics processing units (GPUs), complete data-center systems, networking (InfiniBand and Ethernet) and the CUDA software platform. Its Data Center platform sells accelerated computing and networking to cloud providers, AI labs and enterprises; it also sells Gaming, Professional Visualization and Automotive products. It is fabless and relies on outside foundries such as TSMC.",
+      "howItMakesMoney": "Sells chips, boards, full systems and networking, plus some software and services. Data Center was about 91% of revenue in Q4 fiscal 2026 ($62.3B of $68.1B), split between compute ($51.3B) and networking ($11.0B).",
+      "aiRole": "Primary supplier of accelerators and networking for AI training and inference clusters. Its FY2026 10-K describes reliance on TSMC/Samsung for wafers and SK Hynix/Micron/Samsung for memory.",
+      "aiConnection": "direct",
+      "supplyChainRole": "AI accelerators, systems & networking (fabless designer)",
+      "relationships": [
+        {
+          "text": "NVIDIA's FY2026 10-K says it uses foundries such as TSMC and Samsung for wafers and buys memory from SK Hynix, Micron and Samsung.",
+          "sourceUrl": "https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf"
+        }
+      ],
+      "risks": [
+        "Customer concentration: hyperscalers were slightly over half of Data Center revenue in Q4 FY2026 (CFO commentary)",
+        "US export controls on advanced AI chips",
+        "Dependence on TSMC wafer and advanced-packaging (CoWoS) capacity",
+        "Large customers developing in-house accelerators"
+      ],
+      "whyAttention": "Its Data Center revenue is the most direct read on AI accelerator spending.",
+      "investigateIf": [
+        "Data Center revenue growth slows sharply in a quarterly report",
+        "Gross margin moves materially away from the ~75% GAAP level reported for Q4 FY2026",
+        "Major customers shift announced capacity toward custom accelerators"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-fourth-quarter-and-fiscal-2026",
+      "sourceNote": "Checked via web-search excerpts of the official Q4 FY2026 press release, CFO commentary (SEC 8-K) and FY2026 10-K; direct page fetch was blocked by this environment's network policy. Later Q1/Q2 FY2027 releases also exist on SEC EDGAR.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "AMD",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Advanced Micro Devices, Inc.",
+      "type": "stock",
+      "category": "compute",
+      "oneLiner": "Designs CPUs, GPUs and AI accelerators for data centers, PCs and consoles.",
+      "business": "AMD designs EPYC server CPUs, Instinct GPU accelerators, Ryzen PC processors, semi-custom chips for game consoles, and embedded/adaptive chips. It is fabless and uses external foundries.",
+      "howItMakesMoney": "Reports Data Center, Client, Gaming and Embedded segments. In Q2 2026, Data Center was about $6.7B of $11.5B revenue (~58%), Client and Gaming $3.8B combined, and Embedded $977M.",
+      "aiRole": "Second major merchant GPU supplier for AI data centers (Instinct series) and a leading server-CPU supplier. OpenAI agreed to deploy 6 GW of AMD GPUs, starting with MI450 in 2026.",
+      "aiConnection": "direct",
+      "supplyChainRole": "AI accelerators & server CPUs (fabless designer)",
+      "relationships": [
+        {
+          "text": "OpenAI agreed (Oct 2025) to deploy 6 gigawatts of AMD Instinct GPUs over multiple generations, starting with 1 GW of MI450 in 2026; AMD issued OpenAI a warrant for up to 160 million AMD shares that vests with deployment milestones.",
+          "sourceUrl": "https://ir.amd.com/news-events/press-releases/detail/1260/amd-and-openai-announce-strategic-partnership-to-deploy-6-gigawatts-of-amd-gpus"
+        }
+      ],
+      "risks": [
+        "Execution on the MI450 / rack-scale GPU ramp in 2026",
+        "Competition from NVIDIA and from customers' custom accelerators",
+        "Export controls on AI chips",
+        "Dependence on TSMC manufacturing"
+      ],
+      "whyAttention": "It is the main merchant alternative to NVIDIA for AI GPUs, with a large OpenAI commitment.",
+      "investigateIf": [
+        "AMD reports the first OpenAI gigawatt deployment milestone",
+        "Data Center share of revenue keeps rising in quarterly reports",
+        "Instinct GPU revenue is guided or disclosed separately"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-2026-financial-results",
+      "sourceNote": "Checked via web-search excerpts of AMD's Q2 2026 press release and 8-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "AVGO",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Broadcom Inc.",
+      "type": "stock",
+      "category": "compute",
+      "oneLiner": "Makes networking chips and custom AI accelerators, plus infrastructure software (VMware).",
+      "business": "Broadcom designs semiconductors for networking, custom AI accelerators (XPUs) for large cloud and AI customers, broadband, storage and wireless. Its infrastructure software segment includes VMware and other enterprise software.",
+      "howItMakesMoney": "Two segments: semiconductor solutions ($20.8B, ~70% of Q3 FY2026 revenue of $29.6B) and infrastructure software ($8.8B, ~30%). AI semiconductor revenue was $16.7B in that quarter.",
+      "aiRole": "Co-designs custom AI accelerators for hyperscalers and AI labs and supplies Ethernet switching for AI clusters.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Custom AI accelerators (XPUs) & AI Ethernet networking",
+      "relationships": [
+        {
+          "text": "OpenAI and Broadcom announced (Oct 2025) a collaboration for 10 GW of OpenAI-designed accelerators and Broadcom networking racks, under a signed term sheet, targeted to deploy from 2H 2026 through 2029.",
+          "sourceUrl": "https://investors.broadcom.com/news-releases/news-release-details/openai-and-broadcom-announce-strategic-collaboration-deploy-10"
+        },
+        {
+          "text": "Broadcom announced (Apr 2026) an extended multi-year partnership to supply technology for Meta's MTIA custom silicon, with an initial commitment above 1 GW.",
+          "sourceUrl": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-announces-extended-partnership-meta-deploy-technology"
+        }
+      ],
+      "risks": [
+        "AI revenue concentrated in a few large custom-accelerator customers",
+        "OpenAI program began as a term sheet; deployment timing can shift",
+        "VMware licensing changes can drive customer churn",
+        "Dependence on TSMC for manufacturing"
+      ],
+      "whyAttention": "AI semiconductor revenue is growing fast and reflects hyperscalers' custom-chip plans.",
+      "investigateIf": [
+        "Q4 FY2026 AI semiconductor revenue versus the ~$21.7B guide",
+        "New custom-accelerator customers are announced",
+        "OpenAI accelerator deployments begin on schedule in late 2026"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.broadcom.com/news-releases/news-release-details/broadcom-inc-announces-third-quarter-fiscal-year-2026-financial",
+      "sourceNote": "Checked via web-search excerpts of Broadcom's Q3 FY2026 release and 8-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "ARM",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Arm Holdings plc",
+      "type": "adr",
+      "category": "compute",
+      "oneLiner": "Licenses CPU designs and instruction set; recently began selling its own chips.",
+      "business": "Arm develops the Arm CPU architecture and licenses processor designs (IP) used in most smartphones and increasingly in PCs, cars and data-center servers (Neoverse). In March 2026 it announced its first self-built silicon product, the Arm AGI CPU, aimed at data centers.",
+      "howItMakesMoney": "Upfront licensing fees plus per-chip royalties. Fiscal 2026 (ended March 2026) revenue was about $4.92B: royalties ~$2.61B and licensing and other ~$2.31B. It now also expects revenue from selling its own chips.",
+      "aiRole": "Arm-based server CPUs are used alongside AI accelerators; Arm says data-center royalties more than doubled year over year, and it reports over $2B of demand for its AGI CPU across fiscal 2027-2028.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "CPU architecture IP licensing; new data-center CPU silicon",
+      "relationships": [],
+      "risks": [
+        "Selling its own chips may put Arm in competition with its licensees",
+        "New manufacturing and supply-chain risks from producing silicon (flagged in its annual report)",
+        "Royalty growth depends on smartphone cycles and adoption of newer Arm versions",
+        "Exposure to China and export rules"
+      ],
+      "whyAttention": "Data-center royalties and its first in-house CPU tie it increasingly to AI servers.",
+      "investigateIf": [
+        "Arm reports first meaningful revenue from the AGI CPU",
+        "Data-center royalty growth continues in quarterly results",
+        "Major licensees respond publicly to Arm selling competing silicon"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/0001973239/000197323926000062/exhibit992fye26q431-marx26.htm",
+      "sourceNote": "Checked via web-search excerpts of Arm's Q4 FYE26 shareholder letter (SEC 6-K), 20-F and Arm newsroom (newsroom.arm.com/blog/introducing-arm-agi-cpu); direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Nasdaq-listed American Depositary Shares of a UK company."
+    },
+    {
+      "symbol": "MRVL",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Marvell Technology, Inc.",
+      "type": "stock",
+      "category": "compute",
+      "oneLiner": "Designs data-center chips: custom AI silicon, optical DSPs, and networking/storage controllers.",
+      "business": "Marvell designs semiconductors for data infrastructure, including custom accelerators/ASICs for cloud companies, electro-optics (DSPs for optical modules), Ethernet switching and storage controllers, and also serves carrier and enterprise networking markets.",
+      "howItMakesMoney": "Chip sales by end market; data center is the largest. Q2 fiscal 2027 revenue was $2.739B (+37% year over year), and the 10-Q attributes the increase mainly to data-center sales rising 46%.",
+      "aiRole": "Supplies optical DSPs used in AI cluster interconnects and builds custom AI silicon for hyperscalers.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Custom AI silicon & optical interconnect DSPs",
+      "relationships": [
+        {
+          "text": "Marvell and AWS announced (Dec 2024) a five-year, multi-generational agreement covering custom AI products, optical DSPs, AEC DSPs, PCIe retimers, DCI optical modules and Ethernet switching silicon.",
+          "sourceUrl": "https://investor.marvell.com/news-events/press-releases/detail/121/marvell-expands-strategic-collaboration-with-aws-to-enable-accelerated-infrastructure-for-ai-in-the-cloud"
+        }
+      ],
+      "risks": [
+        "Reliance on a few hyperscale customers for custom silicon",
+        "An analyst claim (Dec 2025) that Marvell lost next-generation Trainium design wins; not confirmed by Amazon",
+        "Competition from Broadcom and others in custom ASICs and optical DSPs"
+      ],
+      "whyAttention": "Optical interconnect and custom-chip revenue scale with AI cluster build-outs.",
+      "investigateIf": [
+        "Q3 FY2027 revenue versus the ~$3.15B guide",
+        "New custom-silicon customer wins are disclosed",
+        "Data-center share of revenue shifts in the next 10-Q"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.marvell.com/news-events/press-releases/detail/1031/marvell-technology-inc-reports-second-quarter-of-fiscal-year-2027-financial-results",
+      "sourceNote": "Checked via web-search excerpts of Marvell's Q2 FY2027 release and 10-Q; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "TSM",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Taiwan Semiconductor Manufacturing Company Limited",
+      "type": "adr",
+      "category": "semi_mfg",
+      "oneLiner": "Contract chip manufacturer (foundry) producing chips designed by other companies.",
+      "business": "TSMC is the largest dedicated semiconductor foundry, manufacturing logic chips for customers on advanced process nodes and providing advanced packaging (such as CoWoS). Its fabs are mainly in Taiwan, with expansion in the US, Japan and Germany.",
+      "howItMakesMoney": "Wafer manufacturing and packaging revenue. High-performance computing (HPC) was 68% of Q3 2026 revenue of US$46.72B, ahead of smartphones.",
+      "aiRole": "Manufactures most leading AI accelerators and the packaging that joins them with HBM memory.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Leading-edge wafer fabrication & advanced packaging",
+      "relationships": [
+        {
+          "text": "NVIDIA's FY2026 10-K names TSMC (with Samsung) as a foundry producing its wafers.",
+          "sourceUrl": "https://s201.q4cdn.com/141608511/files/doc_financials/2026/q4/10K-NVDA.pdf"
+        }
+      ],
+      "risks": [
+        "Geopolitical risk concentrated in Taiwan",
+        "Higher costs at overseas fabs can dilute margins",
+        "Customer concentration among a few large chip designers",
+        "Consumer and price-sensitive end markets described as challenged (Q3 2026 call)"
+      ],
+      "whyAttention": "HPC (largely AI) now dominates its revenue, so its guidance tracks AI chip demand.",
+      "investigateIf": [
+        "Q4 2026 revenue lands within the US$52.3-54.3B guidance",
+        "Capex or advanced-packaging capacity plans change",
+        "HPC share of revenue rises or falls in the next report"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-10/526b65af7305df2dde6b9ece6812b1fdf1e49f9b/3Q26%20EarningsRelease.pdf",
+      "sourceNote": "Checked via web-search excerpts of TSMC's 3Q26 earnings release and call transcript (investor.tsmc.com) and SEC 6-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "NYSE ADR; each ADS represents five common shares, which trade on the Taiwan Stock Exchange as 2330 (TWD)."
+    },
+    {
+      "symbol": "ASML",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "ASML Holding N.V.",
+      "type": "stock",
+      "category": "semi_mfg",
+      "oneLiner": "Makes lithography machines, including EUV systems, used to pattern chips.",
+      "business": "ASML designs and builds photolithography systems (EUV and DUV) plus metrology and inspection tools that chipmakers use to print circuit patterns on wafers. It is the only supplier of EUV lithography systems.",
+      "howItMakesMoney": "System sales plus Installed Base Management (service and upgrades). Q3 2026 total net sales were EUR 11.7B: net system sales EUR 8.4B and Installed Base Management EUR 3.3B.",
+      "aiRole": "EUV tools are needed to make the leading-edge logic and DRAM used in AI chips; management said the EUV business grows over 45% in 2026.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Lithography equipment for chip fabs",
+      "relationships": [],
+      "risks": [
+        "Export restrictions on sales to China",
+        "Customer concentration among a few large chipmakers",
+        "Lumpy system orders tied to fab construction cycles"
+      ],
+      "whyAttention": "Sole EUV supplier; its outlook reflects leading-edge fab investment for AI chips.",
+      "investigateIf": [
+        "Q4 2026 sales land within the EUR 14.2-15.2B guidance",
+        "2027 outlook commentary on EUV demand",
+        "Changes in export licensing for China"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.asml.com/static-files/1b28fd8d-b513-476a-85a3-58f046d8a1df",
+      "sourceNote": "Checked via web-search excerpts of ASML's Q3 2026 press release, presentation and call transcript (investor.asml.com, SEC 6-K); direct page fetch was blocked by this environment's network policy. Net bookings were not found in the Q2/Q3 2026 excerpts.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Nasdaq line is New York Registry Shares (USD); the primary listing is Euronext Amsterdam (ASML, EUR)."
+    },
+    {
+      "symbol": "AMAT",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Applied Materials, Inc.",
+      "type": "stock",
+      "category": "semi_mfg",
+      "oneLiner": "Makes equipment for depositing, etching and modifying materials in chip manufacturing.",
+      "business": "Applied Materials supplies wafer-fabrication equipment for deposition, etch, ion implantation, planarization, inspection and other process steps, plus service, spares and upgrades through Applied Global Services. It also sells display manufacturing equipment.",
+      "howItMakesMoney": "Fiscal Q3 2026 revenue was $9.12B: Semiconductor Systems $7.04B (~77%), Applied Global Services about $1.8B, and a small Display/other remainder.",
+      "aiRole": "AI-driven demand for leading-edge logic, DRAM and advanced packaging increases equipment purchases; management cited AI when raising its 2026 Semiconductor Systems expectations.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Wafer-fab process equipment",
+      "relationships": [],
+      "risks": [
+        "China export restrictions and China revenue exposure",
+        "Cyclical memory and foundry capital spending",
+        "Competition from Lam Research, Tokyo Electron and others"
+      ],
+      "whyAttention": "Broad equipment exposure to AI-related logic, memory and packaging capacity additions.",
+      "investigateIf": [
+        "Fiscal Q4 2026 revenue versus the ~$10.25B guide",
+        "DRAM share of systems revenue keeps rising",
+        "New export-control actions affecting China sales"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://ir.appliedmaterials.com/news-releases/news-release-details/applied-materials-announces-third-quarter-2026-results",
+      "sourceNote": "Checked via web-search excerpts of Applied's Q3 FY2026 release, prepared remarks and 8-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "LRCX",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Lam Research Corporation",
+      "type": "stock",
+      "category": "semi_mfg",
+      "oneLiner": "Makes etch and deposition equipment used in semiconductor manufacturing.",
+      "business": "Lam Research designs and services wafer-fabrication equipment, mainly etch and deposition systems, used by memory, foundry and logic chipmakers. Its customer-support business sells service, spares, upgrades and non-leading-edge (Reliant) equipment.",
+      "howItMakesMoney": "Systems sales plus customer support-related revenue. In the June 2026 quarter, systems were $4.25B and customer support/other $2.47B of $6.72B; fiscal 2026 revenue was $23.2B.",
+      "aiRole": "Lam says AI is driving higher deposition and etch intensity in chipmaking, increasing demand for its tools.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Etch & deposition equipment for chip fabs",
+      "relationships": [],
+      "risks": [
+        "High exposure to memory capital-spending cycles",
+        "China export controls",
+        "Customer concentration among large chipmakers"
+      ],
+      "whyAttention": "Memory and advanced-node build-outs for AI drive demand for its etch and deposition tools.",
+      "investigateIf": [
+        "September 2026 quarter results versus guidance",
+        "Memory customers announce higher 2027 capex",
+        "Customer-support revenue keeps growing with the installed base"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://newsroom.lamresearch.com/2026-07-29-Lam-Research-Corporation-Reports-Financial-Results-for-the-Quarter-Ended-June-28,-2026?asPDF=",
+      "sourceNote": "Checked via web-search excerpts of Lam's June 2026 quarter release and March 2026 presentation; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "KLAC",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "KLA Corporation",
+      "type": "stock",
+      "category": "semi_mfg",
+      "oneLiner": "Makes inspection and measurement (process control) equipment for chip manufacturing.",
+      "business": "KLA supplies process-control systems (wafer and reticle inspection, metrology and related software) that chipmakers use to find defects and control yields, plus service. It also has smaller specialty-semiconductor process and PCB/component inspection businesses.",
+      "howItMakesMoney": "Equipment sales and recurring service; fiscal 2026 (ended June 2026) revenue was about $13.6B, mostly from semiconductor process control.",
+      "aiRole": "More complex AI chips and advanced packaging require more inspection and measurement steps, increasing process-control demand.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Yield/process-control inspection & metrology",
+      "relationships": [],
+      "risks": [
+        "China export restrictions",
+        "Wafer-fab equipment cyclicality",
+        "Customer concentration among leading foundries and memory makers"
+      ],
+      "whyAttention": "Process-control intensity rises with the advanced nodes and packaging used for AI chips.",
+      "investigateIf": [
+        "Fiscal Q1 2027 revenue versus the $4.0B (+/- $0.2B) guide",
+        "Advanced-packaging inspection revenue is disclosed as growing",
+        "Changes to China sales restrictions"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://ir.kla.com/news-events/press-releases/detail/518/kla-corporation-reports-fiscal-2026-fourth-quarter-and-full",
+      "sourceNote": "Checked via web-search excerpts of KLA's FY2026 Q4 release and 8-K; segment percentages were not in the excerpts, so no mix is stated. Direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "KLA's FY2026 release states per-share figures give effect to a stock split; adjust historical per-share data."
+    },
+    {
+      "symbol": "MU",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Micron Technology, Inc.",
+      "type": "stock",
+      "category": "memory",
+      "oneLiner": "Makes DRAM, high-bandwidth memory (HBM) and NAND flash memory chips.",
+      "business": "Micron designs and manufactures DRAM, HBM, NAND flash and SSDs in its own fabs. It reports through business units serving cloud, core data-center, mobile/client and automotive/embedded customers.",
+      "howItMakesMoney": "Sells memory and storage products; revenue moves with memory pricing. Its Cloud Memory Business Unit covers hyperscale customers and HBM for all data-center customers.",
+      "aiRole": "Supplies HBM stacked memory that sits next to AI accelerators; Micron says it is in high-volume HBM4 production designed for NVIDIA's Vera Rubin platform.",
+      "aiConnection": "direct",
+      "supplyChainRole": "DRAM/HBM & NAND memory for AI servers",
+      "relationships": [
+        {
+          "text": "Micron announced (Mar 2026) high-volume production of HBM4 designed for NVIDIA Vera Rubin.",
+          "sourceUrl": "https://investors.micron.com/news/press-release/2026/Micron-in-High-Volume-Production-of-HBM4-Designed-for-NVIDIA-Vera-Rubin-PCIe-Gen6-SSD-and-SOCAMM2-03-16-2026/default.aspx"
+        }
+      ],
+      "risks": [
+        "Memory pricing is highly cyclical",
+        "HBM competition with SK hynix and Samsung",
+        "Large, sustained capital-spending commitments",
+        "Trade restrictions involving China"
+      ],
+      "whyAttention": "HBM supply is a bottleneck for AI accelerators, and Micron is one of three suppliers.",
+      "investigateIf": [
+        "HBM4E volume ramp stays on track for calendar 2027",
+        "Memory pricing commentary turns negative in the next earnings report",
+        "Capex guidance rises sharply"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/0000723125/000072312526000023/mu-20260903.htm",
+      "sourceNote": "Checked via web-search excerpts of Micron's FY2026 10-K, quarterly 8-K releases and investor press releases; direct page fetch was blocked by this environment's network policy. Q4 FY2026 revenue was not captured in the excerpts.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "SNDK",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Sandisk Corporation",
+      "type": "stock",
+      "category": "memory",
+      "oneLiner": "Makes NAND flash memory, SSDs, and consumer storage products.",
+      "business": "Sandisk designs and makes NAND flash and products built on it: data-center and client SSDs, embedded storage, memory cards and USB drives. It was separated from Western Digital in February 2025 and manufactures flash through its Flash Ventures joint ventures with Kioxia in Japan.",
+      "howItMakesMoney": "Sells flash by end market. Fiscal Q4 2026 revenue of $8.97B came from Edge ($5.43B), Datacenter ($2.98B) and Consumer ($0.56B).",
+      "aiRole": "Enterprise SSDs store data for AI workloads; Datacenter grew from 12% to 38% of bits shipped between Q4 FY2025 and Q4 FY2026.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "NAND flash & SSD storage",
+      "relationships": [
+        {
+          "text": "Sandisk and Kioxia extended their Yokkaichi (and aligned Kitakami) joint-venture agreements through Dec 31, 2034; Sandisk pays Kioxia US$1.165B over 2026-2029.",
+          "sourceUrl": "https://investor.sandisk.com/news-releases/news-release-details/kioxia-and-sandisk-extend-yokkaichi-joint-venture-agreement"
+        }
+      ],
+      "risks": [
+        "NAND pricing drove much of recent growth and can reverse",
+        "Dependence on Kioxia joint-venture fabs",
+        "Competition from Samsung, SK hynix, Micron and Kioxia"
+      ],
+      "whyAttention": "Datacenter SSD demand from AI workloads is now a large, fast-growing share.",
+      "investigateIf": [
+        "Datacenter share of revenue keeps rising",
+        "Management signals NAND price declines",
+        "New enterprise SSD qualifications with hyperscalers"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.sandisk.com/news-releases/news-release-details/sandisk-reports-fiscal-fourth-quarter-2026-financial-results",
+      "sourceNote": "Checked via web-search excerpts of Sandisk's fiscal Q4 2026 release, investor presentation and FY2026 10-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Spun off from Western Digital in Feb 2025; Nasdaq ticker SNDK."
+    },
+    {
+      "symbol": "WDC",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Western Digital Corporation",
+      "type": "stock",
+      "category": "memory",
+      "oneLiner": "Makes hard disk drives, mainly high-capacity drives for cloud data centers.",
+      "business": "Western Digital (branded 'WD' since February 2026) designs and manufactures hard disk drives, mostly high-capacity nearline drives for cloud and enterprise data centers. It separated its flash business into Sandisk in February 2025.",
+      "howItMakesMoney": "Drive sales; Cloud was 89% of fiscal 2026 revenue ($11.49B of $12.92B).",
+      "aiRole": "Bulk storage of data created and used by AI workloads drives exabyte demand from hyperscalers.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "High-capacity HDD storage for data centers",
+      "relationships": [],
+      "risks": [
+        "Concentration in a few hyperscale customers",
+        "Pricing and capacity discipline in a two-major-supplier HDD market could change",
+        "Competition from flash storage for some workloads"
+      ],
+      "whyAttention": "Cloud storage demand linked to AI data growth now drives nearly all revenue.",
+      "investigateIf": [
+        "Fiscal Q1 2027 revenue versus the ~$4.1B guide",
+        "Exabyte shipments and pricing per exabyte keep rising",
+        "Timing of next-generation higher-capacity drive ramps"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.wdc.com/news-releases/news-release-details/wd-reports-fiscal-fourth-quarter-and-fiscal-year-2026-financial",
+      "sourceNote": "Checked via web-search excerpts of WD's fiscal Q4 2026 release, FY2026 annual report and 10-K cover page; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Rebranded as 'WD' on Feb 1, 2026; legal name (Western Digital Corporation) and Nasdaq ticker WDC unchanged."
+    },
+    {
+      "symbol": "STX",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Seagate Technology Holdings plc",
+      "type": "stock",
+      "category": "memory",
+      "oneLiner": "Makes hard disk drives and storage systems, mostly for cloud data centers.",
+      "business": "Seagate designs and manufactures hard disk drives and storage systems; its Mozaic drives use heat-assisted magnetic recording (HAMR) to increase capacity per drive.",
+      "howItMakesMoney": "Drive sales; fiscal 2026 revenue was $12.2B, and about 90% of exabytes shipped were nearline drives for cloud and enterprise data centers.",
+      "aiRole": "AI-related data growth increases demand for low-cost bulk storage in cloud data centers.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "High-capacity HDD storage for data centers",
+      "relationships": [],
+      "risks": [
+        "Hyperscale customer concentration",
+        "HAMR (Mozaic) ramp execution",
+        "Cyclical cloud storage purchasing"
+      ],
+      "whyAttention": "Its HAMR-based capacity roadmap is tied to cloud storage growth from AI data.",
+      "investigateIf": [
+        "Mozaic/HAMR qualifications expand beyond the five large cloud customers cited",
+        "Exabyte shipment growth continues",
+        "Gross-margin trend in the next quarterly results"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.seagate.com/news/news-details/2026/Seagate-Technology-Reports-Fiscal-Fourth-Quarter-and-Fiscal-Year-2026-Financial-Results/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of Seagate's fiscal Q4/FY2026 release and earlier FY2026 releases; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "ANET",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Arista Networks, Inc.",
+      "type": "stock",
+      "category": "networking",
+      "oneLiner": "Sells Ethernet switches, routers and network software for data centers and campuses.",
+      "business": "Arista designs high-speed Ethernet switches and routers running its EOS software, used in cloud, AI and enterprise data centers and campus networks. It sells hardware plus software subscriptions and support.",
+      "howItMakesMoney": "Mostly product sales plus services. Q2 2026 revenue was $3.036B; two customers accounted for 26% and 16% of 2025 revenue.",
+      "aiRole": "Supplies Ethernet switching for AI cluster networks, including 1.6-terabit platforms for AI fabrics.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Data-center & AI Ethernet switching",
+      "relationships": [
+        {
+          "text": "Arista's FY2023 10-K named Meta Platforms and Microsoft as cloud customers each above 10% of revenue in 2022 and 2023 (later 10-Ks show two >10% customers without naming them in the excerpts seen).",
+          "sourceUrl": "https://www.sec.gov/Archives/edgar/data/1596532/000159653224000043/anet-20231231.htm"
+        }
+      ],
+      "risks": [
+        "Heavy customer concentration in a few cloud companies",
+        "Competition from NVIDIA, Cisco and white-box switches",
+        "Component supply constraints"
+      ],
+      "whyAttention": "AI cluster networking increasingly uses Ethernet, Arista's core market.",
+      "investigateIf": [
+        "Q3 2026 revenue (reporting Nov 3) versus the ~$3.3B guide",
+        "Company disclosure of AI networking revenue targets",
+        "Changes in top-customer concentration"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.arista.com/Communications/Press-Releases-and-Events/Press-Release-Detail/2026/Arista-Networks-Inc--Reports-Second-Quarter-2026-Financial-Results/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of Arista's Q2 2026 release and 10-K filings; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "CSCO",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Cisco Systems, Inc.",
+      "type": "stock",
+      "category": "networking",
+      "oneLiner": "Sells networking equipment, security and collaboration software, and related services.",
+      "business": "Cisco sells switches, routers, wireless and Silicon One-based systems, plus security, collaboration and observability software and services, to enterprises, service providers and cloud companies.",
+      "howItMakesMoney": "Product sales (Networking is the largest category) and recurring services/subscriptions. Fiscal Q4 2026 revenue was $17.3B; FY2026 hyperscaler AI infrastructure orders were $9.3B, and Cisco expects about $7.5B of AI infrastructure revenue in FY2027.",
+      "aiRole": "Supplies AI networking systems to hyperscalers and enterprises, including switches built on NVIDIA Spectrum-X silicon.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Enterprise & hyperscale networking; AI networking systems",
+      "relationships": [
+        {
+          "text": "Cisco and NVIDIA expanded their partnership (Feb 2025): Cisco Silicon One with NVIDIA SuperNICs became part of NVIDIA's Spectrum-X Ethernet platform.",
+          "sourceUrl": "https://investor.cisco.com/news/news-details/2025/Cisco-Expands-Partnership-with-NVIDIA-to-Accelerate-AI-Adoption-in-the-Enterprise/default.aspx"
+        }
+      ],
+      "risks": [
+        "AI revenue is still a small share of a large, mature business",
+        "Competition from Arista and NVIDIA in data-center networking",
+        "Enterprise IT spending cycles"
+      ],
+      "whyAttention": "Fast-growing hyperscaler AI orders could change its growth profile.",
+      "investigateIf": [
+        "AI infrastructure revenue tracks the ~$7.5B FY2027 expectation",
+        "Product order growth stays above 20%",
+        "New hyperscaler wins are disclosed"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.cisco.com/news/news-details/2026/CISCO-REPORTS-FOURTH-QUARTER-AND-FISCAL-YEAR-2026-EARNINGS/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of Cisco's Q4 FY2026 release, 8-K and 10-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "CIEN",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Ciena Corporation",
+      "type": "stock",
+      "category": "networking",
+      "oneLiner": "Makes optical networking equipment and software for telecom carriers and cloud providers.",
+      "business": "Ciena sells optical transport systems and coherent optics, routing and switching platforms, and Blue Planet automation software, plus services, to telecom carriers, cloud providers and enterprises.",
+      "howItMakesMoney": "Mostly hardware sales; Optical Networking was about 71% of fiscal Q3 2026 revenue, which rose about 37% year over year.",
+      "aiRole": "Provides optical links between and within data centers that carry AI traffic; Ciena describes optics as the transport layer for monetizing AI.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Optical transport & data-center interconnect",
+      "relationships": [],
+      "risks": [
+        "Customer concentration in large carriers and cloud providers",
+        "Component supply constraints",
+        "Carrier spending cycles"
+      ],
+      "whyAttention": "Data-center interconnect demand from AI build-outs is lifting optical orders.",
+      "investigateIf": [
+        "Fiscal 2026 revenue versus the ~$6.3B guide",
+        "Backlog and cloud-provider order commentary in the next report",
+        "Margins as new long-term supplier agreements take effect"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/0000936395/000162828026060361/cien-20260801.htm",
+      "sourceNote": "Checked via web-search excerpts of Ciena's fiscal Q3 2026 10-Q and earnings presentation (SEC 8-K); direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "COHR",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Coherent Corp.",
+      "type": "stock",
+      "category": "networking",
+      "oneLiner": "Makes optical transceivers, lasers and engineered materials for datacom and industry.",
+      "business": "Coherent makes optical transceivers and components for data-center and telecom networks, lasers for industrial uses, and engineered materials.",
+      "howItMakesMoney": "Two segments: Datacenter & Communications (the larger, faster-growing one) and Industrial. Fiscal Q4 2026 revenue was $2.05B, up 34% year over year.",
+      "aiRole": "Supplies high-speed optical transceivers that connect GPUs and switches in AI clusters; the CEO cites AI data centers moving from copper to optical links.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Optical transceivers & photonic components",
+      "relationships": [],
+      "risks": [
+        "Intense price competition in transceivers",
+        "Customer concentration among hyperscalers",
+        "Execution on manufacturing capacity expansion"
+      ],
+      "whyAttention": "Optical transceiver demand scales with AI cluster size.",
+      "investigateIf": [
+        "Datacenter & Communications growth continues in fiscal Q1 2027",
+        "Capacity expansion milestones are announced",
+        "Gross-margin progress in the next report"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://ir.coherent.com/news-releases/news-release-details/coherent-corp-reports-fourth-quarter-and-full-year-fiscal-2026",
+      "sourceNote": "Checked via web-search excerpts of Coherent's fiscal Q4 2026 release and 8-K; segment figures came from a partial table, so no exact mix is stated. Direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "CRDO",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Credo Technology Group Holding Ltd",
+      "type": "stock",
+      "category": "networking",
+      "oneLiner": "Makes connectivity chips and active electrical cables for high-speed data-center links.",
+      "business": "Credo designs high-speed connectivity products: active electrical cables (AECs), optical transceivers/DSPs, retimers and SerDes IP, used to link servers, switches and accelerators.",
+      "howItMakesMoney": "Product sales (AECs and chips) plus IP licensing; fiscal Q1 2027 revenue was $479.0M, up about 115% year over year.",
+      "aiRole": "Its AECs and retimers connect GPUs, NICs and switches inside AI racks and clusters.",
+      "aiConnection": "direct",
+      "supplyChainRole": "High-speed copper/optical interconnect",
+      "relationships": [],
+      "risks": [
+        "High customer concentration among a few hyperscalers",
+        "Competition and a possible shift from copper to optical links",
+        "Dependence on outside foundries and cable assemblers"
+      ],
+      "whyAttention": "Revenue has more than doubled on AI rack connectivity demand.",
+      "investigateIf": [
+        "Q2 FY2027 revenue lands within the $525-535M guide",
+        "New hyperscaler customer ramps are disclosed",
+        "Customer-concentration data in the next 10-Q"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.credosemi.com/news-events/news/news-details/2026/Credo-Technology-Group-Holding-Ltd-Reports-First-Quarter-of-Fiscal-Year-2027-Financial-Results/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of Credo's Q1 FY2027 release and 8-K; AEC revenue share was not disclosed in the excerpts. Direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "CLS",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Celestica Inc.",
+      "type": "stock",
+      "category": "networking",
+      "oneLiner": "Contract manufacturer building servers, networking gear and other electronics for customers.",
+      "business": "Celestica provides electronics manufacturing and supply-chain services and designs its own hardware platforms (networking, storage and compute) for hyperscalers and OEMs, plus aerospace, industrial and health-tech customers.",
+      "howItMakesMoney": "Connectivity & Cloud Solutions was $3.81B (~81%) of Q2 2026 revenue of $4.70B; Advanced Technology Solutions was $0.89B. Three customers were 32%, 17% and 14% of Q2 revenue.",
+      "aiRole": "Builds networking and compute hardware for hyperscalers and other data-center customers.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Hardware design & manufacturing for data-center networking/compute",
+      "relationships": [],
+      "risks": [
+        "Heavy concentration in three large customers",
+        "Thin manufacturing margins (CCS segment margin 8.7% in Q2 2026)",
+        "Customers can move programs to competitors or in-house"
+      ],
+      "whyAttention": "Data-center hardware demand lifted Q2 2026 revenue 62% and raised its 2026 outlook.",
+      "investigateIf": [
+        "2026 revenue tracks the $20.5B outlook",
+        "Customer-concentration percentages change",
+        "CCS segment margin trend"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://corporate.celestica.com/news-releases/news-release-details/celestica-announces-second-quarter-2026-financial-results",
+      "sourceNote": "Checked via web-search excerpts of Celestica's Q2 2026 release and an Aug 2026 prospectus supplement (listing info); direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Same symbol 'CLS' trades on NYSE (USD) and TSX (CAD). This entry describes the NYSE line; confirm which listing the brokerage account holds."
+    },
+    {
+      "symbol": "EQIX",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Equinix, Inc.",
+      "type": "stock",
+      "category": "datacenter",
+      "oneLiner": "Rents colocation space and interconnection in data centers worldwide; structured as a REIT.",
+      "business": "Equinix operates a global platform of data centers where customers rent space, power and cross-connects to networks and clouds. Its xScale program builds large facilities for hyperscalers through joint ventures.",
+      "howItMakesMoney": "Recurring colocation and interconnection fees plus non-recurring and xScale fees; Q2 2026 revenue was $2.625B, up 16% including one-time xScale fees.",
+      "aiRole": "Hosts AI inference and private AI deployments and builds hyperscale capacity via xScale.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Colocation & interconnection data centers",
+      "relationships": [],
+      "risks": [
+        "Power availability limits new capacity",
+        "High capital needs and interest-rate sensitivity",
+        "Competition from hyperscaler self-builds and other operators"
+      ],
+      "whyAttention": "Record bookings and backlog reflect data-center demand, including AI.",
+      "investigateIf": [
+        "Interconnection additions stay near the Q2 2026 record (9,700 net)",
+        "New xScale leasing announcements",
+        "Another guidance raise"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.equinix.com/news-events/press-releases/detail/1114/equinix-reports-second-quarter-results-raises-2026",
+      "sourceNote": "Checked via web-search excerpts of Equinix's Q2 2026 release and 10-Q; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "DLR",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Digital Realty Trust, Inc.",
+      "type": "stock",
+      "category": "datacenter",
+      "oneLiner": "Owns and leases data centers to cloud providers and enterprises; structured as a REIT.",
+      "business": "Digital Realty develops, owns and operates data centers worldwide, leasing large hyperscale facilities as well as smaller colocation and interconnection space.",
+      "howItMakesMoney": "Rental revenue and interconnection fees; Q2 2026 revenue was $1.9B (+29%), with a record backlog of $1.9B of annualized base rent at 100% share.",
+      "aiRole": "Leases high-density capacity to hyperscalers and AI tenants.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Wholesale & colocation data-center real estate",
+      "relationships": [],
+      "risks": [
+        "Power and construction constraints",
+        "Tenant concentration among hyperscalers",
+        "Interest-rate and financing sensitivity"
+      ],
+      "whyAttention": "Record backlog and large hyperscale leases point to sustained AI-era demand.",
+      "investigateIf": [
+        "Backlog converts to revenue on schedule",
+        "New hyperscale leases above recent levels",
+        "Renewal rent spreads stay positive"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.digitalrealty.com/news-releases/news-release-details/digital-realty-reports-second-quarter-2026-results",
+      "sourceNote": "Checked via web-search excerpts of Digital Realty's Q2 2026 release and 8-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "CRWV",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "CoreWeave, Inc.",
+      "type": "stock",
+      "category": "datacenter",
+      "oneLiner": "Rents GPU cloud computing capacity to AI labs, hyperscalers and enterprises.",
+      "business": "CoreWeave operates a specialized cloud offering NVIDIA GPU clusters, storage and software for AI training and inference in leased and owned data centers.",
+      "howItMakesMoney": "Mostly multi-year committed capacity contracts; Q2 2026 revenue was $2.575B and revenue backlog about $104B at June 30, 2026.",
+      "aiRole": "Pure-play AI compute provider whose capacity is consumed by AI model developers.",
+      "aiConnection": "direct",
+      "supplyChainRole": "GPU cloud (AI compute rental)",
+      "relationships": [
+        {
+          "text": "CoreWeave's contracts with OpenAI total about $22.4B (up to $11.9B in Mar 2025, up to $4B in May 2025, up to $6.5B in Sept 2025).",
+          "sourceUrl": "https://investors.coreweave.com/news/news-details/2025/CoreWeave-Expands-Agreement-with-OpenAI-by-up-to-6-5B/default.aspx"
+        },
+        {
+          "text": "CoreWeave and Meta announced (Apr 2026) an expanded agreement worth about $21B for AI cloud capacity through Dec 2032.",
+          "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-and-Meta-Announce-21-Billion-Expanded-AI-Infrastructure-Agreement/default.aspx"
+        }
+      ],
+      "risks": [
+        "Customer concentration in a few large AI labs and hyperscalers",
+        "Heavy debt financing of GPU purchases",
+        "Dependence on NVIDIA supply and on timely data-center power delivery",
+        "GAAP operating loss ($49M in Q2 2026)"
+      ],
+      "whyAttention": "Backlog and contracted power show how much AI compute demand is committed.",
+      "investigateIf": [
+        "Active power grows toward the ~4.2 GW contracted (as of Aug 11, 2026)",
+        "Backlog converts to revenue on schedule",
+        "Financing costs or debt terms change"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.coreweave.com/news/news-details/2026/CoreWeave-Reports-Strong-Second-Quarter-2026-Results/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of CoreWeave's Q2 2026 release and investor press releases; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "NBIS",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Nebius Group N.V.",
+      "type": "stock",
+      "category": "datacenter",
+      "oneLiner": "Provides GPU cloud infrastructure and services for AI developers.",
+      "business": "Nebius builds and operates AI-focused cloud data centers in Europe and the US, renting GPU clusters and providing AI software tools.",
+      "howItMakesMoney": "AI cloud services were $574.9M of $582.3M Q2 2026 revenue; it also signs large dedicated-capacity contracts with hyperscalers.",
+      "aiRole": "Pure-play AI compute provider (a 'neocloud').",
+      "aiConnection": "direct",
+      "supplyChainRole": "GPU cloud (AI compute rental)",
+      "relationships": [
+        {
+          "text": "Nebius agreed (Sept 2025) to provide Microsoft dedicated GPU capacity from its Vineland, New Jersey data center; contract value about $17.4B through 2031 (up to ~$19.4B with options).",
+          "sourceUrl": "https://nebius.com/newsroom/nebius-announces-multi-billion-dollar-agreement-with-microsoft-for-ai-infrastructure"
+        },
+        {
+          "text": "Nebius has signed AI infrastructure agreements with Meta; its filings cite a multi-billion Nov 2025 deal and a later commitment by Meta to buy up to $15B of capacity over five years.",
+          "sourceUrl": "https://nebius.com/newsroom/nebius-signs-new-ai-infrastructure-agreement-with-meta"
+        }
+      ],
+      "risks": [
+        "Large capex funded partly by convertible notes and secured debt",
+        "Revenue concentration in Microsoft and Meta contracts",
+        "Execution risk delivering power and GPU capacity on schedule"
+      ],
+      "whyAttention": "Multi-billion contracts with Microsoft and Meta make it a fast-growing AI cloud.",
+      "investigateIf": [
+        "Contracted power reaches the 5 GW year-end target",
+        "Full-year 2026 guidance is reaffirmed or raised",
+        "New hyperscaler contracts are announced"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://nebius.com/newsroom/nebius-reports-second-quarter-2026-financial-results",
+      "sourceNote": "Checked via web-search excerpts of Nebius's Q2 2026 release, shareholder letter, newsroom and SEC 6-K filings; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Formerly Yandex N.V. (ticker YNDX), renamed Nebius Group in 2024; this history is background knowledge not re-checked in this review."
+    },
+    {
+      "symbol": "ORCL",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Oracle Corporation",
+      "type": "stock",
+      "category": "datacenter",
+      "oneLiner": "Sells database and business software, and rents cloud computing infrastructure (OCI).",
+      "business": "Oracle sells database software, cloud business applications and Oracle Cloud Infrastructure (OCI), which increasingly hosts large AI training and inference clusters.",
+      "howItMakesMoney": "Cloud services and license support make up most revenue. Fiscal Q1 2027 total revenue was $19.3B, OCI (IaaS) revenue $7.4B (+121%), and remaining performance obligations $664B.",
+      "aiRole": "Builds and operates large GPU data centers for AI customers, including OpenAI's Stargate sites.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Cloud infrastructure (AI compute) & enterprise software",
+      "relationships": [
+        {
+          "text": "OpenAI and Oracle agreed (July 2025) to develop 4.5 GW of additional Stargate data-center capacity in the US; OpenAI described the partnership as exceeding $300B over five years.",
+          "sourceUrl": "https://openai.com/index/stargate-advances-with-partnership-with-oracle/"
+        }
+      ],
+      "risks": [
+        "Very large capex and financing needs (it completed a $20B at-the-market equity sale)",
+        "Backlog concentrated in a few AI customers",
+        "Execution risk on data-center delivery timelines"
+      ],
+      "whyAttention": "Its $664B RPO is one of the largest disclosed AI-infrastructure commitments.",
+      "investigateIf": [
+        "OCI revenue growth stays above 100%",
+        "RPO converts to revenue as scheduled",
+        "Financing plans or capex guidance change"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.oracle.com/investor-news/news-details/2026/Oracle-Announces-Q1-Results-Driven-by-Triple-Digit-Growth-in-Cloud-Infrastructure-Revenues/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of Oracle's Q1 FY2027 release (investor.oracle.com, oracle.com) and OpenAI's announcement; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "VRT",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Vertiv Holdings Co",
+      "type": "stock",
+      "category": "cooling_electrical",
+      "oneLiner": "Builds cooling and power equipment for data centers.",
+      "business": "Vertiv designs, makes and services critical digital infrastructure: thermal management (including liquid cooling), UPS and power distribution, racks and monitoring for data centers, telecom and industrial sites.",
+      "howItMakesMoney": "Product sales plus services; Q2 2026 net sales were $3.27B (+24%), and 2026 guidance is about $14.0B at the midpoint.",
+      "aiRole": "Supplies liquid cooling and power systems for high-density AI racks and is developing 800 VDC power products aligned with NVIDIA platforms.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Thermal management & power distribution for data centers",
+      "relationships": [
+        {
+          "text": "Vertiv is collaborating with NVIDIA on 800 VDC power platform designs, with its 800 VDC portfolio planned for 2H 2026 to support NVIDIA Rubin Ultra in 2027.",
+          "sourceUrl": "https://investors.vertiv.com/news/news-details/2025/From-Vision-to-Readiness-Vertiv-Collaborates-with-NVIDIA-to-Advance-800-VDC-Platform-Designs-to-Power-the-Next-Generation-of-AI-Factories/default.aspx"
+        }
+      ],
+      "risks": [
+        "Supply-chain congestion and project timing (cited for Q2 2026)",
+        "Competition from Schneider Electric, Eaton and others",
+        "Dependence on data-center construction cycles"
+      ],
+      "whyAttention": "Orders and backlog track data-center construction for AI.",
+      "investigateIf": [
+        "Backlog growth continues in the next quarterly report",
+        "800 VDC products launch on schedule in 2H 2026",
+        "Adjusted operating margin holds above ~22%"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.vertiv.com/news/news-details/2026/Vertiv-Reports-Strong-Second-Quarter-2026-with-Diluted-EPS-Growth-of-53-Adjusted-Diluted-EPS-Growth-of-60-Raises-Full-Year-2026-Guidance-Across-All-Key-Metrics/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of Vertiv's Q2 2026 release and 8-K; Q2 2026 orders/backlog were not in the excerpts (latest seen: $15.0B backlog at Q4 2025). Direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "ETN",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Eaton Corporation plc",
+      "type": "stock",
+      "category": "cooling_electrical",
+      "oneLiner": "Makes electrical power equipment, plus aerospace and vehicle components.",
+      "business": "Eaton manufactures electrical distribution and power-management equipment (switchgear, UPS, power distribution) and, since acquiring Boyd Thermal in March 2026, liquid-cooling products; it also has aerospace and vehicle/eMobility businesses and has announced a plan to separate its Mobility business.",
+      "howItMakesMoney": "Electrical Americas is the largest segment ($4.0B sales in Q2 2026), alongside Electrical Global, Aerospace and vehicle-related segments. Electrical-sector data-center orders rose about 85% year over year in Q2 2026.",
+      "aiRole": "Supplies power distribution, UPS and liquid cooling for AI data centers and collaborates with NVIDIA on 800 VDC 'grid-to-chip' designs.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Electrical power distribution & cooling for data centers",
+      "relationships": [
+        {
+          "text": "Eaton completed the acquisition of liquid-cooling provider Boyd Thermal (announced at $9.5B) on Mar 12, 2026.",
+          "sourceUrl": "https://www.eaton.com/us/en-us/company/news-insights/news-releases/2026/eaton-completes-acquisition-of-leading-liquid-cooling-solutions-provider-boyd-thermal.html"
+        },
+        {
+          "text": "Eaton collaborated with NVIDIA on its Beam Rubin DSX platform, integrated with NVIDIA's Vera Rubin DSX AI Factory reference design.",
+          "sourceUrl": "https://www.eaton.com/us/en-us/company/news-insights/news-releases/2026/eaton-collaborates-with-nvidia-to-unveil-its-beam-rubin-dsx-platform.html"
+        }
+      ],
+      "risks": [
+        "Weakness in residential and industrial end markets",
+        "Integration of the Boyd Thermal acquisition",
+        "Execution on the planned Mobility separation"
+      ],
+      "whyAttention": "Data-center orders are a fast-growing driver within its large electrical business.",
+      "investigateIf": [
+        "Data-center order growth stays strong in Q3 2026",
+        "Boyd Thermal revenue contribution is disclosed",
+        "Mobility separation proceeds toward its expected Q1 2027 close"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.eaton.com/us/en-us/company/news-insights/news-releases/2026/eaton-reports-record-second-quarter-2026-results.html",
+      "sourceNote": "Checked via web-search excerpts of Eaton's Q2 2026 release, analyst presentation, 10-Q and press releases; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "NVT",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "nVent Electric plc",
+      "type": "stock",
+      "category": "cooling_electrical",
+      "oneLiner": "Makes electrical enclosures, connection products and data-center liquid cooling.",
+      "business": "nVent makes enclosures, electrical connection and fastening products, and data-center cooling products such as liquid-cooling systems, organized as Systems Protection and Electrical Connections.",
+      "howItMakesMoney": "Product sales through distributors and OEMs; Q2 2026 sales were $1.5B (+53%, +47% organic), with data-center growth and new products contributing more than 30 points of growth.",
+      "aiRole": "Supplies liquid cooling and rack/power infrastructure for AI data centers.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Liquid cooling & electrical enclosures for data centers",
+      "relationships": [
+        {
+          "text": "nVent announced (Oct 2026) a cooling collaboration with AMD for the AMD Helios rack-scale platform.",
+          "sourceUrl": "https://investors.nvent.com/press-releases/press-release-details/2026/nVent-and-AMD-Collaborate-on-Cooling-for-AMD-Helios-Rackscale-Solution/default.aspx"
+        }
+      ],
+      "risks": [
+        "Execution on liquid-cooling capacity expansions",
+        "Exposure to construction and industrial cycles",
+        "Competition in data-center liquid cooling"
+      ],
+      "whyAttention": "Liquid-cooling demand from AI racks is driving rapid sales growth.",
+      "investigateIf": [
+        "Second Blaine, MN liquid-cooling site starts production (expected 1H 2027)",
+        "Data-center share of sales is disclosed",
+        "Full-year guidance is raised again"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/0001720635/000162828026051203/q22026nvtpressrelease.htm",
+      "sourceNote": "Checked via web-search excerpts of nVent's Q2 2026 release (SEC 8-K) and investor press releases; segment-level figures were not in the excerpts. Direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "MOD",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Modine Manufacturing Company",
+      "type": "stock",
+      "category": "cooling_electrical",
+      "oneLiner": "Makes data-center cooling equipment and commercial HVAC and refrigeration systems.",
+      "business": "After spinning off its Performance Technologies business and combining it with Gentherm on Oct 1, 2026, Modine is focused on climate solutions: data-center chillers and cooling (Airedale by Modine), commercial HVAC and refrigeration, and heat-transfer products.",
+      "howItMakesMoney": "Equipment sales. In the June 2026 quarter (before the spin-off), net sales were $874.1M and data-center revenue grew about 90%; it has a $4B+ supply agreement with a data-center customer for 2027-2029.",
+      "aiRole": "Supplies chillers and cooling systems for hyperscale and AI data centers.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Data-center chillers & cooling systems",
+      "relationships": [
+        {
+          "text": "Modine announced (May 2026) a $4B+ long-term capacity agreement to sell Airedale data-center cooling products to an unnamed strategic data-center customer in 2027-2029, with a $165M upfront payment.",
+          "sourceUrl": "https://investors.modine.com/news/news-details/2026/Modine-Announces-Landmark-4-Billion-Long-Term-Capacity-Agreement-through-2029-with-Strategic-Data-Center-Customer-for-Airedale-by-Modine-Cooling-Solutions/default.aspx"
+        },
+        {
+          "text": "Modine completed the spin-off of Performance Technologies and its combination with Gentherm (Nasdaq: THRM) via a Reverse Morris Trust; Gentherm acquired the Modine brand.",
+          "sourceUrl": "https://investors.modine.com/news/news-details/2026/Modine-Completes-Spin-off-and-Combination-of-its-Performance-Technologies-Business-with-Gentherm/default.aspx"
+        }
+      ],
+      "risks": [
+        "Supply-chain constraints limited data-center production and margins in the June 2026 quarter",
+        "Customer concentration in hyperscale data-center buyers",
+        "Separation and rebranding costs after the spin-off"
+      ],
+      "whyAttention": "Now a near pure-play on data-center cooling plus commercial HVAC.",
+      "investigateIf": [
+        "Shareholders approve the rename to Modexus Solutions",
+        "Data-center margins recover as supply constraints ease",
+        "First quarterly results excluding Performance Technologies"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.modine.com/news/news-details/2026/Modine-Reports-First-Quarter-Fiscal-2027-Results/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of Modine's Q1 FY2027 release, spin-off completion release, capacity-agreement release and SEC 8-K/425 filings; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Completed Performance Technologies spin-off/combination with Gentherm on Oct 1, 2026. Plans to rename to 'Modexus Solutions' (shareholder vote pending; NYSE ticker expected to remain MOD). Gentherm now owns the Modine brand, so 'Modine'-branded products may belong to Gentherm. Historical financials include the spun-off business."
+    },
+    {
+      "symbol": "HPS.A",
+      "exchange": "TSX",
+      "currency": "CAD",
+      "name": "Hammond Power Solutions Inc.",
+      "type": "stock",
+      "category": "cooling_electrical",
+      "oneLiner": "Makes dry-type transformers and related electrical products in North America and India.",
+      "business": "Hammond Power Solutions designs and manufactures dry-type and other transformers and related power-quality products for utility, industrial, commercial and data-centre customers, with plants in Canada, the US, Mexico and India. It describes itself as North America's largest dry-type transformer maker.",
+      "howItMakesMoney": "Transformer sales; Q2 2026 sales were a record $325M (+44.7% year over year), and backlog was 96.9% higher than a year earlier.",
+      "aiRole": "Transformers step down power for data-centre equipment; management ties demand to data-centre investment, electrification and power infrastructure spending.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Dry-type transformers for electrical distribution",
+      "relationships": [
+        {
+          "text": "HPS signed a definitive agreement (Feb 2026) to acquire AEG Power Solutions, subject to regulatory approvals; no closing announcement was found.",
+          "sourceUrl": "https://americas.hammondpowersolutions.com/news/2026/february/hps-aeg-power-solutions-aquisition"
+        }
+      ],
+      "risks": [
+        "Family control through unlisted Class B shares",
+        "Copper and steel input-cost swings",
+        "Integration risk if the AEG Power Solutions deal closes",
+        "Demand tied to US construction and data-centre cycles"
+      ],
+      "whyAttention": "Record backlog tied to data-centre and grid spending in a Canadian-listed small cap.",
+      "investigateIf": [
+        "AEG Power Solutions acquisition closes",
+        "Backlog stays near record levels",
+        "Gross margin stays above ~30%"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://americas.hammondpowersolutions.com/news/2026/july/Quarter-2-2026-Financial-Results",
+      "sourceNote": "Checked via web-search excerpts of HPS's Q2 2026 release and company filings (listing and share structure); direct page fetch was blocked by this environment's network policy. Reporting currency assumed CAD per TSX filings; confirm in the full report.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "TSX Class A subordinate voting shares (HPS.A, CAD); Class B shares are not listed. Do not confuse with Power Solutions International (PSIX), a different US company."
+    },
+    {
+      "symbol": "CEG",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Constellation Energy Corporation",
+      "type": "stock",
+      "category": "power_grid",
+      "oneLiner": "Generates and sells electricity, mainly from a large US nuclear fleet.",
+      "business": "Constellation owns and operates nuclear plants and, since acquiring Calpine on Jan 7, 2026 (about $21.8B), a large natural-gas and geothermal fleet; it sells power and energy services to wholesale, commercial and retail customers.",
+      "howItMakesMoney": "Wholesale and contracted power sales plus commercial/retail energy supply, increasingly including long-term contracts with data-center operators.",
+      "aiRole": "Sells long-term carbon-free power to hyperscalers for data centers (Microsoft, Meta).",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Nuclear & gas power generation",
+      "relationships": [
+        {
+          "text": "20-year power purchase agreement with Microsoft (Sept 2024) supporting the restart of Three Mile Island Unit 1 as the Crane Clean Energy Center (~835 MW).",
+          "sourceUrl": "https://investors.constellationenergy.com/news-releases/news-release-details/constellation-launch-crane-clean-energy-center-restoring-jobs"
+        },
+        {
+          "text": "20-year PPA with Meta (June 2025) for 1,121 MW from the Clinton Clean Energy Center, beginning June 2027.",
+          "sourceUrl": "https://investors.constellationenergy.com/news-releases/news-release-details/constellation-meta-sign-20-year-deal-clean-reliable-nuclear"
+        }
+      ],
+      "risks": [
+        "Nuclear outage and operating risk (86 refueling outage days in Q2 2026)",
+        "Power-price and market-rule changes",
+        "Crane restart depends on NRC approval and schedule",
+        "Calpine integration and required asset sales"
+      ],
+      "whyAttention": "Hyperscalers are signing 20-year nuclear power contracts with it.",
+      "investigateIf": [
+        "New long-term data-center contracts are announced",
+        "Crane restart stays on schedule",
+        "Brazos Valley sale to LS Power closes by year-end"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/0001868275/000186827526000104/ceg-20260630.htm",
+      "sourceNote": "Checked via web-search excerpts of Constellation's Q2 2026 10-Q and earnings release and its investor press releases; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "VST",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Vistra Corp.",
+      "type": "stock",
+      "category": "power_grid",
+      "oneLiner": "Generates electricity from gas, nuclear and coal plants and sells retail power.",
+      "business": "Vistra is an integrated power company combining a large retail electricity business with a generation fleet of natural gas, nuclear, coal, solar and battery storage plants.",
+      "howItMakesMoney": "Retail electricity sales and wholesale generation, heavily hedged (about 94% of expected 2027 generation hedged as of Aug 3, 2026).",
+      "aiRole": "Signs long-term nuclear power contracts with hyperscalers for data centers.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Power generation & retail electricity",
+      "relationships": [
+        {
+          "text": "20-year PPA with AWS for 1,200 MW from the Comanche Peak nuclear plant, with delivery expected to begin Q4 2027; Vistra also announced Helix Digital Infrastructure with KKR, KIA and NVIDIA (initial Vistra commitment up to $1.0B).",
+          "sourceUrl": "https://investor.vistracorp.com/2026-08-07-Vistra-Reports-Second-Quarter-2026-Results"
+        },
+        {
+          "text": "20-year PPAs with Meta (Jan 2026) for more than 2,600 MW from the Perry, Davis-Besse and Beaver Valley nuclear plants, including planned uprates.",
+          "sourceUrl": "https://investor.vistracorp.com/2026-01-09-Vistra-and-Meta-Announce-Agreements-to-Support-Nuclear-Plants-in-PJM-and-Add-New-Nuclear-Generation-to-the-Grid"
+        }
+      ],
+      "risks": [
+        "Power-price and weather volatility",
+        "Market-design changes in ERCOT and PJM",
+        "Environmental rules affecting coal and gas plants",
+        "Large mark-to-market hedge swings in GAAP results"
+      ],
+      "whyAttention": "Nuclear contracts with AWS and Meta tie part of its fleet to data-center demand.",
+      "investigateIf": [
+        "Additional data-center PPAs are announced",
+        "Helix Digital Infrastructure investments are detailed",
+        "Cogentrix acquisition closes"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investor.vistracorp.com/2026-08-07-Vistra-Reports-Second-Quarter-2026-Results",
+      "sourceNote": "Checked via web-search excerpts of Vistra's Q2 2026 release, 10-Q and Jan 2026 Meta release; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "GEV",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "GE Vernova Inc.",
+      "type": "stock",
+      "category": "power_grid",
+      "oneLiner": "Makes gas turbines, wind turbines and grid electrification equipment.",
+      "business": "GE Vernova makes and services power-generation equipment (gas, steam, nuclear, hydro), onshore and offshore wind turbines, and grid/electrification equipment and software.",
+      "howItMakesMoney": "Equipment sales plus long-term services; Q2 2026 revenue was $11.1B and orders $24.2B, with total backlog of $176B.",
+      "aiRole": "Data-center power demand is driving gas-turbine orders; Electrification booked $2.7B of data-center orders in Q2 2026.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Power generation & grid equipment",
+      "relationships": [
+        {
+          "text": "Crusoe ordered 29 LM2500XPRESS aeroderivative gas turbines (nearly 1 GW combined) to power AI data centers (announced July 2025).",
+          "sourceUrl": "https://www.gevernova.com/news/press-releases/ge-vernova-crusoe-announce-major-29-unit-aeroderivative-gas-turbine-deliver-ai-data-centers"
+        }
+      ],
+      "risks": [
+        "Wind segment losses and offshore execution",
+        "Gas-turbine manufacturing capacity constraints",
+        "Supply-chain constraints and pricing cycles"
+      ],
+      "whyAttention": "Gas-turbine backlog is a direct read on power build-outs for data centers.",
+      "investigateIf": [
+        "Gas Power backlog plus slot reservations reach at least 125 GW by year-end 2026",
+        "Electrification data-center orders keep growing",
+        "Wind profitability improves"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.gevernova.com/news/articles/ge-vernova-releases-second-quarter-2026-financial-results",
+      "sourceNote": "Checked via web-search excerpts of GE Vernova's Q2 2026 release, call transcript and SEC 8-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "PWR",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Quanta Services, Inc.",
+      "type": "stock",
+      "category": "power_grid",
+      "oneLiner": "Contractor that builds and maintains electric grids and underground utility infrastructure.",
+      "business": "Quanta is a specialty contractor that engineers, builds and maintains electric transmission, distribution and substations, power-generation and renewable projects, and underground utility and industrial infrastructure.",
+      "howItMakesMoney": "Contract revenue from utilities and other customers; Q2 2026 revenue was $9.56B and total backlog a record $53.4B, with electric work the larger segment.",
+      "aiRole": "Builds grid and substation infrastructure needed to connect data centers and new generation.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Grid construction & utility services",
+      "relationships": [],
+      "risks": [
+        "Skilled-labor availability and project execution",
+        "Utility capex and permitting delays",
+        "Cost overruns on fixed-price contracts"
+      ],
+      "whyAttention": "Record backlog reflects utility and data-center-driven grid spending.",
+      "investigateIf": [
+        "Backlog keeps rising in Q3 2026",
+        "Data-center-related project wins are disclosed",
+        "Underground segment margin trend"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.quantaservices.com/news-events/press-releases/detail/402/quanta-services-reports-second-quarter-2026-results",
+      "sourceNote": "Checked via web-search excerpts of Quanta's Q2 2026 release, commentary and 10-Q; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "OKLO",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Oklo Inc.",
+      "type": "stock",
+      "category": "power_grid",
+      "oneLiner": "Developing small fast-fission nuclear power plants; first plant targeted for 2028.",
+      "business": "Oklo is developing the Aurora powerhouse, a fast-fission reactor line rated 15-75 MWe (potentially 100 MWe+), and also pursues nuclear fuel recycling and radioisotope businesses. It has a DOE site use permit at Idaho National Laboratory and is targeting its first powerhouse in 2028.",
+      "howItMakesMoney": "No electricity sales yet. Its first revenue (about $1.2M in Q2 2026) came from acquired engineering, fabrication and other services; it plans to sell power under long-term agreements once plants operate.",
+      "aiRole": "Targets data-center customers; agreed with Meta to develop a 1.2 GW nuclear campus in Pike County, Ohio.",
+      "aiConnection": "speculative",
+      "supplyChainRole": "Advanced nuclear power developer (pre-commercial)",
+      "relationships": [
+        {
+          "text": "Oklo and Meta announced (Jan 2026) an agreement supporting a 1.2 GW Oklo campus in Pike County, Ohio, including a mechanism for Meta to prepay for power.",
+          "sourceUrl": "https://oklo.com/newsroom/oklo-meta-announce-agreement-in-support-of-1-2-gw-nuclear-energy-development-in-southern-ohio"
+        }
+      ],
+      "risks": [
+        "No licensed, operating reactor yet; NRC licensing timeline uncertain",
+        "First-of-a-kind construction cost and schedule risk",
+        "HALEU fuel supply availability",
+        "Ongoing losses (net loss $48.5M in Q2 2026) funded by equity raises"
+      ],
+      "whyAttention": "Data-center developers are signing early agreements for its future reactors.",
+      "investigateIf": [
+        "NRC accepts or approves a license application for an Aurora plant",
+        "Construction progress at the INL site toward the 2028 target",
+        "Definitive terms of the Meta prepayment are disclosed"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/0001849056/000162828026054571/oklo-20260630.htm",
+      "sourceNote": "Checked via web-search excerpts of Oklo's Q2 2026 10-Q, earnings release and newsroom; direct page fetch was blocked by this environment's network policy. Labelled speculative: power revenue depends on reactors not yet built.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "ROK",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Rockwell Automation, Inc.",
+      "type": "stock",
+      "category": "robotics",
+      "oneLiner": "Makes industrial automation hardware and software for factories.",
+      "business": "Rockwell Automation sells programmable controllers, drives, motion control, sensors, industrial software and lifecycle services (Allen-Bradley and FactoryTalk brands) to manufacturers.",
+      "howItMakesMoney": "Three segments: Intelligent Devices ($1.1B), Software & Control ($751M) and Lifecycle Services ($482M) in fiscal Q3 2026, of $2.31B total sales.",
+      "aiRole": "No meaningful AI-infrastructure role; it adds AI features to industrial software and sells factory automation.",
+      "aiConnection": "none",
+      "supplyChainRole": "Industrial automation & control systems",
+      "relationships": [],
+      "risks": [
+        "Industrial capital-spending cycles",
+        "Trade policy affecting manufacturing investment",
+        "Competition from Siemens and others"
+      ],
+      "whyAttention": "A bellwether for the factory automation that AI-enabled robotics would rely on.",
+      "investigateIf": [
+        "Fiscal 2027 guidance (due with Q4 results)",
+        "Software & Control margins keep expanding",
+        "Organic growth stays at or above ~10%"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.rockwellautomation.com/en-us/company/news/press-releases/Rockwell-Automation-Reports-Third-Quarter-2026-Results.html",
+      "sourceNote": "Checked via web-search excerpts of Rockwell's fiscal Q3 2026 release and 10-Q; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "TER",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Teradyne, Inc.",
+      "type": "stock",
+      "category": "robotics",
+      "oneLiner": "Makes automated test equipment for chips and electronics, plus collaborative robots.",
+      "business": "Teradyne sells semiconductor test systems, product/system test equipment, and robotics through Universal Robots (collaborative arms) and Mobile Industrial Robots.",
+      "howItMakesMoney": "Q2 2026 revenue of $1.33B: Semiconductor Test $1.12B (~84%), Product Test $107M, Robotics $100M.",
+      "aiRole": "Tests AI accelerators, networking chips and memory; the company said about 70% of Q1 2026 revenue was tied to AI-related demand.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Semiconductor test equipment; collaborative robots",
+      "relationships": [],
+      "risks": [
+        "Concentrated semiconductor customer base",
+        "Lumpy test-equipment demand",
+        "Robotics is small relative to test and has lagged"
+      ],
+      "whyAttention": "AI chip and memory testing roughly doubled revenue year over year.",
+      "investigateIf": [
+        "Q3 2026 revenue lands within the $1.2-1.3B guide",
+        "Robotics revenue growth resumes",
+        "Memory test strength persists"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.teradyne.com/news-events/press-releases/detail/445/teradyne-reports-second-quarter-2026-results",
+      "sourceNote": "Checked via web-search excerpts of Teradyne's Q2 and Q1 2026 releases and 8-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Listed under robotics as requested, but most revenue is semiconductor test equipment."
+    },
+    {
+      "symbol": "SYM",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Symbotic Inc.",
+      "type": "stock",
+      "category": "robotics",
+      "oneLiner": "Designs and installs robotic automation systems for warehouses and distribution centers.",
+      "business": "Symbotic builds robotic case-handling systems for distribution centers and, since acquiring Walmart's Advanced Systems and Robotics business in January 2025, automated store pickup/delivery systems. Walmart has been its main customer since 2015.",
+      "howItMakesMoney": "System installation revenue recognized over deployment, plus software and operation services; fiscal Q3 2026 revenue was $721M (+22%).",
+      "aiRole": "Uses AI/software to run warehouse robots; no meaningful role in the AI-infrastructure supply chain.",
+      "aiConnection": "none",
+      "supplyChainRole": "Warehouse robotics & automation",
+      "relationships": [
+        {
+          "text": "Symbotic acquired Walmart's Advanced Systems and Robotics business (Jan 2025) and signed an agreement to develop pickup/delivery systems; Walmart's commitment to buy 400 systems depends on performance metrics.",
+          "sourceUrl": "https://www.symbotic.com/news/symbotic-completes-acquisition-of-walmarts-advanced-systems-and-robotics-business-and-signs-related-commercial-agreement/"
+        }
+      ],
+      "risks": [
+        "Heavy dependence on Walmart",
+        "Long, lumpy installation projects",
+        "Margin variability across deployments"
+      ],
+      "whyAttention": "Large-scale warehouse robotics with a multi-billion Walmart-linked backlog.",
+      "investigateIf": [
+        "Walmart pickup/delivery system performance metrics are met",
+        "New non-Walmart customers are announced",
+        "Profitability holds after Q3 FY2026 net income of $55M"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://ir.symbotic.com/news-releases/news-release-details/symbotic-reports-third-quarter-fiscal-year-2026-results",
+      "sourceNote": "Checked via web-search excerpts of Symbotic's fiscal Q3 2026 release, annual report and Walmart transaction release; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "ISRG",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Intuitive Surgical, Inc.",
+      "type": "stock",
+      "category": "robotics",
+      "oneLiner": "Makes da Vinci surgical robots, Ion lung biopsy systems and their instruments.",
+      "business": "Intuitive designs robotic-assisted surgical systems (da Vinci, including da Vinci 5 and SP) and the Ion endoluminal system, and sells the instruments, accessories and services used with them.",
+      "howItMakesMoney": "Recurring instruments and accessories (about $1.73B in Q2 2026) plus system sales/leases and service; the da Vinci installed base was 12,094 systems at Sept 30, 2026.",
+      "aiRole": "No meaningful AI-infrastructure role; a robotics company using software and data in surgical systems.",
+      "aiConnection": "none",
+      "supplyChainRole": "Surgical robotics",
+      "relationships": [],
+      "risks": [
+        "Hospital capital budgets and reimbursement",
+        "Competition from newer surgical robot makers",
+        "Procedure growth slowing (2026 da Vinci guide 13.5-15.5%)"
+      ],
+      "whyAttention": "The leading commercial robotics business, with recurring revenue.",
+      "investigateIf": [
+        "Procedure growth falls below the guidance range",
+        "da Vinci 5 placements keep rising",
+        "New competitor approvals in major markets"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://isrg.intuitive.com/news-releases/news-release-details/intuitive-announces-third-quarter-earnings-5",
+      "sourceNote": "Checked via web-search excerpts of Intuitive's Q3 2026 release and Q2 2026 10-Q; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "MP",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "MP Materials Corp.",
+      "type": "stock",
+      "category": "materials",
+      "oneLiner": "Mines and processes rare earths and makes rare-earth magnets in the US.",
+      "business": "MP Materials operates the Mountain Pass rare-earth mine and processing facility in California and is building US magnet manufacturing in Texas (Fort Worth, and the planned 10X campus in Northlake).",
+      "howItMakesMoney": "Sales of NdPr oxide/metal and rare-earth concentrate plus a growing Magnetics segment ($16.5M of $108.5M Q2 2026 revenue); it also records price-protection income under its US government agreement.",
+      "aiRole": "No direct AI-infrastructure role; magnets are used in motors for EVs, robotics, drones and industrial equipment.",
+      "aiConnection": "speculative",
+      "supplyChainRole": "Rare-earth mining, separation & magnets",
+      "relationships": [
+        {
+          "text": "Apple and MP Materials announced (July 2025) a $500M agreement for US-made magnets from recycled material, with shipments expected to begin in 2027.",
+          "sourceUrl": "https://mpmaterials.com/news/mp-materials-and-apple-announce-500-million-partnership-to-produce-recycled-rare-earth-magnets-in-the-united-states/"
+        },
+        {
+          "text": "Public-private partnership with the US Department of Defense (July 2025): $400M preferred equity, a $110/kg NdPr price floor, a loan, and a 10-year offtake for magnets from the 10X facility.",
+          "sourceUrl": "https://mpmaterials.com/news/mp-materials-announces-transformational-public-private-partnership-with-the-department-of-defense-to-accelerate-u-s-rare-earth-magnet-independence/"
+        }
+      ],
+      "risks": [
+        "Rare-earth price volatility and Chinese supply/export policy",
+        "Magnet-plant ramp execution (10X commissioning expected 2028)",
+        "Reliance on government support agreements"
+      ],
+      "whyAttention": "One of few non-Chinese rare-earth magnet supply chains, with US government backing.",
+      "investigateIf": [
+        "Magnetics segment revenue scales in coming quarters",
+        "Apple magnet shipments start in 2027",
+        "10X construction milestones are reported"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.mpmaterials.com/investor-news/news-details/2026/MP-Materials-Reports-Second-Quarter-2026-Results/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of MP's Q2 2026 release and company news releases; direct page fetch was blocked by this environment's network policy. MP's filings now refer to the counterparty as the Department of War (same agency).",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "FCX",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Freeport-McMoRan Inc.",
+      "type": "stock",
+      "category": "materials",
+      "oneLiner": "Mines copper, gold and molybdenum in the Americas and Indonesia.",
+      "business": "Freeport operates large copper mines in North and South America and the Grasberg minerals district in Indonesia (PT Freeport Indonesia), producing copper, gold and molybdenum.",
+      "howItMakesMoney": "Metal sales at market prices; 2026 sales guidance is about 3.1B lbs of copper, 650k oz of gold and 93M lbs of molybdenum.",
+      "aiRole": "Copper is used heavily in data centers, grids and power equipment; the link to AI is indirect.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Copper mining",
+      "relationships": [],
+      "risks": [
+        "Grasberg ramp-up after the September 2025 incident",
+        "Copper price volatility",
+        "Indonesian regulatory and export policy"
+      ],
+      "whyAttention": "Copper demand from grids and data centers is a common AI-infrastructure thesis.",
+      "investigateIf": [
+        "Q3 2026 results (Oct 27) show Grasberg ramp progress",
+        "Sustained copper price moves",
+        "2027 production guidance"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://investors.fcx.com/investors/news-releases/news-release-details/2026/Freeport-Reports-Second-Quarter-and-Six-Month-2026-Results/default.aspx",
+      "sourceNote": "Checked via web-search excerpts of Freeport's Q2 2026 release (SEC 8-K), 10-Q and Q3 2026 operational update; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "ALB",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Albemarle Corporation",
+      "type": "stock",
+      "category": "materials",
+      "oneLiner": "Produces lithium and specialty chemicals such as bromine.",
+      "business": "Albemarle produces lithium compounds for batteries (Energy Storage) and specialty chemicals including bromine (Specialties). It sold a 51% stake in its Ketjen refining-catalyst business in March 2026.",
+      "howItMakesMoney": "Q2 2026 net sales of $1.7B: Energy Storage $1.3B and Specialties $423M; results swing with lithium prices.",
+      "aiRole": "No meaningful AI role; lithium demand is driven mainly by EVs and grid storage.",
+      "aiConnection": "none",
+      "supplyChainRole": "Lithium & specialty chemicals",
+      "relationships": [],
+      "risks": [
+        "Lithium price volatility",
+        "Changes in EV demand",
+        "Operational incidents (e.g., June 2026 fire at Talison CGP3)"
+      ],
+      "whyAttention": "Sometimes grouped with grid-storage themes; mainly an EV-battery materials company.",
+      "investigateIf": [
+        "Lithium pricing trend in the next quarter",
+        "Changes to capex and production guidance",
+        "Management cites grid-storage demand growth"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.albemarle.com/us/en/news/albemarle-reports-second-quarter-2026-results",
+      "sourceNote": "Checked via web-search excerpts of Albemarle's Q2 2026 release and 8-K; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "CCJ",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Cameco Corporation",
+      "type": "stock",
+      "category": "materials",
+      "oneLiner": "Mines uranium and provides nuclear fuel services; owns 49% of Westinghouse.",
+      "business": "Cameco mines and mills uranium in Saskatchewan (including McArthur River/Key Lake), provides conversion and fuel-fabrication services, and owns 49% of Westinghouse Electric in partnership with Brookfield.",
+      "howItMakesMoney": "Uranium and fuel-services sales, largely under long-term contracts, plus its share of Westinghouse earnings. 2026 uranium production outlook is 19.5-21.5M lbs (its share).",
+      "aiRole": "Supplies fuel for nuclear plants signing data-center power deals; Westinghouse could build new reactors under a US government partnership.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Uranium mining & nuclear fuel; reactor technology via Westinghouse",
+      "relationships": [
+        {
+          "text": "The US government, Brookfield and Cameco signed a binding term sheet (Oct 2025) under which the government would arrange financing/approvals for at least $80B of new Westinghouse reactors and receive a participation interest.",
+          "sourceUrl": "https://www.cameco.com/media/news/united-states-government-brookfield-and-cameco-announce-transformational-partnership"
+        }
+      ],
+      "risks": [
+        "Uranium price volatility",
+        "Mine and conversion operating disruptions",
+        "Westinghouse new-build agreements not yet definitive"
+      ],
+      "whyAttention": "Nuclear demand from data centers raises fuel and reactor-construction prospects.",
+      "investigateIf": [
+        "Definitive US government/Westinghouse reactor agreements are signed",
+        "Long-term uranium contract pricing trend",
+        "Production stays within the 2026 outlook"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/0001009001/000119312526326768/d125942dex991.htm",
+      "sourceNote": "Checked via web-search excerpts of Cameco's Q2 2026 6-K, call transcript, stock-information page and partnership release; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Same company trades as CCJ on NYSE (USD) and CCO on TSX (CAD). Confirm which line the brokerage account holds."
+    },
+    {
+      "symbol": "TECK",
+      "exchange": "NYSE",
+      "currency": "USD",
+      "name": "Teck Resources Limited",
+      "type": "stock",
+      "category": "materials",
+      "oneLiner": "Mines copper and zinc and operates a metals refinery in Canada.",
+      "business": "Teck produces copper (mines in Chile and British Columbia) and zinc, and operates the Trail Operations metals refinery in BC. It has agreed to a merger of equals with Anglo American to form Anglo Teck.",
+      "howItMakesMoney": "Metal sales; Q2 2026 copper production was 135,900 tonnes and adjusted EBITDA was $2.2B (Teck reports in CAD).",
+      "aiRole": "Copper supplier with an indirect link to grid and data-center build-outs.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Copper & zinc mining",
+      "relationships": [
+        {
+          "text": "Merger of equals with Anglo American (announced Sept 2025): each Teck Class A and Class B share is to be exchanged for 1.3301 Anglo American shares; shareholders approved Dec 9, 2025; regulatory approvals still pending.",
+          "sourceUrl": "https://www.teck.com/news/news-releases/2025/teck-and-anglo-american-to-combine-through-merger-of-equals-to-form-a-global-critical-minerals-champion"
+        }
+      ],
+      "risks": [
+        "Pending merger will replace Teck shares with Anglo American/Anglo Teck shares",
+        "Timing of the remaining regulatory approval (China)",
+        "Copper and zinc price volatility"
+      ],
+      "whyAttention": "Copper exposure, with a pending combination into Anglo Teck.",
+      "investigateIf": [
+        "China regulatory approval and merger completion (Anglo targets by March 2027)",
+        "Final listing arrangements for Anglo Teck shares/ADRs",
+        "Copper production versus guidance"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.teck.com/media/Teck-Q2-2026-Unaudited-Results.pdf",
+      "sourceNote": "Checked via web-search excerpts of Teck's Q2 2026 results, Teck/Anglo American merger releases and Anglo's AGM/leadership releases; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "NYSE: TECK (Class B, USD); TSX: TECK.B (Class B, CAD) and TECK.A (Class A). Merger with Anglo American is pending (not completed as of Oct 2026); on completion Teck shares are to be exchanged for Anglo shares, so the TECK/TECK.B lines are expected to stop trading."
+    },
+    {
+      "symbol": "SMH",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "VanEck Semiconductor ETF",
+      "type": "etf",
+      "category": "thematic_etf",
+      "oneLiner": "Holds about 25 of the largest US-listed semiconductor companies.",
+      "business": "Passively tracks the MVIS US Listed Semiconductor 25 Index (MarketVector), made up of the 25 largest US-listed semiconductor companies, including foreign firms such as TSMC; constituents must earn at least 50% of revenue from semiconductors.",
+      "howItMakesMoney": "Returns come from the holdings; VanEck charges an expense ratio (listed at 0.35%).",
+      "aiRole": "Concentrated in chip designers, manufacturers and equipment makers that supply AI build-outs.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Fund: semiconductor basket",
+      "relationships": [],
+      "risks": [
+        "Concentration in a few large holdings",
+        "Semiconductor-cycle volatility",
+        "Taiwan/China geopolitical exposure through holdings"
+      ],
+      "whyAttention": "A single-ticker way to hold much of the AI chip supply chain.",
+      "investigateIf": [
+        "Top-holding weights change materially at a rebalance",
+        "Semiconductor index drawdown exceeds 20%",
+        "Expense ratio or index methodology changes"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.vaneck.com/us/en/investments/semiconductor-etf-smh/",
+      "sourceNote": "Checked via web-search excerpts of VanEck's SMH page and fact sheet; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "SOXX",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "iShares Semiconductor ETF",
+      "type": "etf",
+      "category": "thematic_etf",
+      "oneLiner": "Holds the 30 largest US-listed semiconductor companies (NYSE Semiconductor Index).",
+      "business": "Passively tracks the NYSE Semiconductor Index, a modified market-cap-weighted index of the 30 largest US-listed semiconductor companies. The index provider revised the methodology effective around Sept 21, 2026 (annual reconstitution in September).",
+      "howItMakesMoney": "Returns come from the holdings; BlackRock charges an expense ratio.",
+      "aiRole": "Holds chip designers, equipment makers and memory firms tied to AI build-outs.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Fund: semiconductor basket",
+      "relationships": [],
+      "risks": [
+        "Concentration in the semiconductor sector",
+        "Semiconductor-cycle volatility",
+        "Index methodology changes alter holdings"
+      ],
+      "whyAttention": "Common core holding for semiconductor/AI-hardware exposure.",
+      "investigateIf": [
+        "Price history looks broken around Nov 5, 2026 (3-for-1 split)",
+        "Holdings shift after the revised index methodology",
+        "Semiconductor index drawdown exceeds 20%"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.ishares.com/us/products/239705/ishares-semiconductor-etf",
+      "sourceNote": "Checked via web-search excerpts of the iShares SOXX page, fact sheet, summary prospectus and Aug/Sept/Oct 2026 prospectus supplements; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "3-for-1 forward share split: record date Nov 3, 2026, split-adjusted trading from Nov 5, 2026. Share counts and per-share prices will change."
+    },
+    {
+      "symbol": "QQQ",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "Invesco QQQ (formerly Invesco QQQ Trust, Series 1)",
+      "type": "etf",
+      "category": "broad_etf",
+      "oneLiner": "Tracks the Nasdaq-100: the 100 largest non-financial Nasdaq-listed companies.",
+      "business": "Passively tracks the Nasdaq-100 Index. Shareholders approved (Dec 19, 2025) converting it from a unit investment trust to an open-end ETF, which allows income reinvestment and securities lending and cut the expense ratio from 0.20% to 0.18%.",
+      "howItMakesMoney": "Returns come from the holdings; Invesco charges a 0.18% expense ratio.",
+      "aiRole": "Heavily weighted to large technology companies, including AI chip makers and cloud providers.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Fund: large-cap Nasdaq basket",
+      "relationships": [],
+      "risks": [
+        "Concentration in a handful of mega-cap technology stocks",
+        "Valuation sensitivity to interest rates",
+        "Excludes financials, so sector mix is narrow"
+      ],
+      "whyAttention": "Common broad holding with heavy exposure to AI-linked megacaps.",
+      "investigateIf": [
+        "Top-10 weight concentration rises further",
+        "Index rebalancing rules change",
+        "Nasdaq-100 drawdown exceeds 15%"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.invesco.com/us-rest/contentdetail?contentId=13a2a8ea-b6e1-490e-a15b-1103475d503c&dnsName=us&title=invesco-qqq-shareholders-vote-to-approve-modernization",
+      "sourceNote": "Checked via web-search excerpts of Invesco's Dec 2025 shareholder-vote release and proxy pages; the fund's exact post-conversion legal name was not confirmed. Direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Converted from UIT to open-end ETF in Dec 2025 (ticker unchanged). Not the same fund as QQQM (Invesco NASDAQ 100 ETF)."
+    },
+    {
+      "symbol": "VOO",
+      "exchange": "NYSE Arca",
+      "currency": "USD",
+      "name": "Vanguard S&P 500 ETF",
+      "type": "etf",
+      "category": "broad_etf",
+      "oneLiner": "Tracks the S&P 500 index of large US companies.",
+      "business": "Passively tracks the S&P 500 Index of large US companies.",
+      "howItMakesMoney": "Returns come from the holdings; Vanguard charges a 0.03% expense ratio.",
+      "aiRole": "Broad exposure; includes AI-related large caps among its roughly 500 holdings.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Fund: US large-cap basket",
+      "relationships": [],
+      "risks": [
+        "Concentration in the largest US companies",
+        "Broad US equity-market risk",
+        "No currency hedging for non-USD investors"
+      ],
+      "whyAttention": "Baseline benchmark to compare AI-focused holdings against.",
+      "investigateIf": [
+        "Top-10 weight concentration rises further",
+        "S&P 500 drawdown exceeds 15%",
+        "Expense ratio changes"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://advisors.vanguard.com/investments/products/voo/vanguard-sp-500-etf",
+      "sourceNote": "Checked via web-search excerpts of Vanguard's VOO product page and June 30, 2026 fact sheet; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Do not confuse with VFV (Vanguard Canada's S&P 500 ETF on TSX in CAD)."
+    },
+    {
+      "symbol": "VFV",
+      "exchange": "TSX",
+      "currency": "CAD",
+      "name": "Vanguard S&P 500 Index ETF",
+      "type": "etf",
+      "category": "broad_etf",
+      "oneLiner": "Tracks the S&P 500 in Canadian dollars, without currency hedging.",
+      "business": "Seeks to track the S&P 500 (benchmark: S&P 500 CAD NY Rate NTR 15%) by investing directly or indirectly in large US companies; unhedged, so returns include USD/CAD currency moves.",
+      "howItMakesMoney": "Returns come from the holdings; Vanguard charges a management fee (search excerpts gave inconsistent fee figures; check the current MER on vanguard.ca).",
+      "aiRole": "Broad US exposure; includes AI-related large caps.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Fund: US large-cap basket (CAD)",
+      "relationships": [],
+      "risks": [
+        "USD/CAD currency swings (unhedged)",
+        "Concentration in the largest US companies",
+        "Foreign withholding tax drag on dividends"
+      ],
+      "whyAttention": "Common Canadian-listed core holding with US mega-cap tech exposure.",
+      "investigateIf": [
+        "Large USD/CAD moves affect returns",
+        "S&P 500 drawdown exceeds 15%",
+        "Fee or structure changes on vanguard.ca"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.vanguard.ca/en/product/etf/equity/9563/vanguard-sp-500-index-etf",
+      "sourceNote": "Checked via web-search excerpts of Vanguard Canada's VFV product page and products-at-a-glance document; fee figures were inconsistent and are omitted. Direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Unhedged; the CAD-hedged S&P 500 version trades as VSP."
+    },
+    {
+      "symbol": "XEQT",
+      "exchange": "TSX",
+      "currency": "CAD",
+      "name": "iShares Core Equity ETF Portfolio",
+      "type": "etf",
+      "category": "broad_etf",
+      "oneLiner": "All-equity fund of iShares ETFs covering Canadian, US and international stocks.",
+      "business": "Holds other iShares ETFs to reach a long-term target of about 25% Canadian, 45% US, 25% international developed and 5% emerging-market equities, seeking long-term capital growth.",
+      "howItMakesMoney": "Returns come from the underlying ETFs; BlackRock charges a management fee (issuer documents show roughly 0.17-0.20%; check the current figure).",
+      "aiRole": "Indirect AI exposure through US large-cap technology holdings in its underlying ETFs.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Fund: global all-equity portfolio",
+      "relationships": [],
+      "risks": [
+        "Full equity-market risk (no bonds)",
+        "Currency exposure on foreign holdings",
+        "Home bias: about a quarter in Canadian stocks"
+      ],
+      "whyAttention": "Common one-ticket Canadian portfolio; useful as a baseline.",
+      "investigateIf": [
+        "Target allocation or underlying ETFs change",
+        "Fee changes",
+        "Large equity-market drawdown"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.blackrock.com/ca/investors/en/products/309480/ishares-core-equity-etf-portfolio",
+      "sourceNote": "Checked via web-search excerpts of BlackRock Canada's XEQT page, fact sheet, ETF Facts and management reports; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "XIU",
+      "exchange": "TSX",
+      "currency": "CAD",
+      "name": "iShares S&P/TSX 60 Index ETF",
+      "type": "etf",
+      "category": "broad_etf",
+      "oneLiner": "Tracks the S&P/TSX 60 index of large Canadian companies.",
+      "business": "Seeks to replicate the S&P/TSX 60 Index, 60 large and liquid Canadian companies with sector weights designed to mirror the broader S&P/TSX Composite.",
+      "howItMakesMoney": "Returns come from the holdings; MER 0.18% per the July 2026 listing.",
+      "aiRole": "No AI focus; any exposure comes indirectly through individual Canadian large caps in the index.",
+      "aiConnection": "none",
+      "supplyChainRole": "Fund: Canadian large-cap basket",
+      "relationships": [],
+      "risks": [
+        "Sector concentration typical of the Canadian market",
+        "Commodity-price sensitivity",
+        "Single-country exposure"
+      ],
+      "whyAttention": "Canadian large-cap baseline to compare AI-focused holdings against.",
+      "investigateIf": [
+        "Index constituent changes",
+        "Fee changes",
+        "Large Canadian market drawdown"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://www.blackrock.com/ca/investors/en/products/239832/ishares-sptsx-60-index-etf",
+      "sourceNote": "Checked via web-search excerpts of BlackRock Canada's XIU page and fact sheets; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "SOXL",
+      "exchange": "NYSE Arca",
+      "currency": "USD",
+      "name": "Direxion Daily Semiconductor Bull 3X Shares",
+      "type": "etf",
+      "category": "thematic_etf",
+      "oneLiner": "Seeks 3x the daily return of the NYSE Semiconductor Index.",
+      "business": "Uses swaps and other derivatives to target three times the one-day return of the NYSE Semiconductor Index (the same index SOXX tracks). Returns over periods longer than one day can differ greatly from 3x the index.",
+      "howItMakesMoney": "Returns come from leveraged index exposure; net expense ratio 0.75% (gross 0.91%) as of Sept 30, 2026.",
+      "aiRole": "Leveraged exposure to semiconductor stocks, including AI chip suppliers.",
+      "aiConnection": "direct",
+      "supplyChainRole": "Fund: 3x daily leveraged semiconductor exposure",
+      "relationships": [],
+      "risks": [
+        "Daily reset causes compounding decay in volatile markets",
+        "Can lose most of its value in a sharp semiconductor decline",
+        "Derivative counterparty risk",
+        "Not designed for long holding periods"
+      ],
+      "whyAttention": "Commonly held leveraged chip exposure; requires understanding of the daily reset.",
+      "investigateIf": [
+        "Semiconductor index volatility rises (decay risk increases)",
+        "Holding period extends beyond days or weeks",
+        "Underlying index methodology changes (revised Sept 2026)"
+      ],
+      "leveraged": true,
+      "dailyObjective": "300% of the daily performance of the NYSE Semiconductor Index, before fees and expenses",
+      "sourceUrl": "https://www.direxion.com/product/daily-semiconductor-bull-bear-3x-etfs",
+      "sourceNote": "Checked via web-search excerpts of Direxion's SOXL/SOXS product page; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "Bear counterpart is SOXS (-3x)."
+    },
+    {
+      "symbol": "TQQQ",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "ProShares UltraPro QQQ",
+      "type": "etf",
+      "category": "broad_etf",
+      "oneLiner": "Seeks 3x the daily return of the Nasdaq-100 Index.",
+      "business": "Uses derivatives to target three times the one-day return of the Nasdaq-100 Index. ProShares states returns over periods longer than a day will very likely differ in amount, and possibly direction, from 3x the index.",
+      "howItMakesMoney": "Returns come from leveraged index exposure; ProShares charges an expense ratio.",
+      "aiRole": "Leveraged exposure to large Nasdaq technology companies, including AI-linked megacaps.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Fund: 3x daily leveraged Nasdaq-100 exposure",
+      "relationships": [],
+      "risks": [
+        "Daily reset causes compounding decay in volatile markets",
+        "Can lose money even if the index is flat over time",
+        "Derivative counterparty risk",
+        "Not designed for long holding periods"
+      ],
+      "whyAttention": "Commonly held leveraged tech exposure; requires understanding of the daily reset.",
+      "investigateIf": [
+        "Nasdaq-100 volatility rises (decay risk increases)",
+        "Holding period extends beyond days or weeks",
+        "Position size grows relative to the rest of the portfolio"
+      ],
+      "leveraged": true,
+      "dailyObjective": "Three times (3x) the daily performance of the Nasdaq-100 Index, before fees and expenses",
+      "sourceUrl": "https://www.proshares.com/our-etfs/leveraged-and-inverse/tqqq",
+      "sourceNote": "Checked via web-search excerpts of ProShares' TQQQ page, fact sheet and summary prospectus; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "SQQQ",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "ProShares UltraPro Short QQQ",
+      "type": "etf",
+      "category": "broad_etf",
+      "oneLiner": "Seeks -3x (inverse) the daily return of the Nasdaq-100 Index.",
+      "business": "Uses derivatives to target three times the inverse of the one-day return of the Nasdaq-100 Index; it gains when the index falls on a given day. Returns over longer periods will likely differ from -3x the index.",
+      "howItMakesMoney": "Returns come from inverse leveraged exposure; total annual operating expenses 0.94% per the Sept 2026 summary prospectus.",
+      "aiRole": "Short/hedging instrument against large Nasdaq technology companies, including AI-linked megacaps.",
+      "aiConnection": "indirect",
+      "supplyChainRole": "Fund: -3x daily inverse Nasdaq-100 exposure",
+      "relationships": [],
+      "risks": [
+        "Loses value when the Nasdaq-100 rises",
+        "Daily reset causes compounding decay over time",
+        "Derivative counterparty risk",
+        "Not designed for long holding periods"
+      ],
+      "whyAttention": "Commonly held as a short-term hedge; long holding periods are typically costly.",
+      "investigateIf": [
+        "Holding period extends beyond days or weeks",
+        "Nasdaq-100 volatility rises",
+        "Position is intended as a hedge but is not sized to one"
+      ],
+      "leveraged": true,
+      "dailyObjective": "Three times the inverse (-3x) of the daily performance of the Nasdaq-100 Index, before fees and expenses",
+      "sourceUrl": "https://www.proshares.com/our-etfs/leveraged-and-inverse/sqqq",
+      "sourceNote": "Checked via web-search excerpts of ProShares' SQQQ page, fact sheet and Sept 2026 summary prospectus; direct page fetch was blocked by this environment's network policy.",
+      "verification": "verified",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": ""
+    },
+    {
+      "symbol": "SPCX",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "name": "SPCX - unconfirmed (SpaceX Class A on Nasdaq, or CIBC SpaceX CDR on TSX)",
+      "type": "stock",
+      "category": "networking",
+      "oneLiner": "Identity not confirmed — check brokerage record.",
+      "business": "If this is SpaceX (Space Exploration Technologies Corp.): it designs and launches rockets and spacecraft, operates the Starlink satellite internet service, and since acquiring xAI on Feb 2, 2026 runs an AI segment (AI compute, the Grok models and the X platform). If it is the TSX line: a CIBC Canadian Depositary Receipt giving CAD-hedged fractional exposure to SpaceX shares.",
+      "howItMakesMoney": "Per SpaceX's S-1: 2025 Connectivity (Starlink) revenue was about $11.4B and Space segment revenue about $4.1B; the AI segment had $818M revenue and an operating loss in Q1 2026. A CDR's value tracks the underlying shares, hedged to CAD.",
+      "aiRole": "Through xAI, owns AI compute and develops the Grok models (a newly formed, loss-making segment); it is not a supplier to other companies' AI build-outs.",
+      "aiConnection": "speculative",
+      "supplyChainRole": "Launch, satellite connectivity, AI models/compute (if SpaceX)",
+      "relationships": [],
+      "risks": [
+        "The instrument held must be confirmed (Nasdaq stock vs TSX CDR)",
+        "AI segment losses and heavy capital needs",
+        "Recent IPO: limited trading history and future lock-up expiries",
+        "Concentrated founder voting control (reported in IPO coverage)"
+      ],
+      "whyAttention": "A large 2026 listing combining Starlink, launch and xAI's AI business.",
+      "investigateIf": [
+        "Brokerage record confirms which instrument (exchange and currency) is held",
+        "First public-company quarterly reports detail AI segment spending",
+        "Lock-up expiry dates approach"
+      ],
+      "leveraged": false,
+      "dailyObjective": null,
+      "sourceUrl": "https://content.spacex.com/cms-assets/FINAL_Documents%20and%20Updates/6.4.26_SpaceX_Announces_IPO_US.pdf",
+      "sourceNote": "Mapping based on search-index excerpts of SpaceX's IPO announcement and SEC filings (S-1/A, 424(b)(4); an S-8 reports a Nasdaq last sale on Aug 3, 2026), CIBC's June 10, 2026 CDR release (cibc.mediaroom.com), a TSX new-listing bulletin, and Tuttle Capital's SEC 497 supplements for the SPCX-to-SPCK change. No page could be fetched directly, and first-day trading figures came only from secondary sources, so they are omitted. Marked 'secondary' because the holding's identity cannot be confirmed.",
+      "verification": "secondary",
+      "lastReviewed": "2026-10-21",
+      "ambiguity": "SPCX currently maps to at least two instruments: (1) Space Exploration Technologies Corp. Class A common stock on Nasdaq (also Nasdaq Texas), USD, trading since June 12, 2026; (2) CIBC SpaceX CDR (CAD Hedged) on the TSX, CAD, reported as trading since June 12, 2026. Before April 7, 2026, SPCX was the ticker of The SPAC and New Issue ETF (Tuttle Capital), now SPCK. Not to be confused with other SpaceX-linked funds: SPXY (Purpose, Cboe Canada), SPCH/SSPC (Leverage Shares 2x long/short), SPCU (Defiance 2x), LOFF/LOFD (Direxion). The exchange/currency fields assume the Nasdaq stock and must be confirmed."
+    }
+  ]
+}

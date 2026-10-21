@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Signal Desk</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="demo-banner" class="demo-banner" hidden>DEMO WORKSPACE — synthetic data, not your portfolio. <button id="leave-demo" class="linklike">Switch to my portfolio</button></div>
+  <div class="shell">
+    <nav class="sidebar" aria-label="Main">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Signal Desk</span></div>
+      <a href="#/overview" data-nav="overview"><span class="nav-ico" aria-hidden="true">◧</span><span>Overview</span></a>
+      <a href="#/positions" data-nav="positions"><span class="nav-ico" aria-hidden="true">▤</span><span>Positions</span></a>
+      <a href="#/intelligence" data-nav="intelligence"><span class="nav-ico" aria-hidden="true">◎</span><span>Intelligence</span></a>
+      <a href="#/watchlist" data-nav="watchlist"><span class="nav-ico" aria-hidden="true">◇</span><span>AI Watchlist</span></a>
+      <a href="#/reports" data-nav="reports"><span class="nav-ico" aria-hidden="true">☰</span><span>Reports</span></a>
+      <a href="#/settings" data-nav="settings"><span class="nav-ico" aria-hidden="true">⚙</span><span>Settings</span></a>
+      <div class="sidebar-foot" id="sidebar-foot"></div>
+    </nav>
+    <div class="main">
+      <header class="topbar">
+        <h1 id="page-title">Overview</h1>
+        <div class="topbar-right">
+          <span id="market-session" class="session-pill"></span>
+          <span id="freshness" class="freshness"></span>
+          <button id="refresh-btn" class="btn ghost small" title="Refresh prices now">Refresh</button>
+        </div>
+      </header>
+      <main id="view" tabindex="-1"></main>
+    </div>
+  </div>
+  <div id="overlay" class="overlay"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "signal-desk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal portfolio tracking and investment research desk (local, read-only, no trading).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"tests/*.test.js\"",
+    "backup": "node --disable-warning=ExperimentalWarning scripts/backup.js",
+    "briefing": "node --disable-warning=ExperimentalWarning scripts/run-briefing.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.137.0"
+  }
+}
