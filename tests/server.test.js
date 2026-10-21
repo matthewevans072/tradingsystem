@@ -161,3 +161,50 @@ test('data persists across a real process restart', async () => {
   child.kill('SIGTERM');
   await new Promise((r) => child.on('exit', r));
 });
+
+test('chat: streaming answer, 409 while busy, and a browser disconnect stops the model call', async () => {
+  const s = await startServer(tempDir());
+  const ctx = s.contexts.get('real');
+  let release, sawAbort = false, calls = 0;
+  const submit = { type: 'tool_use', id: 'tu_1', name: 'submit_answer', input: { short_answer: 'Two positions.', details: [], horizon: null, what_would_change_it: null, alternatives: [], affected_symbols: [], follow_up_questions: [], confidence: 'not_applicable' } };
+  ctx.chatBackend = {
+    name: 'test', available: true, model: 'test-model', config: { dailyBudgetUsd: 0, maxToolRounds: 4 },
+    async create({ signal }) {
+      calls += 1;
+      await new Promise((resolve, reject) => {
+        release = resolve;
+        signal?.addEventListener('abort', () => { sawAbort = true; reject(Object.assign(new Error('aborted'), { name: 'AbortError' })); });
+      });
+      return { content: [submit], stop_reason: 'tool_use', usage: {} };
+    },
+  };
+  try {
+    const { body: { id } } = await s.api('POST', '/api/chat/conversations', { title: 't' });
+    // 1. A normal streamed answer.
+    const first = fetch(`${s.base}/api/chat/conversations/${id}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Signal-Desk': '1' }, body: JSON.stringify({ text: 'How many positions?' }) });
+    while (!release) await new Promise((r) => setTimeout(r, 10));
+    // 2. A second question on the same conversation while busy is refused.
+    const busy = await s.api('POST', `/api/chat/conversations/${id}/messages`, { text: 'Again?' });
+    assert.equal(busy.status, 409);
+    release();
+    const lines = (await (await first).text()).trim().split('\n').map((l) => JSON.parse(l));
+    assert.equal(lines.at(-1).type, 'done');
+    assert.equal(lines.at(-1).message.answer.short_answer, 'Two positions.');
+    // 3. Disconnect mid-answer: the backend sees the abort and the turn is saved as stopped.
+    release = null;
+    const ac = new AbortController();
+    const second = fetch(`${s.base}/api/chat/conversations/${id}/messages`, { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json', 'X-Signal-Desk': '1' }, body: JSON.stringify({ text: 'And now?' }) }).catch(() => null);
+    while (!release) await new Promise((r) => setTimeout(r, 10));
+    ac.abort();
+    await second;
+    for (let i = 0; i < 100 && ctx.chatBusy?.size; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(sawAbort, true, 'the model call was cancelled');
+    const conv = await s.api('GET', `/api/chat/conversations/${id}`);
+    const last = conv.body.messages.at(-1);
+    assert.equal(last.status, 'error');
+    assert.match(last.error, /^Stopped: the browser disconnected/);
+    assert.equal(calls, 2);
+  } finally {
+    s.server.close();
+  }
+});

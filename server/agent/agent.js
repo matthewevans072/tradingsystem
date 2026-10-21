@@ -424,7 +424,8 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
     }
   } catch (e) {
     log.warn('chat', `turn failed: ${e.message}`);
-    return save({ status: 'error', error: e instanceof BackendError ? e.message : `Something went wrong: ${e.message}`, ledger: ledger.toJSON(), tools: toolLog, scenarios: turn.scenarios, model: servedBy(), usage: usageOut(usage), proposals: turn.proposals });
+    const error = signal?.aborted ? ABORTED : e instanceof BackendError ? e.message : `Something went wrong: ${e.message}`;
+    return save({ status: 'error', error, ledger: ledger.toJSON(), tools: toolLog, scenarios: turn.scenarios, model: servedBy(), usage: usageOut(usage), proposals: turn.proposals });
   }
 
   let answer, issues;
