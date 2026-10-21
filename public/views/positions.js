@@ -84,6 +84,8 @@ export async function renderPositions(view, ctx) {
   const cash = data.cash.length ? h('div', { class: 'row small muted' }, 'Cash: ', data.cash.map((c) => badge(`${c.account} ${fmt.money(c.amount, c.currency)} · ${c.as_of}${c.confirmed ? '' : ' · unconfirmed'}`, c.confirmed ? '' : 'warn'))) : notice('warn', 'Available cash is not recorded. Assessments will not suggest adding to any position until you confirm cash in each currency.');
 
   const wanted = new URLSearchParams(location.hash.split('?')[1] || '').get('symbol');
+  // Consume the deep link so a later refresh does not reopen the drawer and the same link works again.
+  if (wanted) history.replaceState(null, '', '#/positions');
   const target = wanted && ps.find((p) => p.symbol === wanted.toUpperCase());
   if (target) setTimeout(() => openDetail(ctx, target.instrument_id, rerender), 0);
   else if (wanted) toast(`${wanted.toUpperCase()} is not an open position.`, 'error');

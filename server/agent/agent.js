@@ -9,6 +9,7 @@ import { nowIso } from '../db.js';
 import { sessionAt } from '../calendar.js';
 import { formatNy } from '../time.js';
 import { log } from '../log.js';
+import { computePortfolio } from '../portfolio.js';
 import { Ledger } from './ledger.js';
 import { createToolbox, runTool, toolsForApi, ANSWER_CATEGORIES } from './tools.js';
 import { SYSTEM_PROMPT, turnHeader } from './prompt.js';
@@ -435,6 +436,11 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
     } else {
       answer = null;
       issues = [stopNote || 'The model used its full tool budget without answering.'];
+    }
+    // Only tickers actually held get a link to their position.
+    if (answer) {
+      const held = new Set(computePortfolio(db, { now, catalog: ctx.catalog }).positions.map((p) => p.symbol));
+      answer.held_symbols = answer.affected_symbols.filter((s) => held.has(s));
     }
   } catch (e) {
     log.warn('chat', `answer check failed: ${e.message}`);

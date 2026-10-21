@@ -97,6 +97,8 @@ document.getElementById('refresh-btn').addEventListener('click', async (e) => {
 document.getElementById('leave-demo').addEventListener('click', () => setWorkspace('real'));
 
 window.addEventListener('hashchange', route);
+// A change confirmed from Ask Signal Desk: re-read the page's records.
+window.addEventListener('sd:records-changed', () => { refreshStatus(); route(); });
 updateChrome();
 refreshStatus().then(route);
 initChat();

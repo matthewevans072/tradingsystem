@@ -2,7 +2,6 @@
 // it is stored and displayed as data (escaped in the UI), never executed, and
 // when it is passed to the optional AI analyst it is fenced as data.
 import crypto from 'node:crypto';
-import { nowIso } from './db.js';
 import { log } from './log.js';
 import { addDays, todayIn, NY } from './time.js';
 import { exchangeGroup } from './calendar.js';
@@ -78,7 +77,7 @@ export function storeNews(db, items, { now = new Date() } = {}) {
                           summary, symbols_json, status, importance, provider)
                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING`).run(
       dedupeKey, ck, String(raw.title).slice(0, 500), raw.url || null, raw.source_name || null, sourceType,
-      raw.published_at || null, raw.event_at || null, nowIso(), String(raw.summary || '').slice(0, 2000),
+      raw.published_at || null, raw.event_at || null, now.toISOString(), String(raw.summary || '').slice(0, 2000),
       JSON.stringify([...new Set((raw.related || []).map((s) => s.toUpperCase()))]), status, importance, raw.provider || 'unknown');
     if (r.changes) {
       inserted += 1;

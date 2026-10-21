@@ -316,7 +316,9 @@ export function simulateTrades(portfolio, legs, extra = () => ({})) {
   const weightsAfter = p.combined
     ? p.positions.filter((x) => x.marketValue != null).map((x) => ({ symbol: x.symbol, account: x.account, weightPct: round(((x.marketValue * toCadRate(p, x.currency)) / p.combined.marketValue) * 100, 2) }))
     : null;
-  return { kind: 'hypothetical', legs: results, cashChanges, weightsAfter, weightBasis: p.combined ? WEIGHT_BASIS : null, savedToRecords: false };
+  // A negative balance means the plan needs money the records don't show.
+  const warnings = p.cash.filter((c) => c.amount < -0.005).map((c) => `${c.account} ${c.currency} cash would end at ${round(c.amount)}: the plan needs ${round(-c.amount)} ${c.currency} more than the recorded balance (new money, another sale or a conversion). Margin is never assumed.`);
+  return { kind: 'hypothetical', legs: results, cashChanges, warnings, weightsAfter, weightBasis: p.combined ? WEIGHT_BASIS : null, savedToRecords: false };
 }
 
 // What a price move would do to positions (and the portfolio), e.g. an

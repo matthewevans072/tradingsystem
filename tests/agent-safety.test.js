@@ -56,6 +56,9 @@ test('target-weight sizing, multi-leg scenarios and price-move impact', () => {
   assert.equal(m.legs[1].affordableWithConfirmedCash, true);
   assert.deepEqual(m.cashChanges['TFSA USD'], { before: 250, after: 980, change: 730 });
   assert.equal(m.savedToRecords, false);
+  assert.deepEqual(m.warnings, []);
+  const short = simulateTrades(p, [{ side: 'buy', symbol: 'VRT', shares: 10, price: 130, fees: 0 }]);
+  assert.match(short.warnings[0], /TFSA USD cash would end at -1050/);
   const c = simulateTrades(p, [{ side: 'convert', from_currency: 'USD', to_currency: 'CAD', amount: 100, account: 'TFSA' }]);
   assert.equal(c.legs[0].received, 138);
   assert.throws(() => simulateTrades(p, []), /1 to 6/);
@@ -308,7 +311,7 @@ test('what_changed separates new trades from older trades entered recently; even
     (m) => { wc = lastResults(m)[0]; return answer({ short_answer: 'x' }); },
   ]) });
   assert.deepEqual(wc.tradesDatedSince.map((t) => `${t.symbol} ${t.trade_date}`), ['VRT 2026-10-21']);
-  assert.ok(wc.recordsEnteredSince.some((t) => t.symbol === 'NBIS' && /older trade/.test(t.note)));
+  assert.ok(wc.recordsEnteredSince.some((t) => t.symbol === 'NBIS' && /not a trade made since then/.test(t.note)));
   assert.deepEqual(wc.newlyScheduledEvents.map((e) => e.symbol), ['NBIS'], 'an event first seen weeks ago is not new');
   const vrt = wc.positions.find((p) => p.symbol === 'VRT');
   assert.equal(vrt.sharesThen, 10);

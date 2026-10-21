@@ -750,7 +750,7 @@ export function createToolbox(ctx, { ledger, turn }) {
       const txRows = db.prepare(`SELECT t.trade_date, t.type, i.symbol, t.quantity, t.price, t.created_at FROM transactions t LEFT JOIN instruments i ON i.id = t.instrument_id
                                  WHERE t.voided_at IS NULL AND (t.trade_date > ? OR t.created_at >= ?) ${sym ? 'AND i.symbol = ?' : ''} ORDER BY t.id`).all(...[sinceDate, sinceIso, ...(sym ? [sym] : [])]);
       out.tradesDatedSince = txRows.filter((t) => t.trade_date > sinceDate || (since === 'today' && t.trade_date === today));
-      out.recordsEnteredSince = txRows.filter((t) => !out.tradesDatedSince.includes(t)).map((t) => ({ ...t, note: 'An older trade entered into Signal Desk recently, not a new trade.' }));
+      out.recordsEnteredSince = txRows.filter((t) => !out.tradesDatedSince.includes(t)).map((t) => ({ ...t, note: `Trade dated ${t.trade_date}, entered into Signal Desk after ${out.sinceLabel}: a record added since then, not a trade made since then.` }));
       if (txRows.length) out.transactionsRef = L.add({ key: `txsince:${sinceIso}:${sym}`, kind: 'portfolio_record', label: 'Transactions dated or entered since then', source: 'Signal Desk ledger', asOf: now().toISOString(), tool: 'what_changed' });
       out.newsSourcesConfigured = !!(ctx.providers.finnhub || ctx.providers.sec);
       return out;

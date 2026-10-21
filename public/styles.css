@@ -218,7 +218,7 @@ tbody tr:hover td { background: rgba(255,255,255,.015); }
 .drawer-head h2 { font-size: 16px; }
 .drawer-body { padding: 18px 20px 40px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
 .drawer-body .card { background: var(--surface-2); }
-.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--raised); border: 1px solid var(--border); padding: 10px 16px; border-radius: 9px; opacity: 0; pointer-events: none; transition: all .2s; z-index: 60; max-width: min(560px, 92vw); font-size: 13px; }
+.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--raised); border: 1px solid var(--border); padding: 10px 16px; border-radius: 9px; opacity: 0; pointer-events: none; transition: all .2s; z-index: 90; max-width: min(560px, 92vw); font-size: 13px; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.error { border-color: rgba(236,122,111,.5); }
 
@@ -326,4 +326,8 @@ body.chat-open .main { margin-right: min(460px, 100vw); }
   .ask-btn { bottom: calc(70px + env(safe-area-inset-bottom)); right: 14px; padding: 10px 14px; }
   .chat-panel { width: 100vw; z-index: 80; }
 }
-@media (min-width: 1101px) { body.chat-open .drawer { right: min(460px, 100vw); } body.chat-open .scrim { right: min(460px, 100vw); } }
+@media (min-width: 1101px) { body.chat-open .drawer, body.chat-open .drawer.wide { right: min(460px, 100vw); width: min(860px, calc(100vw - 460px)); } body.chat-open .drawer:not(.wide) { width: min(560px, calc(100vw - 460px)); } body.chat-open .scrim { right: min(460px, 100vw); } }
+
+.cat-reported { color: #f2a7c3; }
+.ref-flag { font-weight: 500; opacity: .85; }
+.hold-chip.plain { opacity: .7; text-decoration: none; cursor: default; }
