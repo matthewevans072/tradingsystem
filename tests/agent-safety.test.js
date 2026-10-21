@@ -4,14 +4,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { NOW, makeCtx, seed, scripted, use, lastResults, answer, snapshot } from './agent-helpers.js';
-import { addTransaction, setCash, computePortfolio } from '../server/portfolio.js';
+import { addTransaction, setCash, computePortfolio, findInstrument } from '../server/portfolio.js';
 import { createConversation, runChatTurn, guardText, validateAnswer, fitResult, unsafeFollowUp, isConversationBusy } from '../server/agent/agent.js';
 import { createProposal, confirmProposal, rejectProposal, checkUserIntent } from '../server/agent/proposals.js';
 import { simulateTrade, simulateTrades, priceMoveImpact } from '../server/agent/calc.js';
-import { storeNews } from '../server/news.js';
+import { storeNews, observedReaction } from '../server/news.js';
 import { Ledger } from '../server/agent/ledger.js';
 import { responseCost, recordUsage, budgetCheck, spentToday, chatConfig, usableContent } from '../server/agent/backend.js';
-import { refreshEarnings } from '../server/marketdata.js';
+import { refreshEarnings, storeBars } from '../server/marketdata.js';
 import { createContext } from '../server/context.js';
 import { getSetting } from '../server/db.js';
 import { zonedToUtc, todayIn, addDays, NY } from '../server/time.js';
@@ -342,4 +342,37 @@ test('spend is priced per model (including fallbacks), capped across workspaces,
   const priced = chatConfig({ ...cfg, chat: { ...cfg.chat, model: 'claude-future-9', priceInput: '3', priceOutput: '15', dailyBudgetUsd: 100 } });
   assert.equal(budgetCheck(cfg, priced).ok, true);
   assert.deepEqual(usableContent([{ type: 'thinking' }, { type: 'tool_use', id: 'a' }, { type: 'fallback' }, { type: 'text', text: 't' }, { type: 'tool_use', id: 'b' }]).map((b) => b.id || b.type), ['text', 'b']);
+});
+
+test('tool outputs: combined daily %, merged risk clusters, price vs averages, and news reaction windows', async () => {
+  const ctx = makeCtx();
+  seed(ctx);
+  const nbis = findInstrument(ctx.db, 'NBIS', 'NASDAQ');
+  const days = [];
+  for (let d = '2026-10-20'; days.length < 60; d = addDays(d, -1)) if (![0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay())) days.unshift(d);
+  storeBars(ctx.db, nbis.id, '1day', days.map((d, i) => ({ ts: d, o: 100 + i * 0.1, h: 101 + i * 0.1, l: 99 + i * 0.1, c: d === '2026-10-19' ? 102 : d === '2026-10-20' ? 104 : 100 + i * 0.1, v: 1e6, session: 'regular' })), 'test');
+  const conv = createConversation(ctx.db);
+  let out;
+  await runChatTurn(ctx, { conversationId: conv, userText: 'x', now: NOW, backend: scripted([
+    () => [use('explain_portfolio_move', { benchmarks: null }), use('analyze_risk_overlap', {}), use('get_price_history', { symbol: 'NBIS', days: 5 })],
+    (m) => { out = lastResults(m); return answer({ short_answer: 'x' }); },
+  ]) });
+  const [move, overlap, hist] = out;
+  // NBIS -250 USD, VRT +20 USD at 1.38; start values 10400 and 1280 USD.
+  assert.equal(move.attribution.combinedCad.dailyPLCad, -317.4);
+  assert.equal(move.attribution.combinedCad.dailyPct, -1.97); // -317.4 / (11680 USD x 1.38)
+  const nb = move.attribution.byCurrency.USD.contributions.find((c) => c.symbol === 'NBIS');
+  assert.equal(nb.shareOfPortfolioGrossMovePct, 92.6);
+  assert.ok(!overlap.sharedExposures.some((g) => g.label === 'Priced in USD (trading currency; a fund\'s economic exposure can differ)'), 'identical clusters are merged');
+  assert.ok(overlap.concentration.weights.length === 2);
+  assert.ok(Array.isArray(overlap.leveragedFunds));
+  assert.equal(hist.latest.price, 101.5);
+  assert.equal(hist.latest.changeVsPreviousClose, -2.5);
+  assert.ok(hist.latest.vsSma20.pctAbove < 0);
+  // Reaction windows: published during the 10-20 session vs after its close.
+  const during = observedReaction(ctx.db, { published_at: zonedToUtc('2026-10-20', 11, 0).toISOString() }, nbis.id);
+  assert.match(during.method, /2026-10-19 to 2026-10-20/);
+  assert.equal(observedReaction(ctx.db, { published_at: zonedToUtc('2026-10-20', 18, 0).toISOString() }, nbis.id), null, 'the next session has not closed yet');
+  const weekend = observedReaction(ctx.db, { published_at: zonedToUtc('2026-10-17', 12, 0).toISOString() }, nbis.id);
+  assert.match(weekend.method, /2026-10-16 to 2026-10-19/);
 });

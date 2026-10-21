@@ -3,8 +3,8 @@
 // when it is passed to the optional AI analyst it is fenced as data.
 import crypto from 'node:crypto';
 import { log } from './log.js';
-import { addDays, todayIn, NY } from './time.js';
-import { exchangeGroup } from './calendar.js';
+import { addDays, todayIn, zonedToUtc, NY } from './time.js';
+import { exchangeGroup, dayInfo } from './calendar.js';
 
 const PRESS_WIRES = ['business wire', 'businesswire', 'pr newswire', 'prnewswire', 'globenewswire', 'globe newswire', 'accesswire', 'newsfile', 'cision'];
 const REPUTABLE = ['reuters', 'bloomberg', 'wall street journal', 'wsj', 'financial times', 'ft.com', 'cnbc', 'associated press', 'ap news',
@@ -148,9 +148,19 @@ export function observedReaction(db, newsRow, instrumentId) {
       caveat: 'Observed move only. Other news, market-wide moves or sector flows may explain it.',
     };
   }
-  const d = pub.slice(0, 10);
-  const prev = db.prepare(`SELECT * FROM bars WHERE instrument_id = ? AND interval = '1day' AND ts < ? ORDER BY ts DESC LIMIT 1`).get(instrumentId, d);
-  const next = db.prepare(`SELECT * FROM bars WHERE instrument_id = ? AND interval = '1day' AND ts >= ? ORDER BY ts LIMIT 1`).get(instrumentId, d);
+  // Daily bars: from the last close at or before publication to the first
+  // close after it. An item published after the close (or on a weekend) is
+  // measured from that close to the next session's close; if that session
+  // has not closed yet there is nothing to report.
+  const exchange = db.prepare('SELECT exchange FROM instruments WHERE id = ?').get(instrumentId)?.exchange || 'NYSE';
+  const closeAt = (date) => {
+    const info = dayInfo(date, exchange);
+    return zonedToUtc(date, Math.floor((info.closeMin ?? 960) / 60), (info.closeMin ?? 960) % 60, info.tz).toISOString();
+  };
+  const daily = db.prepare(`SELECT * FROM bars WHERE instrument_id = ? AND interval = '1day' AND ts >= ? AND ts <= ? ORDER BY ts`)
+    .all(instrumentId, addDays(pub.slice(0, 10), -10), addDays(pub.slice(0, 10), 10));
+  const prev = daily.filter((b) => closeAt(b.ts) <= pub).at(-1);
+  const next = daily.find((b) => closeAt(b.ts) > pub);
   if (prev && next) {
     return {
       method: `Daily close ${prev.ts} to ${next.ts}`,

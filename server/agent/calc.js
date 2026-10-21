@@ -377,7 +377,14 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
     if (['datacenter', 'cooling_electrical', 'power_grid', 'networking'].includes(d.category)) add('theme:dc_capex', 'Data-center capital spending', p.symbol);
     add(`ccy:${p.currency}`, `Priced in ${p.currency} (trading currency; a fund's economic exposure can differ)`, p.symbol);
   }
-  const shared = Object.values(groups).filter((g) => g.symbols.length > 1).map((g) => {
+  // Exposures with exactly the same holdings are one cluster under several labels.
+  const bySet = new Map();
+  for (const g of Object.values(groups).filter((x) => x.symbols.length > 1)) {
+    const key = [...g.symbols].sort().join(',');
+    if (bySet.has(key)) bySet.get(key).labels.push(g.label);
+    else bySet.set(key, { labels: [g.label], symbols: g.symbols });
+  }
+  const shared = [...bySet.values()].map((g) => ({ label: g.labels.join('; '), symbols: g.symbols })).map((g) => {
     const value = positions.filter((p) => g.symbols.includes(p.symbol)).reduce((s, p) => s + (toCad(p) != null ? p.marketValue * toCad(p) : 0), 0);
     return { ...g, combinedValueCad: portfolio.combined ? round(value) : null, combinedWeightPct: portfolio.combined ? round((value / portfolio.combined.marketValue) * 100, 1) : null };
   }).sort((a, b) => (b.combinedWeightPct ?? 0) - (a.combinedWeightPct ?? 0));
@@ -424,9 +431,12 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
     upcomingEarnings: { windowDays: earningsWindowDays, events: upcomingEarnings },
     concentration: {
       herfindahl: hhi, effectiveNumberOfPositions: hhi ? round(1 / hhi, 1) : null, weightBasis: portfolio.combined ? WEIGHT_BASIS : WEIGHT_BASIS_CCY,
-      largestWeights: positions.filter((p) => p.weightPct != null).sort((a, b) => b.weightPct - a.weightPct).slice(0, 5).map((p) => ({ symbol: p.symbol, weightPct: round(p.weightPct, 1), accounts: p.accounts })),
+      weights: positions.filter((p) => p.weightPct != null).sort((a, b) => b.weightPct - a.weightPct).map((p) => ({ symbol: p.symbol, weightPct: round(p.weightPct, 1), accounts: p.accounts })),
     },
+    leveragedFunds: positions.filter((p) => describe(p)?.leveraged).map((p) => ({ symbol: p.symbol, objective: describe(p)?.dailyObjective || null, weightPct: p.weightPct != null ? round(p.weightPct, 1) : null })),
+    staleQuotes: positions.filter((p) => p.quote && p.quote.freshness !== 'fresh').map((p) => ({ symbol: p.symbol, freshness: p.quote.freshness, quoteTime: p.quote.quoteTime })),
     unpriced: portfolio.positions.filter((p) => p.marketValue == null).map((p) => p.symbol),
+    unpricedNote: 'Unpriced holdings (e.g. identity not confirmed) are left out of every group, weight and correlation above.',
   };
 }
 
@@ -436,6 +446,8 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
 export function dailyAttribution(portfolio, { fxPrev, lastSessionDate } = {}) {
   const out = {};
   const rate = portfolio.combined?.fxRate ?? null;
+  const toCad = (p) => (p.currency === 'CAD' ? 1 : rate);
+  const grossCad = rate != null ? portfolio.positions.filter((p) => p.dailyPL != null).reduce((s, p) => s + Math.abs(p.dailyPL) * toCad(p), 0) : null;
   for (const ccy of ['USD', 'CAD']) {
     const ps = portfolio.positions.filter((p) => p.currency === ccy && p.dailyPL != null);
     const total = ps.reduce((s, p) => s + p.dailyPL, 0);
@@ -443,9 +455,11 @@ export function dailyAttribution(portfolio, { fxPrev, lastSessionDate } = {}) {
     out[ccy] = {
       totalDailyPL: round(total), totalDailyPct: portfolio.totals[ccy].dailyPct,
       pctBasis: 'Over positions with a measurable change (previous close available)',
+      shareBasis: `shareOfCurrencyGrossMovePct: share of the summed absolute moves of ${ccy} positions; shareOfPortfolioGrossMovePct: share of the summed absolute moves of all positions in CAD terms.`,
       contributions: ps.map((p) => ({
         symbol: p.symbol, account: p.account, dailyPL: p.dailyPL, dailyPct: p.dailyPct, session: p.dailyPLSession || null,
-        shareOfGrossMovementPct: gross > 0 ? round((Math.abs(p.dailyPL) / gross) * 100, 1) : null,
+        shareOfCurrencyGrossMovePct: gross > 0 ? round((Math.abs(p.dailyPL) / gross) * 100, 1) : null,
+        shareOfPortfolioGrossMovePct: grossCad ? round(((Math.abs(p.dailyPL) * toCad(p)) / grossCad) * 100, 1) : null,
         dailyPLCad: rate != null || ccy === 'CAD' ? round(p.dailyPL * (ccy === 'USD' ? rate : 1)) : null,
         quoteTime: p.quote?.quoteTime, freshness: p.quote?.freshness,
       })).sort((a, b) => a.dailyPL - b.dailyPL),
@@ -453,9 +467,17 @@ export function dailyAttribution(portfolio, { fxPrev, lastSessionDate } = {}) {
       unpriced: portfolio.positions.filter((p) => p.currency === ccy && p.marketValue == null).map((p) => p.symbol),
     };
   }
-  const combinedCad = rate != null
-    ? { dailyPLCad: round(out.USD.totalDailyPL * rate + out.CAD.totalDailyPL), fxRate: rate, fxAsOf: portfolio.combined.fxAsOf, note: 'USD P/L converted at the stored daily reference rate.' }
-    : null;
+  let combinedCad = null;
+  if (rate != null) {
+    const measured = portfolio.positions.filter((p) => p.dailyPL != null);
+    const startCad = measured.reduce((s, p) => s + (p.dailyPLStartValue || 0) * toCad(p), 0);
+    const plCad = out.USD.totalDailyPL * rate + out.CAD.totalDailyPL;
+    combinedCad = {
+      dailyPLCad: round(plCad), startValueCad: round(startCad), dailyPct: startCad > 0 ? round((plCad / startCad) * 100, 2) : null,
+      fxRate: rate, fxAsOf: portfolio.combined.fxAsOf,
+      note: 'Price moves only: USD P/L converted at the stored daily reference rate. It does not include the currency effect below. The percentage is over positions with a previous close.',
+    };
+  }
   const sessions = [...new Set(portfolio.positions.map((p) => p.dailyPLSession).filter(Boolean))];
   let fx = null;
   if (portfolio.fx && fxPrev) {
@@ -467,7 +489,7 @@ export function dailyAttribution(portfolio, { fxPrev, lastSessionDate } = {}) {
         from: { rate: fxPrev.rate, asOf: fxPrev.as_of }, to: { rate: portfolio.fx.rate, asOf: portfolio.fx.as_of }, source: portfolio.fx.source,
         approxEffectOnUsdHoldingsInCad: round(usdMv * (portfolio.fx.rate - fxPrev.rate)),
         approxEffectOnUsdCashInCad: round(usdCash * (portfolio.fx.rate - fxPrev.rate)),
-        note: `Change between the ${fxPrev.as_of} and ${portfolio.fx.as_of} daily reference rates applied to current USD values. It is a currency effect, separate from investment returns, and covers those dates rather than today's intraday FX move.`,
+        note: `Change between the ${fxPrev.as_of} and ${portfolio.fx.as_of} daily reference rates applied to current USD values. It is a currency effect, separate from investment returns and not included in combinedCad.dailyPLCad, and it covers those dates rather than today's intraday FX move.`,
       };
     } else {
       fx = { unavailable: true, note: `The latest stored USD/CAD rate is from ${portfolio.fx.as_of}, before the latest session; the currency effect for this session is not known.` };

@@ -245,15 +245,17 @@ function quoteMeta(q) {
   if (!q) return { available: false, reason: 'No quote stored' };
   return {
     available: q.price != null, price: q.price, previousClose: q.prevClose, change: q.change, changePct: q.changePct,
-    open: q.open, high: q.high, low: q.low, volume: q.volume, provider: q.provider, quoteTime: q.quoteTime, quoteTimeET: et(q.quoteTime),
+    open: q.open, high: q.high, low: q.low, volume: q.volume, averageDailyVolume: q.avgVolume ?? null,
+    volumeNote: q.volume != null && q.avgVolume ? `Volume up to the quote time vs the provider's average full-day volume (a day still in progress reads low): ${round(q.volume / q.avgVolume, 2)}x.` : null,
+    provider: q.provider, quoteTime: q.quoteTime, quoteTimeET: et(q.quoteTime),
     fetchedAt: q.fetchedAt, session: q.session, timeliness: q.timeliness, delayMinutes: q.delayMinutes, freshness: q.freshness,
     freshnessReason: q.freshnessReason, lastError: q.lastError || null,
     extendedHours: q.ext ? { price: q.ext.price, changePct: q.ext.changePct, session: q.ext.session, time: q.ext.time, timeET: et(q.ext.time) } : null,
   };
 }
 
-function statusRef(L, label, tool, note = null) {
-  return L.add({ key: `status:${tool}:${label}`, kind: 'status', label, source: 'Signal Desk', asOf: new Date().toISOString(), tool, note });
+function statusRefAt(L, label, tool, note = null, asOf = new Date()) {
+  return L.add({ key: `status:${tool}:${label}`, kind: 'status', label, source: 'Signal Desk', asOf: asOf.toISOString(), tool, note });
 }
 
 function portfolioRef(L, portfolio, tool = 'get_portfolio') {
@@ -272,6 +274,11 @@ function newsRef(L, n, tool) {
 
 function profileRef(L, d, tool) {
   return L.add({ key: `profile:${d.symbol}:${d.exchange}:${d.userEdited ? 'user' : 'catalog'}`, kind: 'profile', label: `${d.name || d.symbol} profile`, source: d.userEdited ? 'Edited by you' : 'Official company/fund source', url: d.sourceUrl, asOf: d.lastReviewed, symbol: d.symbol, tool, note: d.userEdited ? 'user-edited' : d.verification });
+}
+
+function eventRef(L, e, tool) {
+  const label = e.type === 'macro' ? `Macro event ${e.date}` : `${e.symbol} ${e.type} ${e.date}`;
+  return L.add({ key: `event:${e.id}`, kind: 'event', label, source: e.source, url: e.source_url, asOf: e.first_seen_at || e.fetched_at, symbol: e.type === 'macro' ? null : e.symbol, tool });
 }
 
 function findPositions(portfolio, symbol) {
@@ -332,6 +339,7 @@ export function createToolbox(ctx, { ledger, turn }) {
   const L = ledger;
   const db = ctx.db;
   const now = () => turn.now || new Date();
+  const statusRef = (L2, label, tool, note = null) => statusRefAt(L2, label, tool, note, now());
   const portfolio = () => {
     const p = computePortfolio(db, { now: now(), catalog: ctx.catalog });
     p.accounts = db.prepare('SELECT name FROM accounts').all().map((a) => a.name);
@@ -357,7 +365,12 @@ export function createToolbox(ctx, { ledger, turn }) {
         newsSources: [ctx.providers.finnhub ? 'Finnhub company news (US listings)' : null, ctx.providers.sec ? 'SEC EDGAR filings (US registrants)' : null].filter(Boolean),
         earningsSource: ctx.providers.earnings?.name || null,
         earningsCalendarLastChecked: coverage ? { at: coverage.at, atET: et(coverage.at), symbols: coverage.symbols.length, window: `${coverage.from} to ${coverage.to}` } : null,
-        quotes: { fresh: qs.filter((q) => q.freshness === 'fresh').length, stale: qs.filter((q) => q.freshness === 'stale').length, missing: p.positions.length - qs.filter((q) => q.price != null).length },
+        quotes: {
+          fresh: qs.filter((q) => q.freshness === 'fresh').length, stale: qs.filter((q) => q.freshness === 'stale').length,
+          notPricedIdentityUnconfirmed: p.positions.filter((x) => x.identityStatus !== 'confirmed').length,
+          missing: p.positions.filter((x) => x.identityStatus === 'confirmed' && x.price == null).length,
+          note: 'Counts are per open position; storedQuotes counts stored quote rows per provider.',
+        },
         fx: p.fx ? { usdcad: p.fx.rate, asOf: p.fx.as_of, source: p.fx.source } : null,
         workspace: ctx.mode === 'demo' ? "DEMO workspace — synthetic data, not the user's portfolio" : 'real',
       };
@@ -535,11 +548,20 @@ export function createToolbox(ctx, { ledger, turn }) {
       const sess = sessionStats(intraday);
       const sessRef = intraday.length ? L.add({ key: `intraday:${inst.id}:${intraday.at(-1).ts}`, kind: 'market_data', label: `${sym} 5-minute bars ${today}`, source: 'stored intraday bars', asOf: intraday.at(-1).ts, symbol: sym, tool: 'get_price_history' }) : null;
       const n = Math.min(Math.max(v(days) || 20, 5), 120);
+      // Where the latest quote sits against the averages above (computed here, not by the model).
+      const q = inst && inst.identity_status === 'confirmed' ? publicQuote(db.prepare('SELECT * FROM quotes WHERE instrument_id = ?').get(inst.id), now(), inst.exchange) : null;
+      const vsAvg = (avg) => (q?.price != null && avg ? { average: round(avg), pctAbove: round((q.price / avg - 1) * 100, 2) } : null);
+      const latest = q?.price != null ? {
+        price: q.price, quoteTimeET: et(q.quoteTime), freshness: q.freshness, quoteRef: quoteRef(L, sym, q, 'get_price_history'),
+        vsSma20: vsAvg(ind.sma20), vsSma50: vsAvg(ind.sma50), vsSma200: vsAvg(ind.sma200),
+        changeVsPreviousClose: q.change ?? null, changeInAtrMultiples: q.change != null && ind.atr14 ? round(q.change / ind.atr14, 2) : null,
+        note: `Averages and ATR are from closes up to ${ind.lastDate}; the price is the latest quote.`,
+      } : null;
       return {
         ref, symbol: sym, currency: inst?.currency || null, fetchedNow, stored: !fetchedNow,
         lastSession: ind.lastDate, expectedLastSession: expected, sessionsMissing: behind, historyFreshness,
         historyNote: behind ? `Stored history ends ${behind} trading session(s) before ${expected}; averages and returns below are out of date.` : null,
-        sessionsAvailable: ind.bars,
+        sessionsAvailable: ind.bars, latest,
         recentCloses: bars.slice(-n).map((b) => ({ date: b.ts, close: b.c, high: b.h, low: b.l, volume: b.v })),
         returnsPct: { d1: ret(1), d5: ret(5), d20: ret(20), d60: ret(60), asOfSession: ind.lastDate },
         averages: { sma20: round(ind.sma20), sma50: round(ind.sma50), sma200: round(ind.sma200), sma20Slope: ind.sma20Slope },
@@ -559,7 +581,7 @@ export function createToolbox(ctx, { ledger, turn }) {
       return {
         ref, symbol: d.symbol, exchange: d.exchange, currency: d.currency, name: d.name, type: d.type, category: d.category,
         oneLiner: d.oneLiner, business: d.business, howItMakesMoney: d.howItMakesMoney, aiRole: d.aiRole, aiConnection: d.aiConnection,
-        supplyChainRole: d.supplyChainRole, relationships: (d.relationships || []).map((r, i) => ({ ref: relRefs[i], text: r.text })),
+        supplyChainRole: d.supplyChainRole, relationships: (d.relationships || []).map((r, i) => ({ ref: relRefs[i], text: r.text, sourceUrl: r.sourceUrl || null })),
         risks: d.risks, whyAttention: d.whyAttention, investigateIf: d.investigateIf,
         leveraged: !!d.leveraged, dailyObjective: d.dailyObjective || null,
         sourceUrl: d.sourceUrl, lastReviewed: d.lastReviewed, verification: d.userEdited ? 'edited by the user' : d.verification, verificationNote: d.sourceNote || null,
@@ -634,15 +656,18 @@ export function createToolbox(ctx, { ledger, turn }) {
             : c ? `Checked for ${c.from} to ${c.to}.` : 'Not covered by any calendar check: absence of events is not informative.',
         };
       });
+      const outside = cov && (from < cov.from || to > cov.to) ? `The requested window ${from} to ${to} extends beyond the last calendar check (${cov.from} to ${cov.to}); dates outside the checked range are not covered.` : null;
       return {
         window: { from, to }, today, sourcesConfigured: !!ctx.providers.earnings, refresh: refreshResult,
+        sourceNote: !ctx.providers.earnings && rows.some((e) => e.type === 'earnings') ? 'No earnings calendar source is configured now. The earnings dates below were stored by an earlier check (see lastFetchedAt) and will not be updated; a moved date would not show.' : null,
+        windowNote: outside,
         coverage,
         emptyRef: rows.length ? null : statusRef(L, `No stored events for ${syms ? syms.join(', ') : 'holdings/watchlist'} ${from} to ${to}`, 'get_events', cov ? null : 'calendar not checked'),
         events: rows.map((e) => {
           const wd = weekdayOf(e.date);
           const info = dayInfo(e.date);
           return {
-            ref: L.add({ key: `event:${e.id}`, kind: 'event', label: `${e.type === 'macro' ? 'Macro' : e.symbol} ${e.type} ${e.date}`, source: e.source, url: e.source_url, asOf: e.fetched_at, symbol: e.type === 'macro' ? null : e.symbol, tool: 'get_events' }),
+            ref: eventRef(L, e, 'get_events'),
             symbol: e.type === 'macro' ? null : e.symbol, type: e.type, date: e.date, weekday: WEEKDAY[wd], daysUntil: Math.round((Date.parse(e.date) - Date.parse(today)) / 86400000),
             isTradingDay: info.open, timing: e.time_hint, title: e.type === 'macro' ? untrusted(e.title, 200) : e.title,
             held: held.has(e.symbol), watchlist: watch.has(e.symbol), past: e.date < today,
@@ -730,6 +755,7 @@ export function createToolbox(ctx, { ledger, turn }) {
           symbol: x.symbol, account: x.account, price: x.price, previousClose: x.quote?.prevClose ?? null, changePctVsPreviousClose: x.quote?.changePct ?? null,
           quoteTimeET: et(x.quote?.quoteTime), freshness: x.quote?.freshness || 'missing', quoteRef: quoteRef(L, x.symbol, x.quote, 'what_changed'),
           sharesThen: before ? round(before.shares, 6) : 0, sharesNow: x.shares,
+          sharesThenBasis: 'By trade date: trades dated on or before the cutoff, including any entered into Signal Desk later (see recordsEnteredSince).',
         };
       });
       if (sym && !positions.length) out.positions = [{ symbol: sym, note: 'Not currently held; use get_quotes for a price.' }];
@@ -746,11 +772,12 @@ export function createToolbox(ctx, { ledger, turn }) {
       out.news = listNews(db, { since: sinceIso, limit: 30 }).filter((n) => (sym ? n.symbols.includes(sym) : n.symbols.some((s) => held.has(s))))
         .map((n) => ({ ref: newsRef(L, n, 'what_changed'), title: untrusted(n.title, 300), source: cleanName(n.source_name || n.provider), sourceType: n.source_type, status: n.status, publishedAtET: et(n.published_at), url: n.url }));
       out.newlyScheduledEvents = db.prepare('SELECT * FROM events WHERE COALESCE(first_seen_at, fetched_at) >= ? ORDER BY date').all(sinceIso).filter((e) => (sym ? e.symbol === sym : held.has(e.symbol)))
-        .map((e) => ({ symbol: e.symbol, type: e.type, date: e.date, source: e.source, firstSeenAt: e.first_seen_at }));
+        .map((e) => ({ ref: eventRef(L, e, 'what_changed'), symbol: e.symbol, type: e.type, date: e.date, timing: e.time_hint, source: e.source, firstSeenAt: e.first_seen_at, firstSeenAtET: et(e.first_seen_at) }));
       const txRows = db.prepare(`SELECT t.trade_date, t.type, i.symbol, t.quantity, t.price, t.created_at FROM transactions t LEFT JOIN instruments i ON i.id = t.instrument_id
                                  WHERE t.voided_at IS NULL AND (t.trade_date > ? OR t.created_at >= ?) ${sym ? 'AND i.symbol = ?' : ''} ORDER BY t.id`).all(...[sinceDate, sinceIso, ...(sym ? [sym] : [])]);
       out.tradesDatedSince = txRows.filter((t) => t.trade_date > sinceDate || (since === 'today' && t.trade_date === today));
       out.recordsEnteredSince = txRows.filter((t) => !out.tradesDatedSince.includes(t)).map((t) => ({ ...t, note: `Trade dated ${t.trade_date}, entered into Signal Desk after ${out.sinceLabel}: a record added since then, not a trade made since then.` }));
+      if (out.recordsEnteredSince.length && assess.some((a) => a.changed != null)) out.assessmentNote = 'Records were added after the cutoff, so the earlier assessment was made on different holdings; a change in it can reflect the records as well as prices.';
       if (txRows.length) out.transactionsRef = L.add({ key: `txsince:${sinceIso}:${sym}`, kind: 'portfolio_record', label: 'Transactions dated or entered since then', source: 'Signal Desk ledger', asOf: now().toISOString(), tool: 'what_changed' });
       out.newsSourcesConfigured = !!(ctx.providers.finnhub || ctx.providers.sec);
       return out;
@@ -772,7 +799,8 @@ export function createToolbox(ctx, { ledger, turn }) {
         .sort((a, b) => b.score - a.score).slice(0, 4).map((m) => m.symbol);
       const since = new Date(now() - 36 * 3600000).toISOString();
       const news = listNews(db, { since, limit: 30, minImportance: 1 }).filter((n) => n.symbols.some((s) => movers.includes(s)))
-        .map((n) => ({ ref: newsRef(L, n, 'explain_portfolio_move'), title: untrusted(n.title, 300), source: cleanName(n.source_name || n.provider), sourceType: n.source_type, status: n.status, publishedAtET: et(n.published_at), symbols: n.symbols, observedReaction: n.reaction || null }));
+        .map((n) => ({ ref: newsRef(L, n, 'explain_portfolio_move'), title: untrusted(n.title, 300), summary: untrusted(n.summary, 400), source: cleanName(n.source_name || n.provider), sourceType: n.source_type, status: n.status, importance: n.importance, publishedAtET: et(n.published_at), symbols: n.symbols, observedReaction: n.reaction || null }))
+        .sort((a, b) => b.importance - a.importance);
       return {
         ref, quoteRefs: qref, asOf: p.asOf, asOfET: et(p.asOf), sessionsMeasured: sessions,
         sessionNote: sessions.length && sessions.at(-1) !== todayIn(NY, now()) ? `Figures are for the ${sessions.at(-1)} session (latest quotes), not today.` : null,
