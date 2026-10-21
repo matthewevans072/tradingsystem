@@ -3,6 +3,7 @@ import {
   CATEGORY_LABEL, ACTION_LABEL, loading, errorState,
 } from '../lib/ui.js';
 import { line } from '../lib/charts.js';
+import { setContext } from '../lib/api.js';
 
 const STRATEGY = { long_term: 'Long-term', swing: 'Swing trade', unclassified: 'Unclassified' };
 const EXCHANGES = [['NASDAQ', 'NASDAQ'], ['NYSE', 'NYSE'], ['NYSE Arca', 'NYSE Arca'], ['NYSE American', 'NYSE American'], ['Cboe BZX', 'Cboe BZX'], ['TSX', 'TSX'], ['TSXV', 'TSX Venture'], ['Cboe Canada', 'Cboe Canada (NEO)'], ['CSE', 'CSE']];
@@ -82,6 +83,11 @@ export async function renderPositions(view, ctx) {
 
   const cash = data.cash.length ? h('div', { class: 'row small muted' }, 'Cash: ', data.cash.map((c) => badge(`${c.account} ${fmt.money(c.amount, c.currency)} · ${c.as_of}${c.confirmed ? '' : ' · unconfirmed'}`, c.confirmed ? '' : 'warn'))) : notice('warn', 'Available cash is not recorded. Assessments will not suggest adding to any position until you confirm cash in each currency.');
 
+  const wanted = new URLSearchParams(location.hash.split('?')[1] || '').get('symbol');
+  const target = wanted && ps.find((p) => p.symbol === wanted.toUpperCase());
+  if (target) setTimeout(() => openDetail(ctx, target.instrument_id, rerender), 0);
+  else if (wanted) toast(`${wanted.toUpperCase()} is not an open position.`, 'error');
+
   mount(view, h('div', { class: 'stack' },
     toolbar,
     data.issues.length ? notice('danger', h('strong', {}, 'Ledger issues'), h('ul', {}, data.issues.map((i) => h('li', {}, i.message)))) : null,
@@ -103,7 +109,7 @@ function closedSection(data, ctx) {
 
 async function openDetail(ctx, instrumentId, onChange) {
   const { api } = ctx;
-  const d = drawer('Loading…', loading(), { wide: true });
+  const d = drawer('Loading…', loading(), { wide: true, onClose: () => setContext({ selectedSymbol: null }) });
   let x;
   try {
     x = await api('GET', `/api/instruments/${instrumentId}`);
@@ -113,6 +119,7 @@ async function openDetail(ctx, instrumentId, onChange) {
   }
   const inst = x.instrument;
   const pos = x.positions[0];
+  setContext({ selectedSymbol: inst.symbol });
   document.querySelector('.drawer-head h2').textContent = `${inst.symbol} · ${inst.exchange} · ${inst.currency}`;
   const desc = x.description || {};
   const r = x.research;

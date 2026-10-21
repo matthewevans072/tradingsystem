@@ -1,6 +1,7 @@
 // Hypothetical trade arithmetic for the chat agent. Pure functions: they read a
 // computed portfolio and return a scenario; they never touch stored records.
 import { round } from '../portfolio.js';
+import { formatNy } from '../time.js';
 
 const EPS = 1e-9;
 
@@ -20,7 +21,7 @@ export function resolvePrice({ price, quote }) {
   }
   return {
     price: quote.price,
-    basis: `last ${quote.freshness === 'stale' ? 'STALE ' : ''}quote from ${quote.provider} at ${quote.quoteTime}${quote.timeliness ? ` (${quote.timeliness}${quote.delayMinutes ? `, ${quote.delayMinutes} min delay` : ''})` : ''}`,
+    basis: `last ${quote.freshness === 'stale' ? 'STALE ' : ''}quote from ${quote.provider} at ${quote.quoteTime ? formatNy(quote.quoteTime) : 'unknown time'}${quote.timeliness ? ` (${quote.timeliness}${quote.delayMinutes ? `, ${quote.delayMinutes} min delay` : ''})` : ''}`,
     estimated: true,
     stale: quote.freshness !== 'fresh',
     quote: { provider: quote.provider, quoteTime: quote.quoteTime, freshness: quote.freshness, timeliness: quote.timeliness },
@@ -71,7 +72,7 @@ export function simulateTrade(portfolio, req) {
       if (!(f > 0 && f <= 1)) throw new Error('fraction must be between 0 and 1 (e.g. 0.2 for 20%)');
       const raw = pos.shares * f;
       shares = isWhole(pos.shares) ? Math.floor(raw + EPS) : Math.floor(raw * 10000 + EPS) / 10000;
-      if (Math.abs(shares - raw) > EPS) notes.push(`${round(f * 100, 2)}% of ${pos.shares} shares is ${round(raw, 4)}; rounded down to ${shares} ${isWhole(pos.shares) ? 'whole ' : ''}shares.`);
+      if (Math.abs(shares - raw) > EPS) notes.push(`${round(f * 100, 2)}% of ${pos.shares} shares is ${round(raw, 4)}; rounded down to ${shares} ${isWhole(pos.shares) ? 'whole ' : ''}share${shares === 1 ? '' : 's'}.`);
     } else if (req.cash_amount != null) {
       const target = Number(req.cash_amount);
       if (!(target > 0)) throw new Error('cash_amount must be positive');

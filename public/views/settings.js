@@ -162,6 +162,18 @@ export async function renderSettings(view, ctx) {
       } }, 'Restore')))) : h('p', { class: 'muted' }, 'No backups yet.'),
     h('div', { class: 'row mt' }, fileIn, restoreUpload));
 
+  // ---- Ask Signal Desk ----
+  let chat = null;
+  try { chat = await api('GET', '/api/chat/status'); } catch { /* shown as unavailable */ }
+  const chatSec = section('Ask Signal Desk (chat agent)',
+    h('div', { class: 'list' },
+      h('div', { class: 'list-item spread' }, h('strong', {}, 'Status'), badge(chat?.available ? 'Ready' : 'Not configured', chat?.available ? 'ok' : 'warn')),
+      chat?.available ? h('div', { class: 'list-item spread' }, h('span', {}, 'Model'), h('span', { class: 'small' }, `${chat.model} · effort ${chat.effort}`)) : null,
+      h('div', { class: 'list-item spread' }, h('span', {}, 'Spent today (estimate)'), h('span', { class: 'small' }, `US$${(chat?.spentTodayUsd || 0).toFixed(2)} of US$${chat?.dailyBudgetUsd ?? '—'} daily cap`))),
+    !chat?.available ? notice('warn', chat?.reason || 'Unavailable') : null,
+    notice('info', h('strong', {}, 'Model access and cost. '), 'The chat agent calls Anthropic’s API with your own key (ANTHROPIC_API_KEY in .env). Building Signal Desk with Claude Code does not give the app model access, and a Claude subscription does not cover API usage. Usage is billed per token; a typical question uses 5–40k input tokens. Set CHAT_DAILY_BUDGET_USD to cap spending, CHAT_MODEL to change model (e.g. claude-sonnet-5-5 is cheaper), and CHAT_EFFORT (low–max) to trade depth for cost.'),
+    h('details', { class: 'more' }, h('summary', {}, 'What is sent to the model provider'), h('ul', { class: 'bullets small' }, (chat?.disclosure || []).map((d) => h('li', {}, d)))));
+
   // ---- Workspace, security & logs ----
   const logsOut = h('pre', { class: 'small', style: { whiteSpace: 'pre-wrap', maxHeight: '260px', overflow: 'auto', color: 'var(--text-2)' } });
   const ws = section('Workspace, security & logs',
@@ -179,5 +191,5 @@ export async function renderSettings(view, ctx) {
   mount(view, h('div', { class: 'stack' },
     h('div', { class: 'grid two' }, setup, providers),
     h('div', { class: 'grid two' }, delivery, alerts),
-    h('div', { class: 'grid two' }, risk, h('div', { class: 'stack' }, backupsSec, ws))));
+    h('div', { class: 'grid two' }, risk, h('div', { class: 'stack' }, chatSec, backupsSec, ws))));
 }

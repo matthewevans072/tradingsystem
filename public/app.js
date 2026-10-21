@@ -1,5 +1,7 @@
 // App shell: routing, API client, workspace switch, header status.
 import { h, mount, fmt, toast, loading, errorState, closeDrawer } from './lib/ui.js';
+import { app, api, saveWorkspace, setContext } from './lib/api.js';
+import { initChat } from './lib/chat.js';
 import { renderOverview } from './views/overview.js';
 import { renderPositions } from './views/positions.js';
 import { renderIntelligence } from './views/intelligence.js';
@@ -16,39 +18,11 @@ const VIEWS = {
   settings: { title: 'Settings', render: renderSettings },
 };
 
-function store(k, v) {
-  try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; }
-  return null;
-}
-
-export const app = {
-  workspace: store('sd.workspace') === 'demo' ? 'demo' : 'real',
-  token: (() => { try { return sessionStorage.getItem('sd.token') || ''; } catch { return ''; } })(),
-  status: null,
-};
-
-export async function api(method, path, body) {
-  const headers = { 'X-SD-Workspace': app.workspace };
-  if (method !== 'GET') { headers['Content-Type'] = 'application/json'; headers['X-Signal-Desk'] = '1'; }
-  if (app.token) headers.Authorization = `Bearer ${app.token}`;
-  let res;
-  try {
-    res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  } catch {
-    throw new Error('Cannot reach the Signal Desk server. Is it still running?');
-  }
-  if (res.status === 401) {
-    const t = window.prompt('This Signal Desk requires an access token:');
-    if (t) { app.token = t; try { sessionStorage.setItem('sd.token', t); } catch { /* ignore */ } return api(method, path, body); }
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data;
-}
+export { app, api };
 
 export function setWorkspace(ws) {
-  app.workspace = ws;
-  store('sd.workspace', ws);
+  saveWorkspace(ws);
+  setContext({});
   updateChrome();
   route();
 }
@@ -90,6 +64,7 @@ export async function route() {
   const v = VIEWS[name] || VIEWS.overview;
   current = name;
   closeDrawer();
+  setContext({ page: name, selectedSymbol: null });
   document.getElementById('page-title').textContent = v.title;
   document.title = `${v.title} · Signal Desk`;
   for (const a of document.querySelectorAll('[data-nav]')) a.classList.toggle('active', a.dataset.nav === name);
@@ -124,4 +99,5 @@ document.getElementById('leave-demo').addEventListener('click', () => setWorkspa
 window.addEventListener('hashchange', route);
 updateChrome();
 refreshStatus().then(route);
+initChat();
 setInterval(refreshStatus, 60000);
