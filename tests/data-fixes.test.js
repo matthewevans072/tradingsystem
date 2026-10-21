@@ -334,3 +334,23 @@ test('backend: deleting or repairing an unreadable spend record unpauses chat wi
   assert.match(budgetCheck(cfg2, cc).reason, /cap \(US\$5\) has been reached/);
   assert.equal(spentToday(cfg2).usd, 6);
 });
+
+test('a BASELINE dated the quote session counts as held at the start, not as a same-session buy', () => {
+  const { db } = tempDb();
+  addTransaction(db, { account: 'TFSA', symbol: 'NBIS', exchange: 'NASDAQ', currency: 'USD', type: 'BASELINE', trade_date: '2026-10-21', quantity: 100, price: 50 });
+  const i = findInstrument(db, 'NBIS', 'NASDAQ');
+  updateInstrument(db, i.id, { identity_status: 'confirmed' });
+  putQuote(db, i.id, { price: 101, prev_close: 100, change_pct: 1, quote_time: zonedToUtc('2026-10-21', 15, 0).toISOString() });
+  const pos = computePortfolio(db, { now: zonedToUtc('2026-10-21', 15, 5) }).positions.find((x) => x.symbol === 'NBIS');
+  assert.equal(pos.dailyPL, 100, 'one dollar on 100 shares held from the start, not the whole unrealized gain');
+  assert.equal(pos.dailyPct, 1);
+  assert.equal(pos.unrealizedPL, 5100);
+});
+
+test('the currency effect is not hidden after Easter Monday (no Bank of Canada rate that day)', async () => {
+  const { dailyAttribution } = await import('../server/agent/calc.js');
+  const portfolio = { positions: [], cash: [{ currency: 'USD', amount: 1000 }], totals: { USD: { dailyPct: null }, CAD: { dailyPct: null } }, combined: { fxRate: 1.38, fxAsOf: '2026-04-07' }, fx: { rate: 1.38, as_of: '2026-04-07', source: 'Bank of Canada' } };
+  const a = dailyAttribution(portfolio, { fxPrev: { rate: 1.37, as_of: '2026-04-02' }, sessionDate: '2026-04-07' });
+  assert.ok(a.fx && a.fx.from, JSON.stringify(a.fx));
+  assert.equal(a.fx.from.asOf, '2026-04-02');
+});

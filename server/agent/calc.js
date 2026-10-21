@@ -2,7 +2,7 @@
 // they read a computed portfolio and return scenarios; they never touch stored
 // records. Every figure the agent states about a hypothetical comes from here.
 import { round, WEIGHT_BASIS } from '../portfolio.js';
-import { isTradingDay } from '../calendar.js';
+import { isTradingDay, easterSunday } from '../calendar.js';
 import { formatNy, addDays } from '../time.js';
 
 const EPS = 1e-9;
@@ -554,9 +554,10 @@ export function sessionMixNote(positions) {
 }
 
 // Days the Bank of Canada publishes a USD/CAD rate: Toronto exchange business
-// days, less the federal holidays it also observes (Sept 30, Nov 11).
+// days, less the federal holidays it also observes (Easter Monday, Sept 30,
+// Nov 11). A day guessed wrongly here only hides the effect, never misstates it.
 function bocBusinessDay(d) {
-  return isTradingDay(d, 'TSX') && !['09-30', '11-11'].includes(d.slice(5));
+  return isTradingDay(d, 'TSX') && !['09-30', '11-11'].includes(d.slice(5)) && d !== addDays(easterSunday(Number(d.slice(0, 4))), 1);
 }
 
 // Attribution of the latest session's P/L by position, per currency, with a

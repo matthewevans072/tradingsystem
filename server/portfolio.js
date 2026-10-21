@@ -380,7 +380,11 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
         let sStart = sharesAt(ledgerAsOf(prevDate(sessionDate)), key);
         for (const s of splitsOn.all(l.instrument_id, sessionDate)) sStart *= s.ratio_to / s.ratio_from;
         const sEnd = sessionDate >= today ? l.shares : sharesAt(ledgerAsOf(sessionDate), key);
-        const trades = tradesOn.all(sessionDate, l.account_id, l.instrument_id);
+        // A BASELINE dated the session records shares already held, so it counts as
+        // held at the start of the session (at the previous close), not as a buy.
+        const dated = tradesOn.all(sessionDate, l.account_id, l.instrument_id);
+        for (const t of dated) if (t.type === 'BASELINE') sStart += t.quantity;
+        const trades = dated.filter((t) => t.type !== 'BASELINE');
         if (sStart <= EPS && !trades.length) {
           // Not held during the session the quote belongs to (e.g. bought before today's open).
           pos.dailyPL = null;
