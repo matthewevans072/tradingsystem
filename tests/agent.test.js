@@ -124,12 +124,17 @@ test('hypothetical trades are calculated by code, correctly, and never saved', (
   assert.equal(s.shares, 20);
   assert.equal(s.price, 101.5);
   assert.equal(s.grossProceeds, 2030);
-  assert.equal(s.fees, 0);
+  // Unknown fees: no made-up net figure, only before-fee amounts.
+  assert.equal(s.fees, null);
   assert.equal(s.feesKnown, false);
-  assert.equal(s.netProceeds, 2030);
-  assert.equal(s.estimatedRealizedPL, 230); // 2030 - 20*90
+  assert.equal(s.netProceeds, null);
+  assert.equal(s.proceedsBeforeFees, 2030);
+  assert.equal(s.estimatedRealizedPL, null);
+  assert.equal(s.estimatedRealizedPLBeforeFees, 230); // 2030 - 20*90
   assert.equal(s.cashBefore, 250);
-  assert.equal(s.cashAfter, 2280);
+  assert.equal(s.cashAfter, null);
+  assert.equal(s.cashAfterBeforeFees, 2280);
+  assert.ok(s.notes.some((n) => /net figures are not given/.test(n)));
   assert.equal(s.sharesAfter, 80);
   assert.equal(s.cadEquivalentOfProceeds.amount, 2801.4); // 2030 * 1.38
   assert.ok(s.notes.some((n) => /Taxes are not estimated/.test(n)));
@@ -146,6 +151,7 @@ test('hypothetical trades are calculated by code, correctly, and never saved', (
   const b = simulateTrade(p, { symbol: 'VRT', side: 'buy', shares: 5, price: 130, fees: 0 });
   assert.equal(b.totalCost, 650);
   assert.equal(b.affordableWithConfirmedCash, false);
+  assert.equal(b.affordability, 'No: short by 400 USD.');
   assert.equal(b.cashShortfall, 400);
   assert.ok(b.notes.some((n) => /margin is never assumed/.test(n)));
   assert.throws(() => simulateTrade(p, { symbol: 'NBIS', side: 'sell', shares: 101 }), /holds 100/);

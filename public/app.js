@@ -64,6 +64,7 @@ export async function route() {
   const v = VIEWS[name] || VIEWS.overview;
   current = name;
   closeDrawer();
+  viewDirty = false;
   setContext({ page: name, selectedSymbol: null });
   document.getElementById('page-title').textContent = v.title;
   document.title = `${v.title} · Signal Desk`;
@@ -97,8 +98,15 @@ document.getElementById('refresh-btn').addEventListener('click', async (e) => {
 document.getElementById('leave-demo').addEventListener('click', () => setWorkspace('real'));
 
 window.addEventListener('hashchange', route);
-// A change confirmed from Ask Signal Desk: re-read the page's records.
-window.addEventListener('sd:records-changed', () => { refreshStatus(); route(); });
+// A change confirmed from Ask Signal Desk: re-read the page's records, unless
+// the user has a drawer open or unsaved input on the page (that would be lost).
+let viewDirty = false;
+document.getElementById('view').addEventListener('input', () => { viewDirty = true; });
+window.addEventListener('sd:records-changed', () => {
+  refreshStatus();
+  if (document.querySelector('.overlay.open') || viewDirty) toast('Saved to your records. This page will show it when you reopen it.');
+  else route();
+});
 updateChrome();
 refreshStatus().then(route);
 initChat();

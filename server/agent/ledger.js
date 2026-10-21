@@ -24,11 +24,11 @@ export class Ledger {
   }
 
   // Register a source; identical keys reuse the same ref.
-  add({ key, kind, label, source = null, url = null, asOf = null, fetchedAt = null, freshness = null, symbol = null, tool = null, note = null }) {
+  add({ key, kind, label, source = null, url = null, asOf = null, fetchedAt = null, freshness = null, updating = null, symbol = null, tool = null, note = null }) {
     const k = key || `${kind}:${label}:${asOf}`;
     if (this.byKey.has(k)) return this.byKey.get(k).ref;
     const ref = `R${this.next++}`;
-    const item = { ref, kind, label: String(label).slice(0, 300), source, url: safeUrl(url), asOf, fetchedAt, freshness, symbol, tool, note };
+    const item = { ref, kind, label: String(label).slice(0, 300), source, url: safeUrl(url), asOf, fetchedAt, freshness, ...(updating === false ? { updating: false } : {}), symbol, tool, note };
     this.items.push(item);
     this.byKey.set(k, item);
     return ref;

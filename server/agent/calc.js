@@ -42,8 +42,8 @@ export function resolvePrice({ price, quote }) {
 function resolveFees(fees, typicalFee) {
   if (fees == null) {
     return {
-      fees: 0, known: false,
-      note: `Commission not specified; calculated as $0.${typicalFee != null ? ` Your recent recorded trades in this account had fees of about ${typicalFee}; pass fees to include them.` : ''} Your brokerage may also charge currency-conversion or regulatory fees.`,
+      fees: 0, known: false, typical: typicalFee ?? null,
+      note: `Commission not specified, so net figures are not given: amounts are shown before fees.${typicalFee != null ? ` Your most recent recorded trades in this account had a fee of about ${typicalFee}; the "with your usual fee" figures show the result with it.` : ''} Your brokerage may also charge currency-conversion or regulatory fees.`,
     };
   }
   if (!(Number(fees) >= 0)) throw new Error('Fees cannot be negative');
@@ -122,7 +122,8 @@ export function simulateTrade(portfolio, req) {
   const unpriced = pos && pos.marketValue == null;
   const totalBefore = wc.total + (unpriced ? posValue * (wc.rate ?? 1) : 0);
   if (unpriced) notes.push('This position has no trusted quote; its weight uses the price in this scenario.');
-  const weight = (value, total) => (wc.rate != null && total > 0 ? round(((value * wc.rate) / total) * 100, 2) : null);
+  // One decimal, the same rounding as Positions.
+  const weight = (value, total) => (wc.rate != null && total > 0 ? round(((value * wc.rate) / total) * 100, 1) : null);
 
   if (side === 'sell') {
     let shares;
@@ -139,8 +140,9 @@ export function simulateTrade(portfolio, req) {
     } else if (req.cash_amount != null) {
       const target = Number(req.cash_amount);
       if (!(target > 0)) throw new Error('cash_amount must be positive');
-      shares = round(ceilStep((target + fee.fees) / px.price, whole), 6);
-      if (shares > pos.shares && shares - pos.shares <= (whole ? 1 : FRACTION_STEP) + EPS) shares = pos.shares;
+      const need = (target + fee.fees) / px.price;
+      if (need > pos.shares + EPS) throw new Error(`Raising ${round(target)} ${currency} needs about ${round(need, 2)} shares at ${round(px.price, 4)}, but the position holds ${pos.shares}; selling all of it raises about ${round(pos.shares * px.price - fee.fees)} ${currency}${fee.known ? '' : ' before fees'}.`);
+      shares = Math.min(pos.shares, round(ceilStep(need, whole), 6));
       notes.push(`Shares needed to raise about ${round(target)} ${currency} after fees, rounded up.`);
     } else {
       const t = Number(req.target_weight_pct) / 100;
@@ -155,13 +157,14 @@ export function simulateTrade(portfolio, req) {
     if (!(shares > 0)) throw new Error('The scenario sells zero shares (position too small for that size).');
     if (shares > pos.shares + EPS) throw new Error(`Cannot sell ${shares} shares; the position holds ${pos.shares}.`);
     const gross = shares * px.price;
-    const net = gross - fee.fees;
+    const net = gross - fee.fees; // before fees when fees are unknown
     const avg = pos.avgCostExact ?? pos.avgCost;
     const costOfSold = avg * shares;
+    const withTypical = !fee.known && fee.typical != null ? gross - fee.typical : null;
     const remaining = round(pos.shares - shares, 6);
     const remainingValue = remaining * valuePrice;
     const totalAfter = totalBefore - (posValue - remainingValue) * (wc.rate ?? 1);
-    if (!cash.known) notes.push(`No ${currency} cash balance is recorded for ${account}, so the balance after the sale is unknown; proceeds would add ${round(net)} ${currency}.`);
+    if (!cash.known) notes.push(`No ${currency} cash balance is recorded for ${account}, so the balance after the sale is unknown; proceeds would add ${round(net)} ${currency}${fee.known ? '' : ' before fees'}.`);
     else if (!cash.confirmed) notes.push(`${account}'s recorded ${currency} cash (${round(cash.amount)}) is unconfirmed.`);
     if (pos.hasBaseline) notes.push('Average cost comes from a dated snapshot; realized P/L for tax purposes may differ from the cost base your brokerage reports.');
     const fx = portfolio.combined?.fxRate ?? null;
@@ -169,11 +172,16 @@ export function simulateTrade(portfolio, req) {
       kind: 'hypothetical', side, symbol, exchange: pos.exchange, account, currency,
       shares, sharesBefore: pos.shares, sharesAfter: remaining,
       price: round(px.price, 4), priceBasis: px.basis, priceUserSpecified: px.userSpecified,
-      grossProceeds: round(gross), fees: round(fee.fees), feesKnown: fee.known, netProceeds: round(net),
-      averageCost: round(avg, 4), costBasisSold: round(costOfSold), estimatedRealizedPL: round(net - costOfSold),
+      grossProceeds: round(gross), fees: fee.known ? round(fee.fees) : null, feesKnown: fee.known,
+      netProceeds: fee.known ? round(net) : null, proceedsBeforeFees: fee.known ? null : round(gross),
+      averageCost: round(avg, 4), costBasisSold: round(costOfSold),
+      estimatedRealizedPL: fee.known ? round(net - costOfSold) : null, estimatedRealizedPLBeforeFees: fee.known ? null : round(gross - costOfSold),
+      realizedPLNote: 'Gain or loss on the shares sold against your average cost (buy fees included), after this sale\'s fees when known, before tax.',
       remainingCostBasis: round(avg * remaining), remainingMarketValue: round(remainingValue),
-      cashAccount: account, cashBefore: cash.known ? round(cash.amount) : null, cashAfter: cash.known ? round(cash.amount + net) : null,
-      cashConfirmed: cash.confirmed, cashFreed: round(net),
+      cashAccount: account, cashBefore: cash.known ? round(cash.amount) : null,
+      cashAfter: cash.known && fee.known ? round(cash.amount + net) : null, cashAfterBeforeFees: cash.known && !fee.known ? round(cash.amount + gross) : null,
+      cashConfirmed: cash.confirmed, cashFreed: fee.known ? round(net) : null,
+      ifTypicalFee: withTypical != null ? { fee: fee.typical, netProceeds: round(withTypical), cashAfter: cash.known ? round(cash.amount + withTypical) : null, estimatedRealizedPL: round(withTypical - costOfSold) } : null,
       cadEquivalentOfProceeds: currency === 'USD' && fx ? { amount: round(net * fx), fxRate: fx, fxAsOf: portfolio.combined.fxAsOf, fxSource: portfolio.combined.fxSource, note: 'Informational: proceeds stay in USD unless you convert them; conversion costs are not included.' } : null,
       weightBeforePct: weight(posValue, totalBefore), weightAfterPct: weight(remainingValue, totalAfter), weightBasis: wc.basis,
       taxes: 'not estimated',
@@ -205,10 +213,11 @@ export function simulateTrade(portfolio, req) {
     notes.push(`Largest ${whole ? 'whole-share ' : ''}purchase that keeps the weight at or below ${round(t * 100, 2)}% on the app's basis.`);
   }
   if (!(shares > 0)) throw new Error('The scenario buys zero shares at that price.');
-  const cost = shares * px.price + fee.fees;
+  const cost = shares * px.price + fee.fees; // before fees when fees are unknown
   const shortfall = cash.known ? Math.max(0, cost - cash.amount) : null;
   const affordable = cash.known && cash.confirmed && shortfall <= EPS;
-  if (cash.known && shortfall > EPS) notes.push(`This costs ${round(cost)} ${currency} but ${account}'s recorded ${currency} cash is ${round(cash.amount)}: short by ${round(shortfall)}. It would require new money, selling something, or a currency conversion; margin is never assumed.`);
+  const withTypical = !fee.known && fee.typical != null ? cost + fee.typical : null;
+  if (cash.known && shortfall > EPS) notes.push(`This costs ${round(cost)} ${currency}${fee.known ? '' : ' before fees'} but ${account}'s recorded ${currency} cash is ${round(cash.amount)}: short by ${round(shortfall)}. It would require new money, selling something, or a currency conversion; margin is never assumed.`);
   if (cash.known && !cash.confirmed) notes.push(`${account}'s recorded ${currency} cash is unconfirmed, so affordability is not confirmed.`);
   const newShares = round((pos?.shares || 0) + shares, 6);
   const newCost = (pos ? (pos.avgCostExact ?? pos.avgCost) * pos.shares : 0) + cost;
@@ -218,10 +227,13 @@ export function simulateTrade(portfolio, req) {
     kind: 'hypothetical', side, symbol, exchange: pos?.exchange || sameSymbol[0]?.exchange || req.exchange || null, account, currency,
     shares, sharesBefore: pos?.shares || 0, sharesAfter: newShares,
     price: round(px.price, 4), priceBasis: px.basis, priceUserSpecified: px.userSpecified,
-    totalCost: round(cost), fees: round(fee.fees), feesKnown: fee.known,
+    totalCost: fee.known ? round(cost) : null, costBeforeFees: fee.known ? null : round(cost), fees: fee.known ? round(fee.fees) : null, feesKnown: fee.known,
     newAverageCost: round(newCost / newShares, 4), previousAverageCost: pos ? round(pos.avgCostExact ?? pos.avgCost, 4) : null,
-    cashAccount: account, cashBefore: cash.known ? round(cash.amount) : null, cashAfter: cash.known ? round(cash.amount - cost) : null, cashConfirmed: cash.confirmed,
+    cashAccount: account, cashBefore: cash.known ? round(cash.amount) : null,
+    cashAfter: cash.known && fee.known ? round(cash.amount - cost) : null, cashAfterBeforeFees: cash.known && !fee.known ? round(cash.amount - cost) : null, cashConfirmed: cash.confirmed,
     affordableWithConfirmedCash: affordable, cashShortfall: shortfall != null ? round(shortfall) : null,
+    affordability: !cash.known ? `Unknown: no ${currency} cash is recorded for ${account}.` : shortfall > EPS ? `No: short by ${round(shortfall)} ${currency}${fee.known ? '' : ' before fees'}.` : !cash.confirmed ? `Not confirmed: the recorded cash covers it${fee.known ? '' : ' before fees'}, but that balance is unconfirmed.` : `Yes${fee.known ? '' : ', before fees'}.`,
+    ifTypicalFee: withTypical != null ? { fee: fee.typical, totalCost: round(withTypical), cashAfter: cash.known ? round(cash.amount - withTypical) : null } : null,
     cadEquivalentOfCost: currency === 'USD' && fx ? { amount: round(cost * fx), fxRate: fx, fxAsOf: portfolio.combined.fxAsOf, fxSource: portfolio.combined.fxSource } : null,
     weightBeforePct: weight(posValue, totalBefore), weightAfterPct: weight(posValue + addedValue, totalBefore + addedValue * (wc.rate ?? 1)), weightBasis: wc.basis,
     taxes: 'not applicable to a purchase; future gains depend on the account',
@@ -238,20 +250,26 @@ function applyToPortfolio(p, sc) {
   const valuePrice = posIdx >= 0 ? (out.positions[posIdx].price ?? sc.price) : sc.price;
   const deltaShares = sc.side === 'sell' ? -sc.shares : sc.shares;
   const deltaValue = deltaShares * valuePrice;
+  const cost = sc.totalCost ?? sc.costBeforeFees;
+  // An unpriced position was never in the totals, so changing it leaves them alone.
+  let priced = true;
   if (posIdx >= 0) {
     const x = out.positions[posIdx];
+    priced = x.marketValue != null;
     const avg = x.avgCostExact ?? x.avgCost;
     x.shares = round(x.shares + deltaShares, 6);
     if (sc.side === 'sell') x.costBasis = avg * x.shares;
-    else { x.costBasis = avg * (x.shares - sc.shares) + sc.totalCost; x.avgCostExact = x.costBasis / x.shares; x.avgCost = round(x.avgCostExact, 4); }
-    x.marketValue = x.marketValue != null ? x.shares * valuePrice : null;
+    else { x.costBasis = avg * (x.shares - sc.shares) + cost; x.avgCostExact = x.costBasis / x.shares; x.avgCost = round(x.avgCostExact, 4); }
+    x.marketValue = priced ? x.shares * valuePrice : null;
     if (x.shares <= EPS) out.positions.splice(posIdx, 1);
   } else if (sc.side === 'buy') {
-    out.positions.push({ symbol: sc.symbol, exchange: sc.exchange, account: sc.account, currency: sc.currency, shares: sc.shares, avgCost: sc.newAverageCost, avgCostExact: sc.totalCost / sc.shares, costBasis: sc.totalCost, price: sc.price, marketValue: sc.shares * sc.price, quote: { price: sc.price, provider: 'scenario', freshness: 'fresh' }, identityStatus: 'confirmed' });
+    out.positions.push({ symbol: sc.symbol, exchange: sc.exchange, account: sc.account, currency: sc.currency, shares: sc.shares, avgCost: sc.newAverageCost, avgCostExact: cost / sc.shares, costBasis: cost, price: sc.price, marketValue: sc.shares * sc.price, quote: { price: sc.price, provider: 'scenario', freshness: 'fresh' }, identityStatus: 'confirmed' });
   }
-  out.totals[sc.currency].marketValue += deltaValue;
-  if (out.combined && rate != null) out.combined.marketValue += deltaValue * rate;
-  const cashDelta = sc.side === 'sell' ? sc.netProceeds : -sc.totalCost;
+  if (priced) {
+    out.totals[sc.currency].marketValue += deltaValue;
+    if (out.combined && rate != null) out.combined.marketValue += deltaValue * rate;
+  }
+  const cashDelta = sc.side === 'sell' ? (sc.netProceeds ?? sc.proceedsBeforeFees) : -cost;
   const row = out.cash.find((c) => c.account === sc.account && c.currency === sc.currency);
   if (row) row.amount += cashDelta;
   else out.cash.push({ account: sc.account, currency: sc.currency, amount: cashDelta, confirmed: 0, as_of: 'scenario' });
@@ -288,37 +306,59 @@ function applyConversion(p, leg) {
 }
 
 // Several legs applied in order; returns each leg and the combined cash effect.
+// A buy leg's cash_amount may be "proceeds" (cash the earlier legs added to that
+// account and currency) or "available_cash" (that account's recorded cash then).
 export function simulateTrades(portfolio, legs, extra = () => ({})) {
   if (!Array.isArray(legs) || !legs.length || legs.length > 6) throw new Error('Give 1 to 6 legs.');
   let p = portfolio;
   const results = [];
+  const cashOf = (pf, account, currency) => (pf.cash || []).find((c) => c.account === account && c.currency === currency)?.amount ?? 0;
   for (const [i, leg] of legs.entries()) {
     try {
       if (leg.side === 'convert') {
         const r = applyConversion(p, leg);
         results.push(r.result);
         p = r.portfolio;
-      } else {
-        const sc = simulateTrade(p, { ...leg, ...extra(leg) });
-        results.push(sc);
-        p = applyToPortfolio(p, sc);
+        continue;
       }
+      const ex = extra(leg) || {};
+      let req = { ...leg, ...ex };
+      if (typeof leg.cash_amount === 'string') {
+        if (leg.side !== 'buy') throw new Error('"proceeds" and "available_cash" apply to buy legs.');
+        const held = p.positions.filter((x) => x.symbol === String(leg.symbol || '').toUpperCase());
+        const account = leg.account || (held.length === 1 ? held[0].account : accountsKnown(p).length === 1 ? accountsKnown(p)[0] : null);
+        const currency = held[0]?.currency || ex.currency;
+        if (!account || !currency) throw new Error('Name the account for this buy leg.');
+        const amount = leg.cash_amount === 'proceeds' ? cashOf(p, account, currency) - cashOf(portfolio, account, currency)
+          : leg.cash_amount === 'available_cash' ? cashOf(p, account, currency) : NaN;
+        if (Number.isNaN(amount)) throw new Error('cash_amount must be a number, "proceeds" or "available_cash".');
+        if (!(amount > 0)) throw new Error(leg.cash_amount === 'proceeds' ? `The earlier legs add no ${currency} cash to ${account}; add a sell or convert leg in ${currency} first.` : `${account} has no ${currency} cash available at this step.`);
+        req = { ...req, account, cash_amount: amount };
+      }
+      const sc = simulateTrade(p, req);
+      if (typeof leg.cash_amount === 'string') sc.cashAmountSource = leg.cash_amount === 'proceeds' ? `the ${round(req.cash_amount)} ${sc.currency} raised by the earlier legs` : `the ${round(req.cash_amount)} ${sc.currency} available in ${sc.account} at this step`;
+      // Leg weights would describe the plan half-way through; the final ones are weightsAfter.
+      delete sc.weightBeforePct; delete sc.weightAfterPct;
+      results.push(sc);
+      p = applyToPortfolio(p, sc);
     } catch (e) {
       throw new Error(`Leg ${i + 1}: ${e.message}`);
     }
   }
+  // Every cash balance in the accounts the plan touches, changed or not.
+  const accounts = new Set(results.map((r) => r.account).filter(Boolean));
   const cashChanges = {};
-  for (const c of p.cash) {
+  for (const c of p.cash.filter((x) => accounts.has(x.account))) {
     const before = (portfolio.cash || []).find((x) => x.account === c.account && x.currency === c.currency);
-    const delta = c.amount - (before ? before.amount : 0);
-    if (Math.abs(delta) > 0.005) cashChanges[`${c.account} ${c.currency}`] = { before: before ? round(before.amount) : null, after: before ? round(c.amount) : null, change: round(delta) };
+    cashChanges[`${c.account} ${c.currency}`] = { before: before ? round(before.amount) : null, after: before ? round(c.amount) : null, change: round(c.amount - (before ? before.amount : 0)) };
   }
-  const weightsAfter = p.combined
-    ? p.positions.filter((x) => x.marketValue != null).map((x) => ({ symbol: x.symbol, account: x.account, weightPct: round(((x.marketValue * toCadRate(p, x.currency)) / p.combined.marketValue) * 100, 2) }))
-    : null;
+  const weights = (pf) => (pf.combined
+    ? pf.positions.filter((x) => x.marketValue != null).map((x) => ({ symbol: x.symbol, account: x.account, weightPct: round(((x.marketValue * toCadRate(pf, x.currency)) / pf.combined.marketValue) * 100, 1) }))
+    : null);
   // A negative balance means the plan needs money the records don't show.
   const warnings = p.cash.filter((c) => c.amount < -0.005).map((c) => `${c.account} ${c.currency} cash would end at ${round(c.amount)}: the plan needs ${round(-c.amount)} ${c.currency} more than the recorded balance (new money, another sale or a conversion). Margin is never assumed.`);
-  return { kind: 'hypothetical', legs: results, cashChanges, warnings, weightsAfter, weightBasis: p.combined ? WEIGHT_BASIS : null, savedToRecords: false };
+  if (results.some((r) => r.feesKnown === false)) warnings.push('Some legs have no commission given, so their cash figures are before fees.');
+  return { kind: 'hypothetical', legs: results, cashChanges, warnings, weightsBefore: weights(portfolio), weightsAfter: weights(p), weightBasis: p.combined ? WEIGHT_BASIS : null, savedToRecords: false };
 }
 
 // What a price move would do to positions (and the portfolio), e.g. an
@@ -339,11 +379,17 @@ export function priceMoveImpact(portfolio, { symbol, moves_pct: movesPct, price 
   return {
     kind: 'hypothetical', symbol: sym, currency: p0.currency, shares: round(shares, 6), currentPrice: base, priceSource: p0.quote ? `${p0.quote.provider} at ${p0.quote.quoteTime ? formatNy(p0.quote.quoteTime) : 'unknown time'} (${p0.quote.freshness})` : null,
     currentMarketValue: round(mv), unrealizedPLNow: round(mv - cost),
+    // The price at which this holding's unrealized P/L would be zero.
+    breakEven: shares > 0 ? { averageCost: round(cost / shares, 4), movePctFromCurrent: round(((cost / shares) / base - 1) * 100, 2) } : null,
+    impactBasis: totalCad && rate != null
+      ? `portfolioImpactPct = change in value in CAD (at the stored rate ${rate}) as a % of the CAD-equivalent value of priced holdings (${round(totalCad)} CAD), excluding cash and unpriced positions.`
+      : null,
     scenarios: moves.map((m) => {
       const np = base * (1 + m / 100);
       const nmv = shares * np;
       return {
-        movePct: round(m, 2), price: round(np, 4), marketValue: round(nmv), valueChange: round(nmv - mv), unrealizedPL: round(nmv - cost),
+        movePct: round(m, 2), price: round(np, 4), marketValue: round(nmv), valueChange: round(nmv - mv),
+        valueChangeCad: rate != null ? round((nmv - mv) * rate) : null, unrealizedPL: round(nmv - cost),
         portfolioImpactPct: totalCad && rate != null ? round((((nmv - mv) * rate) / totalCad) * 100, 2) : null,
       };
     }),
@@ -365,17 +411,20 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
     merged.set(k, m);
   }
   const positions = [...merged.values()];
+  // A ticker listed on two exchanges is shown with its exchange so the two stay apart.
+  const dupSymbols = new Set(positions.map((p) => p.symbol).filter((x, i, a) => a.indexOf(x) !== i));
+  for (const p of positions) p.label = dupSymbols.has(p.symbol) ? `${p.symbol} (${p.exchange})` : p.symbol;
   const groups = {};
   const add = (k, label, sym) => { const g = (groups[k] ||= { label, symbols: [] }); if (!g.symbols.includes(sym)) g.symbols.push(sym); };
   const toCad = (p) => toCadRate(portfolio, p.currency);
   for (const p of positions) {
     const d = describe(p) || {};
-    if (d.category) add(`category:${d.category}`, `Same category: ${d.category}`, p.symbol);
-    if (d.aiConnection && d.aiConnection !== 'none') add(`ai:${d.aiConnection}`, `AI linkage: ${d.aiConnection}`, p.symbol);
-    if (d.leveraged) add('leveraged', 'Leveraged/inverse daily-reset funds', p.symbol);
-    if (['compute', 'semi_mfg', 'memory'].includes(d.category) || /semiconductor/i.test(`${d.oneLiner} ${d.name}`)) add('theme:semis', 'Semiconductor cycle', p.symbol);
-    if (['datacenter', 'cooling_electrical', 'power_grid', 'networking'].includes(d.category)) add('theme:dc_capex', 'Data-center capital spending', p.symbol);
-    add(`ccy:${p.currency}`, `Priced in ${p.currency} (trading currency; a fund's economic exposure can differ)`, p.symbol);
+    if (d.category) add(`category:${d.category}`, `Same category: ${d.category}`, p.label);
+    if (d.aiConnection && d.aiConnection !== 'none') add(`ai:${d.aiConnection}`, `AI linkage: ${d.aiConnection}`, p.label);
+    if (d.leveraged) add('leveraged', 'Leveraged/inverse daily-reset funds', p.label);
+    if (['compute', 'semi_mfg', 'memory'].includes(d.category) || /semiconductor/i.test(`${d.oneLiner} ${d.name}`)) add('theme:semis', 'Semiconductor cycle', p.label);
+    if (['datacenter', 'cooling_electrical', 'power_grid', 'networking'].includes(d.category)) add('theme:dc_capex', 'Data-center capital spending', p.label);
+    add(`ccy:${p.currency}`, `Priced in ${p.currency} (trading currency; a fund's economic exposure can differ)`, p.label);
   }
   // Exposures with exactly the same holdings are one cluster under several labels.
   const bySet = new Map();
@@ -384,8 +433,10 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
     if (bySet.has(key)) bySet.get(key).labels.push(g.label);
     else bySet.set(key, { labels: [g.label], symbols: g.symbols });
   }
-  const shared = [...bySet.values()].map((g) => ({ label: g.labels.join('; '), symbols: g.symbols })).map((g) => {
-    const value = positions.filter((p) => g.symbols.includes(p.symbol)).reduce((s, p) => s + (toCad(p) != null ? p.marketValue * toCad(p) : 0), 0);
+  // Each cluster lists every criterion its holdings share (several criteria can
+  // describe the same group, e.g. "AI linkage: direct" and "Priced in USD").
+  const shared = [...bySet.values()].map((g) => ({ criteria: g.labels, label: g.labels.join(' + '), symbols: g.symbols })).map((g) => {
+    const value = positions.filter((p) => g.symbols.includes(p.label)).reduce((s, p) => s + (toCad(p) != null ? p.marketValue * toCad(p) : 0), 0);
     return { ...g, combinedValueCad: portfolio.combined ? round(value) : null, combinedWeightPct: portfolio.combined ? round((value / portfolio.combined.marketValue) * 100, 1) : null };
   }).sort((a, b) => (b.combinedWeightPct ?? 0) - (a.combinedWeightPct ?? 0));
 
@@ -394,8 +445,8 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
   const coverage = [];
   for (const p of positions) {
     const bars = barsFor(p.instrument_id);
-    coverage.push({ symbol: p.symbol, sessions: bars.length, lastSession: bars.at(-1)?.ts || null });
-    if (bars.length >= 30) closes[p.symbol] = new Map(bars.map((b) => [b.ts, b.c]));
+    coverage.push({ symbol: p.label, sessions: bars.length, lastSession: bars.at(-1)?.ts || null });
+    if (bars.length >= 30) closes[p.label] = new Map(bars.map((b) => [b.ts, b.c]));
   }
   const syms = Object.keys(closes);
   const pairs = [];
@@ -413,7 +464,11 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
       let cov = 0, va = 0, vb = 0;
       for (let k = 0; k < xa.length; k++) { cov += (xa[k] - ma) * (xb[k] - mb); va += (xa[k] - ma) ** 2; vb += (xb[k] - mb) ** 2; }
       const corr = va > 0 && vb > 0 ? cov / Math.sqrt(va * vb) : null;
-      if (corr != null) pairs.push({ a: syms[i], b: syms[j], correlation: round(corr, 2), returns: xa.length, from: dates[0], to: dates.at(-1) });
+      if (corr != null) {
+        // Two different instruments moving in perfect lockstep usually means duplicated or placeholder data.
+        const suspect = Math.abs(corr) >= 0.98;
+        pairs.push({ a: syms[i], b: syms[j], correlation: round(corr, 2), returns: xa.length, from: dates[0], to: dates.at(-1), ...(suspect ? { dataQualityWarning: 'Near-perfect correlation between different instruments: check the stored price history before relying on it.' } : {}) });
+      }
     }
   }
   pairs.sort((x, y) => y.correlation - x.correlation);
@@ -431,10 +486,11 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
     upcomingEarnings: { windowDays: earningsWindowDays, events: upcomingEarnings },
     concentration: {
       herfindahl: hhi, effectiveNumberOfPositions: hhi ? round(1 / hhi, 1) : null, weightBasis: portfolio.combined ? WEIGHT_BASIS : WEIGHT_BASIS_CCY,
+      currencyExposurePct: portfolio.combined ? Object.fromEntries(['USD', 'CAD'].map((c) => [c, round((positions.filter((p) => p.currency === c).reduce((a, p) => a + p.marketValue * toCad(p), 0) / portfolio.combined.marketValue) * 100, 1)])) : null,
       weights: positions.filter((p) => p.weightPct != null).sort((a, b) => b.weightPct - a.weightPct).map((p) => ({ symbol: p.symbol, weightPct: round(p.weightPct, 1), accounts: p.accounts })),
     },
     leveragedFunds: positions.filter((p) => describe(p)?.leveraged).map((p) => ({ symbol: p.symbol, objective: describe(p)?.dailyObjective || null, weightPct: p.weightPct != null ? round(p.weightPct, 1) : null })),
-    staleQuotes: positions.filter((p) => p.quote && p.quote.freshness !== 'fresh').map((p) => ({ symbol: p.symbol, freshness: p.quote.freshness, quoteTime: p.quote.quoteTime })),
+    staleQuotes: positions.filter((p) => p.quote && p.quote.freshness !== 'fresh').map((p) => ({ symbol: p.label, freshness: p.quote.freshness, quoteTime: p.quote.quoteTime, quoteTimeET: p.quote.quoteTime ? formatNy(p.quote.quoteTime) : null })),
     unpriced: portfolio.positions.filter((p) => p.marketValue == null).map((p) => p.symbol),
     unpricedNote: 'Unpriced holdings (e.g. identity not confirmed) are left out of every group, weight and correlation above.',
   };
@@ -443,33 +499,36 @@ export function riskOverlap(portfolio, { describe, barsFor, upcomingEarnings, ea
 // Attribution of the latest session's P/L by position, per currency, with a
 // combined CAD figure at the stored rate and the currency effect between the
 // last two daily reference rates (only when those rates are current).
-export function dailyAttribution(portfolio, { fxPrev, lastSessionDate } = {}) {
+export function dailyAttribution(portfolio, { fxPrev, sessionDate } = {}) {
   const out = {};
   const rate = portfolio.combined?.fxRate ?? null;
   const toCad = (p) => (p.currency === 'CAD' ? 1 : rate);
-  const grossCad = rate != null ? portfolio.positions.filter((p) => p.dailyPL != null).reduce((s, p) => s + Math.abs(p.dailyPL) * toCad(p), 0) : null;
+  const measured = portfolio.positions.filter((p) => p.dailyPL != null);
+  const grossCad = rate != null ? measured.reduce((s, p) => s + Math.abs(p.dailyPL) * toCad(p), 0) : null;
+  const netCad = rate != null ? measured.reduce((s, p) => s + p.dailyPL * toCad(p), 0) : null;
   for (const ccy of ['USD', 'CAD']) {
-    const ps = portfolio.positions.filter((p) => p.currency === ccy && p.dailyPL != null);
+    const ps = measured.filter((p) => p.currency === ccy);
     const total = ps.reduce((s, p) => s + p.dailyPL, 0);
     const gross = ps.reduce((s, p) => s + Math.abs(p.dailyPL), 0);
     out[ccy] = {
       totalDailyPL: round(total), totalDailyPct: portfolio.totals[ccy].dailyPct,
       pctBasis: 'Over positions with a measurable change (previous close available)',
-      shareBasis: `shareOfCurrencyGrossMovePct: share of the summed absolute moves of ${ccy} positions; shareOfPortfolioGrossMovePct: share of the summed absolute moves of all positions in CAD terms.`,
+      shareBasis: `shareOfCurrencyGrossMovePct: share of the summed absolute moves of ${ccy} positions. shareOfPortfolioGrossMovePct: share of the summed absolute moves of all positions in CAD. shareOfNetMovePct: this position's CAD move as a % of the portfolio's net CAD move (positive = it moved the same way as the total; shares can exceed 100% when others moved the opposite way).`,
       contributions: ps.map((p) => ({
         symbol: p.symbol, account: p.account, dailyPL: p.dailyPL, dailyPct: p.dailyPct, session: p.dailyPLSession || null,
         shareOfCurrencyGrossMovePct: gross > 0 ? round((Math.abs(p.dailyPL) / gross) * 100, 1) : null,
         shareOfPortfolioGrossMovePct: grossCad ? round(((Math.abs(p.dailyPL) * toCad(p)) / grossCad) * 100, 1) : null,
+        shareOfNetMovePct: netCad ? round(((p.dailyPL * toCad(p)) / netCad) * 100, 1) : null,
         dailyPLCad: rate != null || ccy === 'CAD' ? round(p.dailyPL * (ccy === 'USD' ? rate : 1)) : null,
-        quoteTime: p.quote?.quoteTime, freshness: p.quote?.freshness,
+        quoteTime: p.quote?.quoteTime, quoteTimeET: p.quote?.quoteTime ? formatNy(p.quote.quoteTime) : null, freshness: p.quote?.freshness,
       })).sort((a, b) => a.dailyPL - b.dailyPL),
+      staleInputs: ps.filter((p) => p.quote && p.quote.freshness !== 'fresh').map((p) => p.symbol),
       noPreviousClose: portfolio.positions.filter((p) => p.currency === ccy && p.marketValue != null && p.dailyPL == null).map((p) => p.symbol),
       unpriced: portfolio.positions.filter((p) => p.currency === ccy && p.marketValue == null).map((p) => p.symbol),
     };
   }
   let combinedCad = null;
   if (rate != null) {
-    const measured = portfolio.positions.filter((p) => p.dailyPL != null);
     const startCad = measured.reduce((s, p) => s + (p.dailyPLStartValue || 0) * toCad(p), 0);
     const plCad = out.USD.totalDailyPL * rate + out.CAD.totalDailyPL;
     combinedCad = {
@@ -480,19 +539,24 @@ export function dailyAttribution(portfolio, { fxPrev, lastSessionDate } = {}) {
   }
   const sessions = [...new Set(portfolio.positions.map((p) => p.dailyPLSession).filter(Boolean))];
   let fx = null;
-  if (portfolio.fx && fxPrev) {
-    const current = !lastSessionDate || portfolio.fx.as_of >= lastSessionDate;
-    if (current) {
+  if (portfolio.fx && sessionDate) {
+    // Only a rate change into this session's own reference rate belongs with this session's P/L.
+    if (portfolio.fx.as_of === sessionDate && fxPrev) {
       const usdMv = portfolio.totals.USD.marketValue || 0;
       const usdCash = portfolio.totals.USD.cash || 0;
       fx = {
         from: { rate: fxPrev.rate, asOf: fxPrev.as_of }, to: { rate: portfolio.fx.rate, asOf: portfolio.fx.as_of }, source: portfolio.fx.source,
         approxEffectOnUsdHoldingsInCad: round(usdMv * (portfolio.fx.rate - fxPrev.rate)),
         approxEffectOnUsdCashInCad: round(usdCash * (portfolio.fx.rate - fxPrev.rate)),
-        note: `Change between the ${fxPrev.as_of} and ${portfolio.fx.as_of} daily reference rates applied to current USD values. It is a currency effect, separate from investment returns and not included in combinedCad.dailyPLCad, and it covers those dates rather than today's intraday FX move.`,
+        note: `Change between the ${fxPrev.as_of} and ${portfolio.fx.as_of} daily reference rates applied to current USD values. It is a currency effect, separate from investment returns and not included in combinedCad.dailyPLCad.`,
       };
     } else {
-      fx = { unavailable: true, note: `The latest stored USD/CAD rate is from ${portfolio.fx.as_of}, before the latest session; the currency effect for this session is not known.` };
+      fx = {
+        unavailable: true,
+        note: portfolio.fx.as_of < sessionDate
+          ? `The USD/CAD reference rate for the ${sessionDate} session is not stored yet (latest is ${portfolio.fx.as_of}; the Bank of Canada publishes each day's rate in the late afternoon), so this session's currency effect is not known.`
+          : `The latest stored USD/CAD rate (${portfolio.fx.as_of}) is from after the ${sessionDate} session, so it cannot measure that session's currency effect.`,
+      };
     }
   }
   return { sessionsMeasured: sessions, byCurrency: out, combinedCad, fx };

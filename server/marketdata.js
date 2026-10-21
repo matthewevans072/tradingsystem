@@ -208,16 +208,37 @@ export async function refreshEarnings(ctx, { days = 60, lookbackDays = 10, symbo
   try {
     const list = await p.getEarnings(symbols, from, to);
     const now = nowIso();
-    const st = ctx.db.prepare(`INSERT INTO events (instrument_id, symbol, type, date, time_hint, title, details_json, source, fetched_at, first_seen_at)
-      VALUES ((SELECT id FROM instruments WHERE symbol = ? LIMIT 1), ?, 'earnings', ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(symbol, type, date, source) DO UPDATE SET time_hint = excluded.time_hint, details_json = excluded.details_json, fetched_at = excluded.fetched_at`);
-    for (const e of list) st.run(e.symbol, e.symbol, e.date, e.time_hint, `${e.symbol} earnings`, JSON.stringify(e.details), e.source, now, now);
-    // Future dates from this source that the provider no longer lists were superseded (e.g. a moved date).
+    const existing = ctx.db.prepare("SELECT * FROM events WHERE type = 'earnings' AND symbol = ? AND date = ? AND source = ?");
+    const insert = ctx.db.prepare(`INSERT INTO events (instrument_id, symbol, type, date, time_hint, title, details_json, source, fetched_at, first_seen_at)
+      VALUES ((SELECT id FROM instruments WHERE symbol = ? LIMIT 1), ?, 'earnings', ?, ?, ?, ?, ?, ?, ?)`);
+    const update = ctx.db.prepare('UPDATE events SET time_hint = ?, details_json = ?, fetched_at = ? WHERE id = ?');
+    for (const e of list) {
+      const row = existing.get(e.symbol, e.date, e.source);
+      const details = { ...(e.details || {}) };
+      if (!row) { insert.run(e.symbol, e.symbol, e.date, e.time_hint, `${e.symbol} earnings`, JSON.stringify(details), e.source, now, now); continue; }
+      // Keep a history of changes to timing and estimates so "what changed" can report them.
+      const old = row.details_json ? JSON.parse(row.details_json) : {};
+      const changes = [...(old.changes || [])];
+      if ((row.time_hint || null) !== (e.time_hint || null)) changes.push({ field: 'timing', from: row.time_hint, to: e.time_hint, at: now });
+      for (const k of ['epsEstimate', 'revenueEstimate', 'epsActual', 'revenueActual']) {
+        if (details[k] != null && old[k] !== details[k]) changes.push({ field: k, from: old[k] ?? null, to: details[k], at: now });
+      }
+      update.run(e.time_hint, JSON.stringify({ ...details, ...(old.previousDate ? { previousDate: old.previousDate, dateChangedAt: old.dateChangedAt } : {}), ...(changes.length ? { changes: changes.slice(-10) } : {}) }), now, row.id);
+    }
+    // Future dates from this source that the provider no longer lists were superseded (a moved
+    // date): the new date remembers the old one.
     const returned = new Set(list.map((e) => `${e.symbol}|${e.date}`));
     const sources = [...new Set(list.map((e) => e.source))];
     for (const src of sources) {
       for (const row of ctx.db.prepare("SELECT id, symbol, date FROM events WHERE type = 'earnings' AND source = ? AND date >= ? AND date <= ?").all(src, today, to)) {
-        if (symbols.includes(row.symbol) && !returned.has(`${row.symbol}|${row.date}`)) ctx.db.prepare('DELETE FROM events WHERE id = ?').run(row.id);
+        if (!symbols.includes(row.symbol) || returned.has(`${row.symbol}|${row.date}`)) continue;
+        const moved = list.filter((e) => e.symbol === row.symbol && e.source === src).sort((a, b) => Math.abs(Date.parse(a.date) - Date.parse(row.date)) - Math.abs(Date.parse(b.date) - Date.parse(row.date)))[0];
+        if (moved) {
+          const target = existing.get(moved.symbol, moved.date, src);
+          const det = target?.details_json ? JSON.parse(target.details_json) : {};
+          if (target) ctx.db.prepare('UPDATE events SET details_json = ? WHERE id = ?').run(JSON.stringify({ ...det, previousDate: row.date, dateChangedAt: now }), target.id);
+        }
+        ctx.db.prepare('DELETE FROM events WHERE id = ?').run(row.id);
       }
     }
     // Coverage is kept per ticker, so checking one ticker leaves the others' record intact.

@@ -108,8 +108,11 @@ function suggestionButtons() {
 }
 
 async function openConversation(id) {
+  const epoch = state.epoch;
   try {
-    state.current = await api('GET', `/api/chat/conversations/${id}`);
+    const conv = await api('GET', `/api/chat/conversations/${id}`);
+    if (epoch !== state.epoch) return;
+    state.current = conv;
     state.view = 'chat';
     render();
     scrollToEnd();
@@ -132,12 +135,15 @@ async function send(text) {
   try {
     if (!state.current) {
       const { id } = await api('POST', '/api/chat/conversations', { title: q.slice(0, 80) });
+      if (epoch !== state.epoch) return; // the workspace changed meanwhile
       state.current = { id, title: q.slice(0, 80), messages: [], proposals: [] };
+      state.conversations = [{ id, title: q.slice(0, 80), questions: 1, updated_at: new Date().toISOString() }, ...state.conversations];
     }
   } catch (e) {
     showPanelError(e.message);
     return;
   }
+  if (epoch !== state.epoch) return;
   state.draft = '';
   const conv = state.current;
   const askedAt = new Date().toISOString();
@@ -178,8 +184,10 @@ async function send(text) {
     if (!answered) state.current.messages.push({ role: 'assistant', status: 'error', error: failure, createdAt: new Date().toISOString() });
   }
   render();
-  scrollToEnd();
-  focusInput();
+  if (state.current?.id === conv.id) {
+    scrollToEnd();
+    focusInput();
+  }
 }
 
 function scrollToEnd() {
@@ -195,7 +203,8 @@ function focusInput() {
 function showPanelError(msg) {
   const list = els.panel.querySelector('.chat-messages');
   if (!list) { toast(msg, 'error'); return; }
-  list.append(h('div', { class: 'notice danger small', role: 'alert' }, msg));
+  list.querySelectorAll('.panel-error').forEach((x) => x.remove());
+  list.append(h('div', { class: 'notice danger small panel-error', role: 'alert' }, msg));
   scrollToEnd();
 }
 
@@ -235,7 +244,7 @@ function render() {
   } else if (!s) body.append(h('div', { class: 'state loading' }, h('span', { class: 'spinner' }), 'Loading…'));
   else if (!s.available) body.append(unavailableView(s));
   const msgs = state.current?.messages || [];
-  if (s?.available && !msgs.length) body.append(introView());
+  if (s?.available && !state.loadError && !msgs.length) body.append(introView());
   for (const m of msgs) body.append(m.role === 'user' ? userBubble(m) : assistantMessage(m));
   if (busyHere) body.append(h('div', { class: 'chat-progress', id: 'chat-progress', role: 'status' }));
   const unusable = !s || !s.available || !!state.loadError;
@@ -318,7 +327,7 @@ function userBubble(m) {
   return h('div', { class: 'msg user' }, h('div', { class: 'bubble' }, m.text));
 }
 
-function refChip(ref, ledger) {
+function refChip(ref, ledger, held) {
   const item = ledger.find((l) => l.ref === ref);
   if (!item) return null;
   const status = NEWS_STATUS.includes(item.note) && item.note !== 'confirmed' ? item.note : null;
@@ -331,13 +340,13 @@ function refChip(ref, ledger) {
     const existing = parent.querySelector(`.ref-pop[data-ref="${ref}"]`);
     chip.setAttribute('aria-expanded', String(!existing));
     if (existing) { existing.remove(); return; }
-    parent.append(sourceCard(item, true));
+    parent.append(sourceCard(item, true, held));
   });
   return chip;
 }
 
-function sourceCard(item, pop = false) {
-  const holdingLink = item.symbol && ['portfolio_record', 'assessment', 'market_data', 'calculation'].includes(item.kind)
+function sourceCard(item, pop = false, held = null) {
+  const holdingLink = item.symbol && held?.has(item.symbol) && ['portfolio_record', 'assessment', 'market_data', 'calculation'].includes(item.kind)
     ? h('a', { href: `#/positions?symbol=${encodeURIComponent(item.symbol)}`, onclick: (e) => openHolding(e, item.symbol) }, `Open ${item.symbol}`) : null;
   return h('div', { class: pop ? 'ref-pop' : 'source-row', dataset: { ref: item.ref } },
     h('div', { class: 'row' }, h('span', { class: 'ref-id' }, item.ref), badge(KIND_LABEL[item.kind] || item.kind), item.freshness ? badge(item.freshness, item.freshness === 'fresh' ? 'ok' : 'warn') : null,
@@ -350,22 +359,32 @@ function sourceCard(item, pop = false) {
 const kv = (rows) => h('dl', { class: 'kv small' }, rows.filter(Boolean).map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
 const money = (n, ccy) => (n == null ? 'not recorded' : fmt.money(n, ccy));
 
+// Weights: one decimal (as on Positions), and the basis when it is not the usual one.
+const pct1 = (x) => (x == null ? '—' : `${(Math.round(x * 10) / 10).toFixed(1)}%`);
+const weightRow = (s) => (s.weightAfterPct != null
+  ? [/same currency/.test(s.weightBasis || '') ? `Weight (within ${s.currency} only)` : 'Weight', `${pct1(s.weightBeforePct)} → ${pct1(s.weightAfterPct)}`]
+  : null);
+
 function tradeRows(s) {
+  const before = s.feesKnown ? '' : ' (before fees)';
+  const after = s.cashAfter ?? s.cashAfterBeforeFees;
   const cashLine = s.cashBefore != null
-    ? `${money(s.cashBefore, s.currency)} → ${money(s.cashAfter, s.currency)} (${s.cashAccount}${s.cashConfirmed ? '' : ', unconfirmed'})`
+    ? `${money(s.cashBefore, s.currency)} → ${money(after, s.currency)}${after != null ? before : ''} (${s.cashAccount}${s.cashConfirmed ? '' : ', unconfirmed'})`
     : `not recorded for ${s.cashAccount || 'this account'}`;
+  const typical = s.ifTypicalFee ? ['With your usual fee', `${fmt.money(s.ifTypicalFee.fee, s.currency)} fee → ${s.side === 'sell' ? `net ${money(s.ifTypicalFee.netProceeds, s.currency)}` : `total ${money(s.ifTypicalFee.totalCost, s.currency)}`}`] : null;
   if (s.side === 'sell') {
     return [['Shares', `${fmt.qty(s.shares)} of ${fmt.qty(s.sharesBefore)} (${fmt.qty(s.sharesAfter)} left)`], ['Est. price', `${fmt.num(s.price)} ${s.currency}`], ['Gross proceeds', money(s.grossProceeds, s.currency)],
-      ['Fees', s.feesKnown ? money(s.fees, s.currency) : 'unknown (calculated as $0)'], ['Cash freed', money(s.netProceeds, s.currency)], ['Cash', cashLine],
-      ['Est. realized P/L', fmt.signedMoney(s.estimatedRealizedPL, s.currency)], s.cadEquivalentOfProceeds ? ['≈ in CAD', `${fmt.money(s.cadEquivalentOfProceeds.amount, 'CAD')} at ${s.cadEquivalentOfProceeds.fxRate} (${s.cadEquivalentOfProceeds.fxAsOf})`] : null,
-      s.weightAfterPct != null ? ['Weight', `${fmt.plainPct(s.weightBeforePct)} → ${fmt.plainPct(s.weightAfterPct)}`] : null, ['Taxes', s.taxes]];
+      ['Fees', s.feesKnown ? money(s.fees, s.currency) : 'not given'], s.feesKnown ? ['Cash freed', money(s.netProceeds, s.currency)] : ['Cash freed', `${money(s.proceedsBeforeFees, s.currency)} before fees`], typical, ['Cash', cashLine],
+      ['Est. realized P/L', s.estimatedRealizedPL != null ? fmt.signedMoney(s.estimatedRealizedPL, s.currency) : `${fmt.signedMoney(s.estimatedRealizedPLBeforeFees, s.currency)} before fees`],
+      s.cadEquivalentOfProceeds ? ['≈ in CAD', `${fmt.money(s.cadEquivalentOfProceeds.amount, 'CAD')}${before} at ${s.cadEquivalentOfProceeds.fxRate} (${s.cadEquivalentOfProceeds.fxAsOf})`] : null,
+      weightRow(s), ['Taxes', s.taxes]];
   }
-  return [['Shares', `${fmt.qty(s.shares)} (to ${fmt.qty(s.sharesAfter)})`], ['Est. price', `${fmt.num(s.price)} ${s.currency}`], ['Total cost', money(s.totalCost, s.currency)],
-    ['Fees', s.feesKnown ? money(s.fees, s.currency) : 'unknown (calculated as $0)'], ['Cash', cashLine],
-    ['Affordable with confirmed cash', s.affordableWithConfirmedCash ? 'Yes' : `No${s.cashShortfall ? ` (short ${money(s.cashShortfall, s.currency)})` : ''}`],
-    s.cadEquivalentOfCost ? ['≈ in CAD', `${fmt.money(s.cadEquivalentOfCost.amount, 'CAD')} at ${s.cadEquivalentOfCost.fxRate} (${s.cadEquivalentOfCost.fxAsOf})`] : null,
-    s.weightAfterPct != null ? ['Weight', `${fmt.plainPct(s.weightBeforePct)} → ${fmt.plainPct(s.weightAfterPct)}`] : null,
-    ['New average cost', `${fmt.num(s.newAverageCost, 4)} ${s.currency}`]];
+  return [['Shares', `${fmt.qty(s.shares)} (to ${fmt.qty(s.sharesAfter)})`], ['Est. price', `${fmt.num(s.price)} ${s.currency}`],
+    ['Total cost', s.totalCost != null ? money(s.totalCost, s.currency) : `${money(s.costBeforeFees, s.currency)} before fees`],
+    ['Fees', s.feesKnown ? money(s.fees, s.currency) : 'not given'], typical, ['Cash', cashLine],
+    ['Affordable with confirmed cash', s.affordability || (s.affordableWithConfirmedCash ? 'Yes' : 'No')],
+    s.cadEquivalentOfCost ? ['≈ in CAD', `${fmt.money(s.cadEquivalentOfCost.amount, 'CAD')}${before} at ${s.cadEquivalentOfCost.fxRate} (${s.cadEquivalentOfCost.fxAsOf})`] : null,
+    weightRow(s), ['New average cost', `${fmt.num(s.newAverageCost, 4)} ${s.currency}`]];
 }
 
 function legTitle(s) {
@@ -382,10 +401,13 @@ function scenarioCard(s) {
         leg.side === 'convert'
           ? kv([['Rate', `${leg.rate} (${leg.rateAsOf}, ${leg.rateSource})`], ['Cash before → after', leg.sourceCashBefore != null ? `${fmt.money(leg.sourceCashBefore, leg.fromCurrency)} → ${fmt.money(leg.sourceCashAfter, leg.fromCurrency)}` : 'not recorded']])
           : kv(tradeRows(leg)),
+        leg.cashAmountSource ? h('div', { class: 'small muted' }, `Sized with ${leg.cashAmountSource}.`) : null,
         leg.notes?.length ? h('ul', { class: 'bullets small muted' }, leg.notes.map((n) => h('li', {}, n))) : null)),
       Object.keys(s.cashChanges || {}).length
         ? kv(Object.entries(s.cashChanges).map(([k, c]) => [`Cash ${k}`, c.before != null ? `${fmt.money(c.before)} → ${fmt.money(c.after)} (${fmt.signedMoney(c.change)})` : `${fmt.signedMoney(c.change)} (no balance recorded)`]))
-        : null);
+        : null,
+      s.weightsAfter?.length ? h('details', { class: 'more' }, h('summary', {}, 'Weights after the whole plan'),
+        kv(s.weightsAfter.map((w) => { const b = (s.weightsBefore || []).find((x) => x.symbol === w.symbol && x.account === w.account); return [w.symbol, `${b ? pct1(b.weightPct) : '—'} → ${pct1(w.weightPct)}`]; }))) : null);
   }
   return h('div', { class: 'scenario' },
     h('div', { class: 'spread' }, h('strong', {}, `${s.id}: ${legTitle(s)}`), badge('Hypothetical — not saved', 'warn')),
@@ -397,6 +419,7 @@ function scenarioCard(s) {
 async function decideProposal(p, action, buttons) {
   buttons.forEach((b) => { b.disabled = true; });
   const convId = state.current.id;
+  const epoch = state.epoch;
   let ok = false, error = null;
   try {
     await api('POST', `/api/chat/proposals/${p.id}/${action}`, { conversationId: convId });
@@ -405,10 +428,16 @@ async function decideProposal(p, action, buttons) {
   } catch (e) {
     error = e.message;
   }
+  if (epoch !== state.epoch) return;
   try {
     const fresh = await api('GET', `/api/chat/conversations/${convId}`);
-    if (state.current?.id === convId) state.current = fresh;
-  } catch { /* keep the current view */ }
+    if (epoch === state.epoch && state.current?.id === convId) state.current = fresh;
+  } catch (e) {
+    // The decision went through but the view could not be refreshed: show its outcome anyway.
+    const same = state.current?.proposals?.find((x) => x.id === p.id);
+    if (same && ok) same.status = action === 'confirm' ? 'confirmed' : 'rejected';
+    if (same) same.localError = `Could not refresh this conversation (${e.message}).${ok ? ' The change itself was saved.' : ''}`;
+  }
   if (error) {
     const same = state.current?.proposals?.find((x) => x.id === p.id);
     if (same) same.localError = error;
@@ -456,6 +485,7 @@ function assistantMessage(m) {
   const usedRefs = new Set(a.details.flatMap((d) => d.refs));
   const groups = Object.keys(CATEGORY).map((c) => [c, a.details.filter((d) => d.category === c)]).filter(([, l]) => l.length);
   const held = new Set(a.held_symbols || []);
+  const owned = new Set(a.portfolio_symbols || a.held_symbols || []);
   const symbols = a.affected_symbols || [];
   const cost = m.usage ? (m.usage.estimated === false ? 'cost unknown (model not priced)' : `~US$${(m.usage.cost_usd || 0).toFixed(3)}`) : null;
   return h('div', { class: 'msg assistant' },
@@ -470,7 +500,7 @@ function assistantMessage(m) {
     groups.length || a.alternatives?.length || a.what_would_change_it ? h('details', { class: 'more answer-details' }, h('summary', {}, 'Supporting details'),
       groups.map(([c, list]) => h('div', { class: 'detail-group' },
         h('div', { class: `cat-label ${CATEGORY[c][1]}` }, CATEGORY[c][0]),
-        list.map((d) => h('div', { class: 'detail-item' }, h('span', {}, d.text, ' '), d.refs.map((r) => refChip(r, ledger)),
+        list.map((d) => h('div', { class: 'detail-item' }, h('span', {}, d.text, ' '), d.refs.map((r) => refChip(r, ledger, owned)),
           d.uncited ? badge('uncited', 'warn', 'No supporting source was attached to this point') : null,
           d.relabelled ? badge('relabelled', 'info', 'The model called this a verified fact, but its only sources are media reports or archived briefings') : null,
           d.auto ? badge('added by Signal Desk', 'info', 'Added because the answer relies on data that may be out of date') : null)))),
@@ -482,13 +512,13 @@ function assistantMessage(m) {
     ledger.length ? h('details', { class: 'more data-used' }, h('summary', {}, `Data used (${ledger.length})`),
       h('div', { class: 'small muted' }, `Retrieved for this answer at ${fmt.et(m.createdAt)}. Items marked as cited support specific points above.`),
       ledger.map((item) => {
-        const row = sourceCard(item);
+        const row = sourceCard(item, false, owned);
         if (usedRefs.has(item.ref)) row.classList.add('cited');
         return row;
       }),
       m.tools?.length ? h('div', { class: 'small muted mt' }, 'Tools: ', m.tools.map((t) => `${t.tool} ${t.ok ? '✓' : '✗'} ${t.ms}ms`).join(' · ')) : null) : null,
     a.follow_up_questions?.length ? h('div', { class: 'chat-suggest' }, a.follow_up_questions.map((q) => h('button', { class: 'chip-btn', disabled: state.inflight ? true : null, onclick: () => send(q) }, q))) : null,
-    m.usage ? h('div', { class: 'small muted' }, `${m.model} · ${m.usage.calls} call${m.usage.calls === 1 ? '' : 's'} · ${(m.usage.input_tokens + m.usage.cache_read_input_tokens).toLocaleString()} in / ${m.usage.output_tokens.toLocaleString()} out tokens · ${cost}`) : null);
+    m.usage ? h('div', { class: 'small muted' }, `${(m.usage.models || []).length > 1 ? `${m.usage.models.at(-1)} (fallback after ${m.usage.models[0]} declined)` : m.model} · ${m.usage.calls} call${m.usage.calls === 1 ? '' : 's'} · ${(m.usage.input_tokens + m.usage.cache_read_input_tokens).toLocaleString()} in / ${m.usage.output_tokens.toLocaleString()} out tokens · ${cost}`) : null);
 }
 
 export { ACTION_LABEL };

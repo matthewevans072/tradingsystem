@@ -45,6 +45,7 @@ function saveState(s) { fs.writeFileSync(stateFile, JSON.stringify(s, null, 1));
 function ledgerFrom(items) {
   const L = new Ledger();
   for (const i of items) { L.items.push(i); L.byKey.set(i.key || `${i.kind}:${i.label}:${i.asOf}`, i); }
+  L.next = Math.max(0, ...items.map((i) => Number(String(i.ref).slice(1)) || 0)) + 1;
   return L;
 }
 function snapshot(db) {
@@ -193,11 +194,11 @@ async function main() {
   }
   if (cmd === 'submit') {
     const raw = JSON.parse(rest[0]);
-    const { answer, issues } = validateAnswer(raw, ledger);
+    const { answer, issues, removed } = validateAnswer(raw, ledger);
     const baseline = JSON.parse(fs.readFileSync(path.join(dir, 'baseline.json'), 'utf8'));
     const now = snapshot(ctx.db);
     const changed = Object.keys(baseline).filter((k) => baseline[k] !== now[k]);
-    console.log(JSON.stringify({ answer, issues, ledger: ledger.items, recordsChanged: changed, pendingProposals: ctx.db.prepare("SELECT id, change_type, diff_json, status FROM chat_proposals").all() }, null, 1));
+    console.log(JSON.stringify({ answer, issues, removedSentences: removed, note: removed.length ? "In the app the model would first be asked once to rephrase these sentences." : undefined, ledger: ledger.items, recordsChanged: changed, pendingProposals: ctx.db.prepare("SELECT id, change_type, diff_json, status FROM chat_proposals").all() }, null, 1));
     return;
   }
   console.error('unknown command');
