@@ -169,7 +169,7 @@ export async function renderSettings(view, ctx) {
     h('div', { class: 'list' },
       h('div', { class: 'list-item spread' }, h('strong', {}, 'Status'), badge(chat?.available ? 'Ready' : 'Not configured', chat?.available ? 'ok' : 'warn')),
       chat?.available ? h('div', { class: 'list-item spread' }, h('span', {}, 'Model'), h('span', { class: 'small' }, `${chat.model} · effort ${chat.effort}`)) : null,
-      h('div', { class: 'list-item spread' }, h('span', {}, 'Spent today (estimate)'), h('span', { class: 'small' }, `US$${(chat?.spentTodayUsd || 0).toFixed(2)} of US$${chat?.dailyBudgetUsd ?? '—'} daily cap`))),
+      h('div', { class: 'list-item spread' }, h('span', {}, 'Spent today (estimate)'), h('span', { class: 'small' }, chat?.dailyBudgetUsd ? `US$${(chat?.spentTodayUsd || 0).toFixed(2)} of US$${chat.dailyBudgetUsd} daily cap (real and demo workspaces together)` : `US$${(chat?.spentTodayUsd || 0).toFixed(2)} · no daily cap set`))),
     !chat?.available ? notice('warn', chat?.reason || 'Unavailable') : null,
     notice('info', h('strong', {}, 'Model access and cost. '), 'The chat agent calls Anthropic’s API with your own key (ANTHROPIC_API_KEY in .env). Building Signal Desk with Claude Code does not give the app model access, and a Claude subscription does not cover API usage. Usage is billed per token; a typical question uses 5–40k input tokens. Set CHAT_DAILY_BUDGET_USD to cap spending, CHAT_MODEL to change model (e.g. claude-sonnet-5-5 is cheaper), and CHAT_EFFORT (low–max) to trade depth for cost.'),
     h('details', { class: 'more' }, h('summary', {}, 'What is sent to the model provider'), h('ul', { class: 'bullets small' }, (chat?.disclosure || []).map((d) => h('li', {}, d)))));
