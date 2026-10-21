@@ -274,6 +274,56 @@ const MIGRATIONS = [
     detail TEXT
   );
   `,
+  // 2: Ask Signal Desk chat agent
+  `
+  CREATE TABLE chat_conversations (
+    id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE chat_messages (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,                -- user | assistant
+    text TEXT,                         -- user question, or assistant short answer
+    answer_json TEXT,                  -- structured assistant answer
+    ledger_json TEXT,                  -- data used: refs, sources, timestamps
+    tools_json TEXT,                   -- tool calls made (name, status, ms, error)
+    scenarios_json TEXT,               -- hypothetical scenarios computed this turn
+    page_context_json TEXT,
+    status TEXT NOT NULL DEFAULT 'ok', -- ok | partial | error | unavailable
+    error TEXT,
+    model TEXT,
+    usage_json TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX chat_messages_conv ON chat_messages(conversation_id, id);
+
+  CREATE TABLE chat_proposals (
+    id INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    message_id INTEGER,
+    change_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    diff_json TEXT NOT NULL,
+    user_quote TEXT NOT NULL,
+    status TEXT NOT NULL,              -- pending | confirmed | rejected | failed | expired
+    result_json TEXT,
+    created_at TEXT NOT NULL,
+    decided_at TEXT
+  );
+
+  CREATE TABLE chat_usage (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL,
+    day TEXT NOT NULL,
+    model TEXT,
+    input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER, cache_write_tokens INTEGER,
+    cost_usd REAL
+  );
+  `,
 ];
 
 export function openDb(file) {

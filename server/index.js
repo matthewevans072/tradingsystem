@@ -81,6 +81,18 @@ export function createServer(cfg, { contexts, scheduler, version }) {
         const body = req.method === 'GET' ? {} : await readBody(req);
         const query = Object.fromEntries(url.searchParams.entries());
         const out = await route.handler(ctx, { params: route.params, body, query, app: { scheduler: mode === 'real' ? scheduler : null, version } });
+        if (out && typeof out.__stream === 'function') {
+          // Newline-delimited JSON progress events, then the final result.
+          res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+          const emit = (ev) => { try { res.write(JSON.stringify(ev) + '\n'); } catch { /* client gone */ } };
+          try {
+            const final = await out.__stream(emit);
+            emit({ type: 'done', message: final });
+          } catch (e) {
+            emit({ type: 'error', error: redact(e.message || 'Error', cfg) });
+          }
+          return res.end();
+        }
         return send(res, 200, out ?? { ok: true });
       }
 

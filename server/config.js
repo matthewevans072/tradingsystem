@@ -52,6 +52,13 @@ export function loadConfig(overrides = {}) {
     },
     secContactEmail: get('SEC_CONTACT_EMAIL'),
     anthropicModel: get('ANTHROPIC_MODEL', 'claude-opus-5-5'),
+    chat: {
+      backend: get('CHAT_BACKEND', ''),
+      model: get('CHAT_MODEL', ''),
+      effort: get('CHAT_EFFORT', 'high'),
+      dailyBudgetUsd: get('CHAT_DAILY_BUDGET_USD', '') === '' ? 5 : Number(get('CHAT_DAILY_BUDGET_USD')),
+      maxToolRounds: get('CHAT_MAX_TOOL_ROUNDS', '') === '' ? 8 : Number(get('CHAT_MAX_TOOL_ROUNDS')),
+    },
     smtp: {
       host: get('SMTP_HOST'),
       port: Number(get('SMTP_PORT', '465')),
@@ -92,6 +99,7 @@ export function publicConfigStatus(cfg) {
       twelvedata: !!cfg.secrets.TWELVEDATA_API_KEY,
       finnhub: !!cfg.secrets.FINNHUB_API_KEY,
       anthropic: !!cfg.secrets.ANTHROPIC_API_KEY,
+      chat: (cfg.chat.backend || (cfg.secrets.ANTHROPIC_API_KEY ? 'anthropic' : 'disabled')) === 'anthropic' && !!cfg.secrets.ANTHROPIC_API_KEY,
       secEdgar: !!cfg.secContactEmail,
       email: !!(cfg.smtp.host && cfg.smtp.user && cfg.secrets.SMTP_PASSWORD && cfg.smtp.to),
       ntfy: !!cfg.ntfy.url,

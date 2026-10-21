@@ -460,3 +460,58 @@ r('GET', '/api/export', (ctx) => ({
   descriptions: ctx.db.prepare('SELECT * FROM descriptions').all(),
   settings: ctx.db.prepare('SELECT * FROM settings').all(),
 }));
+
+// ---------- Ask Signal Desk (chat agent) ----------
+
+import { createBackend, chatConfig, spentToday, PRICING } from './agent/backend.js';
+import { createConversation, listConversations, getConversation, deleteConversation, runChatTurn } from './agent/agent.js';
+import { confirmProposal, rejectProposal } from './agent/proposals.js';
+import { suggestQuestions } from './agent/suggestions.js';
+
+export const CHAT_DISCLOSURE = [
+  'Your question and the short text of earlier questions/answers in the same conversation.',
+  'The results of the tools the model chooses to call for that question, which can include: holdings (tickers, shares, average cost, cost basis, market value, P/L, weights), account names, available cash, trade history and notes, your strategy/thesis text, saved assessments and briefings, stored quotes, price history, news and filings, and company profiles.',
+  'Not sent: API keys or passwords, email/delivery settings, backups, log files, or anything from other conversations.',
+  'The model provider (Anthropic, under the API key you configure) processes this data to generate the answer; see Anthropic\'s commercial terms and privacy policy for retention. Signal Desk stores conversations only in your local database.',
+];
+
+function backendFor(ctx) {
+  ctx.chatBackend ||= createBackend(ctx.cfg);
+  return ctx.chatBackend;
+}
+
+r('GET', '/api/chat/status', (ctx) => {
+  const b = backendFor(ctx);
+  const cc = chatConfig(ctx.cfg);
+  return {
+    available: !!b.available, reason: b.available ? null : b.reason, backend: b.name, model: b.model || cc.model, effort: cc.effort,
+    dailyBudgetUsd: cc.dailyBudgetUsd, spentTodayUsd: Math.round(spentToday(ctx.db) * 10000) / 10000,
+    pricingPerMillionTokens: PRICING[cc.model] ? { input: PRICING[cc.model][0], output: PRICING[cc.model][1], cacheRead: PRICING[cc.model][2] } : null,
+    disclosure: CHAT_DISCLOSURE, workspace: ctx.mode,
+  };
+});
+r('GET', '/api/chat/suggestions', (ctx, { query }) => suggestQuestions(ctx, { page: query.page, symbol: query.symbol }));
+r('GET', '/api/chat/conversations', (ctx) => listConversations(ctx.db));
+r('POST', '/api/chat/conversations', (ctx, { body }) => ({ id: createConversation(ctx.db, body.title || 'New conversation') }));
+r('GET', '/api/chat/conversations/:id', (ctx, { params }) => {
+  const c = getConversation(ctx.db, Number(params.id));
+  if (!c) throw new HttpError(404, 'Conversation not found');
+  return c;
+});
+r('DELETE', '/api/chat/conversations/:id', (ctx, { params }) => {
+  if (!deleteConversation(ctx.db, Number(params.id))) throw new HttpError(404, 'Conversation not found');
+  audit(ctx.db, 'chat_conversation', params.id, 'delete', null, null);
+  return { ok: true };
+});
+r('POST', '/api/chat/conversations/:id/messages', (ctx, { params, body }) => {
+  const conversationId = Number(params.id);
+  if (!ctx.db.prepare('SELECT 1 FROM chat_conversations WHERE id = ?').get(conversationId)) throw new HttpError(404, 'Conversation not found');
+  const pageContext = body.pageContext && typeof body.pageContext === 'object'
+    ? { page: String(body.pageContext.page || '').slice(0, 40) || null, symbol: body.pageContext.symbol ? String(body.pageContext.symbol).toUpperCase().slice(0, 15) : null }
+    : null;
+  return {
+    __stream: (emit) => runChatTurn(ctx, { conversationId, userText: body.text, pageContext, backend: backendFor(ctx), onEvent: emit }),
+  };
+});
+r('POST', '/api/chat/proposals/:id/confirm', (ctx, { params }) => confirmProposal(ctx, Number(params.id)));
+r('POST', '/api/chat/proposals/:id/reject', (ctx, { params }) => rejectProposal(ctx, Number(params.id)));
