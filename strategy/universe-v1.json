@@ -1,0 +1,28 @@
+{
+  "name": "universe-v1",
+  "selectedAt": "2026-10-21",
+  "selectedBefore": "any backtest, forward test or data download for this strategy. No results existed when this list was written.",
+  "method": "Large, liquid US-listed stocks and unlevered ETFs chosen by sector, not by past breakout performance. One AI/technology cluster is deliberately included (the owner's main interest) and tagged so correlated exposure can be measured; it is limited to 5 of 17 names so it cannot dominate the sample by count.",
+  "exclusions": "No leveraged or inverse ETFs, no OTC or non-US listings, no names with under 2 million shares average daily volume.",
+  "regimeProxy": "SPY",
+  "symbols": [
+    { "symbol": "NVDA", "exchange": "NASDAQ", "sector": "Semiconductors", "cluster": "ai_tech" },
+    { "symbol": "AMD", "exchange": "NASDAQ", "sector": "Semiconductors", "cluster": "ai_tech" },
+    { "symbol": "MU", "exchange": "NASDAQ", "sector": "Semiconductors (memory)", "cluster": "ai_tech" },
+    { "symbol": "MSFT", "exchange": "NASDAQ", "sector": "Software", "cluster": "ai_tech" },
+    { "symbol": "VRT", "exchange": "NYSE", "sector": "Data-centre power and cooling", "cluster": "ai_tech" },
+    { "symbol": "JPM", "exchange": "NYSE", "sector": "Financials", "cluster": null },
+    { "symbol": "XOM", "exchange": "NYSE", "sector": "Energy", "cluster": null },
+    { "symbol": "JNJ", "exchange": "NYSE", "sector": "Health care", "cluster": null },
+    { "symbol": "PG", "exchange": "NYSE", "sector": "Consumer staples", "cluster": null },
+    { "symbol": "HD", "exchange": "NYSE", "sector": "Consumer discretionary", "cluster": null },
+    { "symbol": "CAT", "exchange": "NYSE", "sector": "Industrials", "cluster": null },
+    { "symbol": "NEE", "exchange": "NYSE", "sector": "Utilities", "cluster": null },
+    { "symbol": "FCX", "exchange": "NYSE", "sector": "Materials (copper)", "cluster": null },
+    { "symbol": "PLD", "exchange": "NYSE", "sector": "Real estate", "cluster": null },
+    { "symbol": "SPY", "exchange": "NYSE ARCA", "sector": "US large-cap index ETF", "cluster": null },
+    { "symbol": "IWM", "exchange": "NYSE ARCA", "sector": "US small-cap index ETF", "cluster": null },
+    { "symbol": "GLD", "exchange": "NYSE ARCA", "sector": "Gold ETF", "cluster": null }
+  ],
+  "notes": "VRT and MU are also in the owner's real watchlist/portfolio; the simulated account is separate and never reads or changes real holdings. NVDA, AMD, MU, MSFT and VRT tend to move together; results are reported with and without this cluster."
+}

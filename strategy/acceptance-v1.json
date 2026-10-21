@@ -1,0 +1,48 @@
+{
+  "name": "acceptance-v1",
+  "definedAt": "2026-10-21",
+  "definedBefore": "any backtest, forward test or data download for this strategy. These criteria are fixed for strategy version 1.x; changing them requires a new criteria version, logged with its reason, and does not apply to results already seen.",
+  "evaluatedPerMode": true,
+  "costScenario": "base costs from the strategy config unless a criterion says otherwise",
+  "outcomes": {
+    "not_eligible": "at least one criterion failed",
+    "inconclusive": "no criterion failed but at least one could not be evaluated (for example too few trades)",
+    "eligible_for_review": "every criterion passed. This only means the owner may review the evidence; it is never permission to trade real money and never moves anything to live trading by itself."
+  },
+  "backtest": [
+    { "id": "B1", "name": "Enough trades", "rule": "holdout has at least 100 closed trades and validation has at least 60", "onFail": "inconclusive" },
+    { "id": "B2", "name": "Positive expectancy after costs", "rule": "mean R per trade > +0.10 in validation AND in holdout" },
+    { "id": "B3", "name": "Expectancy not explained by noise", "rule": "lower bound of the 95% bootstrap confidence interval of mean R in the holdout > 0 (10,000 resamples, fixed seed)" },
+    { "id": "B4", "name": "Profit factor", "rule": "holdout profit factor >= 1.20 at base costs and >= 1.00 at twice the base costs and slippage" },
+    { "id": "B5", "name": "Drawdown", "rule": "holdout maximum drawdown of simulated equity <= 10%" },
+    { "id": "B6", "name": "Not a few exceptional trades", "rule": "holdout mean R stays >= 0 after removing the best 5% of trades, and no single symbol contributes more than 40% of net profit" },
+    { "id": "B7", "name": "Not one correlated cluster", "rule": "holdout mean R excluding the ai_tech cluster is >= 0" },
+    { "id": "B8", "name": "Stable nearby settings", "rule": "in validation, mean R > 0 for at least 70% of the one-at-a-time neighbouring settings listed in stressTests.neighbours" },
+    { "id": "B9", "name": "Ambiguous bars do not decide the result", "rule": "holdout mean R > 0 with the conservative stop-first assumption (target-first is reported as sensitivity only)" },
+    { "id": "B10", "name": "Walk-forward agrees", "rule": "concatenated walk-forward out-of-sample mean R > 0" }
+  ],
+  "forward": [
+    { "id": "F1", "name": "Review milestone", "rule": "at least 100 closed forward-test trades AND at least 3 calendar months since forward testing started, whichever is later", "onFail": "inconclusive" },
+    { "id": "F2", "name": "Rules frozen", "rule": "every forward trade used the same strategy version and config hash; no rule change after the forward test started" },
+    { "id": "F3", "name": "Consistent with the backtest", "rule": "forward mean R > 0 and inside the holdout 95% bootstrap interval" },
+    { "id": "F4", "name": "Operationally clean", "rule": "signals rejected for stale data or processing errors <= 5% of forward signals, and no duplicate trades" }
+  ],
+  "informational": [
+    "Comparison with equal-weight buy-and-hold of the universe and with SPY over the same dates (return, maximum drawdown, return per unit of drawdown). Reported, not a pass/fail gate, because the strategy is mostly in cash.",
+    "Results by symbol, sector, regime (SPY trend and volatility), year and time of day.",
+    "Exposure, turnover and cost totals.",
+    "Losses larger than the planned risk (gaps through the stop) and their frequency."
+  ],
+  "stressTests": {
+    "costs": [ { "name": "2x costs", "multiply": { "costs.commissionPerShare": 2, "costs.commissionMinPerOrder": 2, "costs.halfSpreadBps": 2, "costs.slippageBps": 2 } }, { "name": "3x costs", "multiply": { "costs.commissionPerShare": 3, "costs.commissionMinPerOrder": 3, "costs.halfSpreadBps": 3, "costs.slippageBps": 3 } }, { "name": "+5 bps slippage", "add": { "costs.slippageBps": 5 } } ],
+    "fills": [ { "name": "entry 0.1 ATR worse", "add": { "stress.entryWorseAtr": 0.1 } }, { "name": "target-first ambiguity", "set": { "simulation.ambiguity": "target_first" } }, { "name": "TradingView path ambiguity", "set": { "simulation.ambiguity": "tv_path" } }, { "name": "intrabar limit entry (TradingView parity)", "set": { "simulation.entryFill": "limit_intrabar" } } ],
+    "neighbours": [
+      { "box.lookbackBars": 15 }, { "box.lookbackBars": 25 },
+      { "box.maxHeightAtr": 2.5 }, { "box.maxHeightAtr": 3.5 },
+      { "box.touchToleranceAtr": 0.15 }, { "box.touchToleranceAtr": 0.25 },
+      { "entry.volumeMultiple": 1.25 }, { "entry.volumeMultiple": 1.75 },
+      { "stop.atrBuffer": 0.0 }, { "stop.atrBuffer": 0.2 },
+      { "box.setupExpiryBars": 5 }, { "box.setupExpiryBars": 15 }
+    ]
+  }
+}

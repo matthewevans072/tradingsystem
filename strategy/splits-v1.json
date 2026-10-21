@@ -1,0 +1,20 @@
+{
+  "name": "splits-v1",
+  "definedAt": "2026-10-21",
+  "definedBefore": "any backtest or data download for this strategy",
+  "timezone": "America/New_York",
+  "warmup": { "from": "2021-07-01", "to": "2021-12-31", "use": "indicator and regime warm-up only; no trades are counted" },
+  "development": { "from": "2022-01-01", "to": "2023-12-31", "use": "building and debugging the engine; inspecting individual trades is allowed" },
+  "validation": { "from": "2024-01-01", "to": "2024-12-31", "use": "checking the fixed rules, stress tests and the nearby-parameter neighbourhood; any rule change after looking at validation results creates a new version and is logged" },
+  "holdout": { "from": "2025-01-01", "to": "2026-06-30", "use": "one final evaluation per strategy version. Running it again requires a written reason and marks the result as contaminated." },
+  "forward": { "from": "the day forward testing is switched on (not before 2026-10-22)", "use": "simulated forward test with the rules frozen" },
+  "walkForward": {
+    "range": { "from": "2022-01-01", "to": "2024-12-31" },
+    "inSampleQuarters": 4,
+    "outOfSampleQuarters": 1,
+    "grid": { "box.maxHeightAtr": [2.5, 3.0, 3.5], "entry.volumeMultiple": [1.25, 1.5, 1.75] },
+    "selection": "highest in-sample expectancy in R among grid points with at least 30 in-sample trades; otherwise the baseline. Out-of-sample quarters are concatenated and reported; the baseline is always reported next to it.",
+    "note": "The grid is deliberately small (9 points). Walk-forward is a robustness check, not a search for a profitable setting."
+  },
+  "dataRequirements": "Split-adjusted 15-minute regular-session OHLCV bars for every universe-v1 symbol from 2021-07-01 to 2026-06-30. Lower-timeframe (1-minute) bars are optional and only used to resolve bars that touch both stop and target."
+}
