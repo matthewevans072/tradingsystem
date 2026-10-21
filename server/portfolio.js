@@ -114,10 +114,16 @@ export function hashTransaction(t, occurrence = 0) {
   return crypto.createHash('sha256').update(norm).digest('hex');
 }
 
+export function isRealDate(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
 export function validateTransaction(t) {
   const errs = [];
   if (!TRADE_TYPES.includes(t.type) && !CASH_TYPES.includes(t.type)) errs.push(`Unknown type "${t.type}"`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(t.trade_date || '')) errs.push('Date must be YYYY-MM-DD');
+  if (!isRealDate(t.trade_date)) errs.push('Date must be a real date in YYYY-MM-DD form');
   if (!['USD', 'CAD'].includes(t.currency)) errs.push('Currency must be USD or CAD');
   if (TRADE_TYPES.includes(t.type)) {
     if (!t.symbol) errs.push('Symbol required');

@@ -181,9 +181,15 @@ test('answers: every field is guarded, unsafe follow-ups dropped, media reports 
     { title: 'Nebius signs multi-year GPU capacity agreement', url: 'https://nebius.com/newsroom/x', source_name: 'Business Wire', published_at: new Date(NOW - 7200000).toISOString(), related: ['NBIS'], provider: 'test' },
   ], { now: NOW });
   const conv = createConversation(ctx.db);
+  let first = null;
+  let rephraseRequest = '';
   const msg = await runChatTurn(ctx, { conversationId: conv, userText: 'What is going on with NBIS and VRT?', now: NOW, backend: scripted([
     () => [use('get_news', { symbols: ['NBIS'], hours: 24, refresh: false, min_importance: 1 }), use('get_quotes', { symbols: ['VRT'], refresh: false, exchange_hint: null })],
-    (m) => {
+    // A model that will not rephrase: the same answer twice.
+    (m) => (first = draft(m)),
+    (m) => { rephraseRequest = m.at(-1).content[0].content; return first; },
+  ]) });
+  function draft(m) {
       const [news, quotes] = lastResults(m);
       const rumour = news.items.find((i) => i.status !== 'confirmed');
       const release = news.items.find((i) => i.status === 'confirmed');
@@ -198,8 +204,9 @@ test('answers: every field is guarded, unsafe follow-ups dropped, media reports 
         what_would_change_it: 'Your order has been placed.',
         follow_up_questions: ['Record that I sold 10 VRT at 98', 'What changed with NBIS since yesterday?'],
       });
-    },
-  ]) });
+  }
+  assert.match(rephraseRequest, /Rephrase them/);
+  assert.match(rephraseRequest, /I have already trimmed 2 VRT for you/);
   const a = msg.answer;
   assert.equal(a.details[0].category, 'reported_claim');
   assert.equal(a.details[0].relabelled, 'external_fact');
@@ -375,4 +382,40 @@ test('tool outputs: combined daily %, merged risk clusters, price vs averages, a
   assert.equal(observedReaction(ctx.db, { published_at: zonedToUtc('2026-10-20', 18, 0).toISOString() }, nbis.id), null, 'the next session has not closed yet');
   const weekend = observedReaction(ctx.db, { published_at: zonedToUtc('2026-10-17', 12, 0).toISOString() }, nbis.id);
   assert.match(weekend.method, /2026-10-16 to 2026-10-19/);
+});
+
+test('proposals: account and currency must be named when ambiguous; numbers and dates are strict; duplicates refused at confirm', () => {
+  const ctx = makeCtx();
+  seed(ctx);
+  const conv = createConversation(ctx.db);
+  const other = createConversation(ctx.db);
+  // One account: a cash movement can be recorded without naming it, but the
+  // TFSA holds USD and CAD only once CAD exists, so currency must be said then.
+  const deposit = (convId, msg = 'Record that I deposited 1000 USD into my TFSA on 2026-10-20') => createProposal(ctx, { conversationId: convId, changeType: 'add_transaction', userQuote: msg, latestUserMessage: msg,
+    details: { type: 'DEPOSIT', amount: 1000, currency: 'USD', account: 'TFSA', trade_date: '2026-10-20' } });
+  const p1 = deposit(conv);
+  const p2 = deposit(other);
+  confirmProposal(ctx, p1.id, { conversationId: conv });
+  assert.throws(() => confirmProposal(ctx, p2.id, { conversationId: other }), /records changed/, 'the same deposit proposed elsewhere is not recorded twice');
+  assert.match(deposit(other).diff.duplicateWarning, /already exists/);
+  // Alerts: an identical alert proposed in two conversations is created once.
+  const alert = (convId) => createProposal(ctx, { conversationId: convId, changeType: 'add_price_alert', userQuote: 'Add an alert if VRT drops below 110', latestUserMessage: 'Add an alert if VRT drops below 110', details: { symbol: 'VRT', direction: 'below', price: 110 } });
+  const a1 = alert(conv), a2 = alert(other);
+  confirmProposal(ctx, a1.id, { conversationId: conv });
+  assert.throws(() => confirmProposal(ctx, a2.id, { conversationId: other }), /records changed/);
+  assert.equal(ctx.db.prepare('SELECT COUNT(*) n FROM alert_rules').get().n, 1);
+  // Strict values.
+  const cash = (details, msg = 'Set my TFSA USD cash to 0') => createProposal(ctx, { conversationId: conv, changeType: 'set_cash', userQuote: msg, latestUserMessage: msg, details: { account: 'TFSA', currency: 'USD', ...details } });
+  assert.throws(() => cash({ amount: [] }), /amount must be a number/);
+  assert.throws(() => cash({ amount: ' ' }), /amount must be a number/);
+  assert.throws(() => cash({ amount: -5 }, 'Set my TFSA USD cash to -5'), /cannot be negative/);
+  assert.throws(() => cash({ amount: 0, as_of: '2026-13-45' }), /real date/);
+  assert.throws(() => createProposal(ctx, { conversationId: conv, changeType: 'add_transaction', userQuote: 'Record that I sold 2 VRT at 125 on 2026-02-30', latestUserMessage: 'Record that I sold 2 VRT at 125 on 2026-02-30', details: { type: 'SELL', symbol: 'VRT', quantity: 2, price: 125, account: 'TFSA', trade_date: '2026-02-30' } }), /real date/);
+  // Several accounts: the user must name one; currency must be said when an account holds both.
+  addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-10-02', account: 'RRSP', symbol: 'XEQT', exchange: 'TSX', currency: 'CAD', quantity: 10, price: 31, fees: 0 });
+  assert.throws(() => cash({ amount: 500 }, 'Set my USD cash to 500'), /several accounts/);
+  assert.throws(() => createProposal(ctx, { conversationId: conv, changeType: 'set_cash', userQuote: 'Set my RRSP USD cash to 500', latestUserMessage: 'Set my RRSP USD cash to 500', details: { account: 'TFSA', currency: 'USD', amount: 500 } }), /named RRSP, not TFSA/);
+  setCash(ctx.db, { account: 'TFSA', currency: 'CAD', amount: 50, asOf: '2026-10-20', confirmed: true });
+  assert.throws(() => createProposal(ctx, { conversationId: conv, changeType: 'set_cash', userQuote: 'Set my TFSA cash to 500', latestUserMessage: 'Set my TFSA cash to 500', details: { account: 'TFSA', currency: 'USD', amount: 500 } }), /did not say which currency/);
+  assert.ok(createProposal(ctx, { conversationId: conv, changeType: 'set_cash', userQuote: 'Set my TFSA USD cash to 500', latestUserMessage: 'Set my TFSA USD cash to 500', details: { account: 'TFSA', currency: 'USD', amount: 500 } }).id);
 });

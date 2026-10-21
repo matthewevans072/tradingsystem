@@ -41,13 +41,21 @@ export function chatConfig(cfg) {
   };
 }
 
-// Price row for a model id. Exact match first, then the longest listed id the
-// returned model starts with (responses can carry a dated suffix).
+// The listed id behind a model string: exact, or the same id with a dated
+// snapshot suffix (claude-opus-5-5-20261001). Other versions do not match.
+export function baseModel(model) {
+  if (!model) return null;
+  if (PRICING[model]) return model;
+  const m = /^(.*)-\d{8}$/.exec(model);
+  return m && PRICING[m[1]] ? m[1] : null;
+}
+
+const sameModel = (a, b) => !!a && !!b && (a === b || a.replace(/-\d{8}$/, '') === b.replace(/-\d{8}$/, ''));
+
+// Price row for a model id; the .env override applies to a model not listed.
 export function priceFor(model, override = null) {
-  if (!model) return override;
-  if (PRICING[model]) return PRICING[model];
-  const key = Object.keys(PRICING).filter((k) => model.startsWith(`${k}-`)).sort((a, b) => b.length - a.length)[0];
-  return key ? PRICING[key] : override;
+  const base = baseModel(model);
+  return base ? PRICING[base] : override;
 }
 
 export function estimateCost(model, usage, override = null) {
@@ -72,8 +80,11 @@ export function responseCost(resp, requestedModel, override = null) {
     const m = it.model || resp?.model || requestedModel;
     models.add(m);
     for (const k of Object.keys(tokens)) tokens[k] += it[k] || 0;
-    // The .env price override applies to the configured model only.
-    const c = estimateCost(m, it, m === requestedModel ? override : null);
+    // The .env override applies to the configured model (and its dated ids).
+    // An unlisted model that answered instead (a fallback) is estimated at the
+    // configured model's price rather than counted as free.
+    let c = estimateCost(m, it, sameModel(m, requestedModel) ? override : null);
+    if (c == null) c = estimateCost(requestedModel, it, override);
     if (c == null) unpriced = true;
     else cost += c;
   }
@@ -95,10 +106,16 @@ function readStore(cfg) {
   const f = usageFile(cfg);
   if (stores.has(f)) return stores.get(f);
   let s = { days: {} };
-  try {
-    const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
-    if (raw && typeof raw.days === 'object') s = raw;
-  } catch { /* missing or unreadable: start empty */ }
+  if (fs.existsSync(f)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(f, 'utf8'));
+      if (raw && typeof raw.days === 'object') s = raw;
+      else throw new Error('unexpected content');
+    } catch {
+      // Fail closed: an unreadable spend record must not reset the cap.
+      s = { days: {}, corrupt: true };
+    }
+  }
   stores.set(f, s);
   return s;
 }
@@ -108,13 +125,34 @@ function writeStore(cfg, s) {
   s.days = Object.fromEntries(keep.map((d) => [d, s.days[d]]));
   try {
     fs.mkdirSync(cfg.dataDir, { recursive: true });
-    fs.writeFileSync(usageFile(cfg), JSON.stringify(s, null, 1));
+    const f = usageFile(cfg);
+    // Write-then-rename so a crash mid-write cannot leave a truncated file.
+    fs.writeFileSync(`${f}.tmp`, JSON.stringify({ days: s.days }, null, 1));
+    fs.renameSync(`${f}.tmp`, f);
   } catch { /* the in-memory total still enforces the cap for this run */ }
 }
 
-export function spentToday(cfg, now = new Date()) {
-  const d = readStore(cfg).days[todayIn(NY, now)];
-  return { usd: d?.cost_usd || 0, unpricedCalls: d?.unpriced_calls || 0 };
+// Spend reserved by model calls in flight, so concurrent questions (in either
+// workspace) cannot each start a call once the cap is nearly reached.
+const reservations = new Map();
+function reservedUsd(cfg) {
+  return [...(reservations.get(usageFile(cfg)) || new Map()).values()].reduce((a, b) => a + b, 0);
+}
+export function reserveSpend(cfg) {
+  const f = usageFile(cfg);
+  const d = readStore(cfg).days[todayIn(NY)];
+  const estimate = d?.calls ? Math.max(0.01, d.cost_usd / d.calls) : 0.05;
+  const map = reservations.get(f) || new Map();
+  reservations.set(f, map);
+  const id = Symbol('call');
+  map.set(id, estimate);
+  return { estimate, release: () => map.delete(id) };
+}
+
+export function spentToday(cfg) {
+  const s = readStore(cfg);
+  const d = s.days[todayIn(NY)];
+  return { usd: d?.cost_usd || 0, unpricedCalls: d?.unpriced_calls || 0, reservedUsd: reservedUsd(cfg), corrupt: !!s.corrupt };
 }
 
 // Records one response; returns its cost (null if no part of it is priced).
@@ -135,17 +173,19 @@ export function recordUsage(ctx, resp, requestedModel, override = null) {
   return { ...r, cost: r.unpriced && r.cost === 0 ? null : r.cost };
 }
 
-// Whether the daily cap allows another model call. An unpriced model cannot
-// be capped, so it is refused unless the cap is switched off (0).
-export function budgetCheck(cfg, cc, now = new Date()) {
+// Whether the daily cap allows another model call (counting calls in flight).
+// An unpriced model cannot be capped, so it is refused unless the cap is off (0).
+export function budgetCheck(cfg, cc) {
   const cap = cc.dailyBudgetUsd;
   if (cap == null || cap <= 0) return { ok: true };
   if (!priceFor(cc.model, cc.priceOverride)) {
     return { ok: false, reason: `No price is known for model "${cc.model}", so the daily spending cap cannot be enforced. Set CHAT_PRICE_INPUT and CHAT_PRICE_OUTPUT (US$ per million tokens) in .env, or set CHAT_DAILY_BUDGET_USD=0 to run without a cap.` };
   }
-  const spent = spentToday(cfg, now).usd;
-  if (spent >= cap) return { ok: false, reason: `Today's Ask Signal Desk spending cap (US$${cap}) has been reached (estimated US$${spent.toFixed(2)} used). Raise CHAT_DAILY_BUDGET_USD in .env or try tomorrow.` };
-  return { ok: true, spent, cap };
+  const t = spentToday(cfg);
+  if (t.corrupt) return { ok: false, reason: `The spend record (${usageFile(cfg)}) could not be read, so the daily cap cannot be checked. Chat is paused to protect the cap; delete that file to reset today's total.` };
+  const committed = t.usd + t.reservedUsd;
+  if (committed >= cap) return { ok: false, reason: `Today's Ask Signal Desk spending cap (US$${cap}) has been reached (estimated US$${t.usd.toFixed(2)} used${t.reservedUsd ? `, US$${t.reservedUsd.toFixed(2)} in progress` : ''}). Raise CHAT_DAILY_BUDGET_USD in .env or try tomorrow.` };
+  return { ok: true, spent: t.usd, cap };
 }
 
 export class BackendError extends Error {
@@ -186,38 +226,58 @@ export function createBackend(cfg) {
     }));
     return clientPromise;
   };
+  // Request options some models may not accept. If the API rejects one, the
+  // call is retried once without it and the option stays off for this run.
+  const off = new Set();
+  const params = ({ system, tools, messages }) => ({
+    model: cc.model,
+    max_tokens: 16000,
+    ...(off.has('fallbacks') ? {} : { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }),
+    // Explicit breakpoint after the static system prompt (and tools), plus
+    // automatic caching for the growing tool-loop tail.
+    cache_control: { type: 'ephemeral' },
+    ...(off.has('effort') ? {} : { output_config: { effort: cc.effort } }),
+    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+    tools: off.has('strict') ? tools.map(({ strict, ...t }) => t) : tools,
+    tool_choice: { type: 'auto' },
+    messages,
+  });
+  const optionIn = (msg) => (/fallback/i.test(msg) ? 'fallbacks' : /effort|output_config/i.test(msg) ? 'effort' : /strict/i.test(msg) ? 'strict' : null);
   return {
     name: 'anthropic', available: true, model: cc.model, config: cc,
     // Returns an Anthropic Messages API response object.
-    async create({ system, tools, messages, signal }) {
+    async create(req) {
       const { Anthropic, c } = await client();
-      try {
-        const stream = c.beta.messages.stream({
-          model: cc.model,
-          max_tokens: 16000,
-          betas: ['server-side-fallback-2026-07-01'],
-          fallbacks: 'default',
-          // Explicit breakpoint after the static system prompt (and tools),
-          // plus automatic caching for the growing tool-loop tail.
-          cache_control: { type: 'ephemeral' },
-          output_config: { effort: cc.effort },
-          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-          tools,
-          tool_choice: { type: 'auto' },
-          messages,
-        }, signal ? { signal } : undefined);
-        return await stream.finalMessage();
-      } catch (e) {
-        if (signal?.aborted || e instanceof Anthropic.APIUserAbortError) throw new BackendError('aborted', 'Stopped: the request was cancelled.');
-        if (e instanceof Anthropic.AuthenticationError) throw new BackendError('auth', 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in .env.');
-        if (e instanceof Anthropic.PermissionDeniedError) throw new BackendError('auth', 'The Anthropic API key does not have access to this model.');
-        if (e instanceof Anthropic.RateLimitError) throw new BackendError('rate_limit', 'Anthropic rate limit reached. Try again in a minute.');
-        if (e instanceof Anthropic.BadRequestError) throw new BackendError('bad_request', redact(`The model request was rejected: ${e.message}`, cfg));
-        if (e instanceof Anthropic.APIConnectionTimeoutError) throw new BackendError('timeout', 'The model took too long to respond. Try again, or ask a narrower question.');
-        if (e instanceof Anthropic.APIConnectionError) throw new BackendError('network', 'Could not reach the Anthropic API. Check the internet connection.');
-        if (e instanceof Anthropic.APIError) throw new BackendError('server', e.status ? `Anthropic API error ${e.status}. Try again shortly.` : 'Anthropic API error. Try again shortly.');
-        throw new BackendError('unknown', redact(e.message || String(e), cfg));
+      const { signal } = req;
+      for (let attempt = 0; ; attempt++) {
+        let stream = null;
+        try {
+          stream = c.beta.messages.stream(params(req), signal ? { signal } : undefined);
+          return await stream.finalMessage();
+        } catch (e) {
+          if (e instanceof Anthropic.BadRequestError && attempt === 0) {
+            const opt = optionIn(e.message || '');
+            if (opt && !off.has(opt)) { off.add(opt); continue; }
+          }
+          throw mapError(e, Anthropic, signal, stream);
+        }
       }
     },
   };
+
+  function mapError(e, Anthropic, signal, stream) {
+    // Tokens already streamed are billed even when the call fails.
+    const partial = stream?.currentMessage?.usage ? stream.currentMessage : null;
+    const err = (kind, message) => Object.assign(new BackendError(kind, message), { partial });
+    if (signal?.aborted || e instanceof Anthropic.APIUserAbortError) return err('aborted', 'Stopped: the request was cancelled.');
+    if (e instanceof Anthropic.AuthenticationError) return err('auth', 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in .env.');
+    if (e instanceof Anthropic.PermissionDeniedError) return err('auth', 'The Anthropic API key does not have access to this model.');
+    if (e instanceof Anthropic.RateLimitError) return err('rate_limit', 'Anthropic rate limit reached. Try again in a minute.');
+    if (e instanceof Anthropic.BadRequestError) return err('bad_request', redact(`The model request was rejected: ${e.message}`, cfg));
+    if (e instanceof Anthropic.APIConnectionTimeoutError) return err('timeout', 'The model took too long to respond. Try again, or ask a narrower question.');
+    if (e instanceof Anthropic.APIConnectionError) return err('network', 'Could not reach the Anthropic API. Check the internet connection.');
+    if (e instanceof Anthropic.APIError) return err('server', e.status ? `Anthropic API error ${e.status}. Try again shortly.` : 'Anthropic API error. Try again shortly.');
+    if (/terminated|socket|ECONNRESET|other side closed|network/i.test(e?.message || '')) return err('network', 'The connection to Anthropic dropped part-way through the answer. Try again.');
+    return err('unknown', redact(e?.message || String(e), cfg));
+  }
 }

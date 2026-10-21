@@ -13,8 +13,11 @@ import { computePortfolio } from '../portfolio.js';
 import { Ledger } from './ledger.js';
 import { createToolbox, runTool, toolsForApi, ANSWER_CATEGORIES } from './tools.js';
 import { SYSTEM_PROMPT, turnHeader } from './prompt.js';
-import { recordUsage, budgetCheck, BackendError, usableContent } from './backend.js';
+import { recordUsage, budgetCheck, reserveSpend, BackendError, usableContent } from './backend.js';
 import { listProposals, checkUserIntent } from './proposals.js';
+import { guardText, findClaims } from './guard.js';
+
+export { guardText };
 
 const MAX_RESULT_CHARS = 24000;
 const PRIOR_TURNS = 6;
@@ -64,123 +67,44 @@ function messageOut(m) {
 }
 
 // ---------- output guards ----------
-// Signal Desk cannot trade and the agent cannot save changes, so a sentence
-// claiming either is always wrong. Matching runs per sentence on a copy with
-// straight quotes (same length, so positions line up). Exempt: negations and
-// modals on the verb itself ("I have not placed", "I can't sell"), quoted
-// examples, hypotheticals introduced earlier in the sentence ("If we sold…",
-// "In scenario S2…"), and work products ("I've updated the scenario").
-
-const REMOVED = '[Removed: a statement claiming a trade or record change. Signal Desk cannot trade, and record changes only happen when you press Confirm.]';
-const TRADE_VERBS = 'bought|sold|purchased|placed|executed|submitted|filled|cancell?ed|traded|liquidated|trimmed|exited|shorted|rebalanced|transferred|converted|closed out';
-const RECORD_VERBS = 'saved|recorded|updated|changed|applied|set up|added|removed|deleted|entered|logged|modified|adjusted|created|edited';
-const AUX = "have|has|had|just|already|now|also|then|successfully|actually|indeed|went ahead and|gone ahead and|did|not|never|cannot|can't|didn't|haven't|hasn't|hadn't|will|won't|would|could|should|can|might|may|shall|must|am|been";
-const ACTOR_RE = new RegExp(`\\b(I|we|Signal Desk|the app)\\b((?:\\s*'(?:ve|d|ll|m)\\b|\\s+(?:${AUX})\\b)*)\\s+(${TRADE_VERBS}|${RECORD_VERBS})\\b`, 'gi');
-const PASSIVE_RE = new RegExp(`\\b(?:(no|none of the|your|the|this|that|these|those|an?|my|all|both)\\s+)?(?:[\\w$.,%-]+\\s+){0,3}?(orders?|trades?|sales?|purchases?|transactions?|records?|holdings|portfolio|cash(?: balances?)?|alerts?|positions?|shares)\\s+((?:(?:has|have|had|been|was|were|is|are|now|already|successfully|just|also|not|never|got|be|will|would|could|being|hasn't|haven't|wasn't|weren't|isn't|aren't)\\s+)+)(placed|executed|filled|submitted|sent|completed|processed|cancell?ed|sold|bought|purchased|liquidated|trimmed|closed|reduced|exited|updated|changed|saved|recorded|set|adjusted|modified|added|removed|deleted|logged|created)\\b`, 'gi');
-const LEAD_RE = /^\W*(?:(?:done|ok|okay|all set|great|sure|confirmed|success|perfect)\b\W*)?(?:(?:just|successfully|already|now)\s+)?(sold|bought|purchased|placed|executed|submitted|liquidated|trimmed|shorted)\b/i;
-const ORDER_DONE_RE = /^\W*(?:(?:done|ok|okay|all set|great|confirmed)\b\W*)?(?:(?:your|the)\s+)?(?:(?:sell|buy|limit|market|stop)\s+)?(?:order|trade)s?\s+(?:(?:is|was|has been)\s+)?(placed|executed|filled|submitted|sent|completed|in)\b/i;
-const BEHALF_RE = /\b(sold|bought|purchased|placed|executed|submitted|liquidated|trimmed)\b[^.!?\n]{0,60}?\b(for you|on your behalf)\b/gi;
-
-const NEG_MODAL = /\b(not|never|cannot|can't|didn't|haven't|hasn't|hadn't|won't|will|would|could|should|can|might|may|shall|must|am)\b|'(ll|d|m)\b/i;
-const NEG_BEFORE = /\b(no|not|never|cannot|can't|didn't|don't|doesn't|won't|unable to|without)\b[^.!?\n]{0,25}$/i;
-const HYPO = /\b(if|suppose|supposing|assuming|assume|hypothetical(?:ly)?|scenarios?|were to|what if|imagine|for example|for instance|example)\b|\bS\d+\b/i;
-const PERFECT = /\b(has|have)\s+(?:\w+\s+)?been\b|\b(now|just|successfully|already)\b/i;
-const TRADE_PREDICATES = /^(placed|executed|filled|submitted|sent|processed|cancell?ed)$/i;
-const DATED = /\b(\d{4}-\d{2}-\d{2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}|yesterday|last (?:week|month|year)|earlier|previously)\b|\bby you\b|\byou\s+(?:entered|recorded|added|updated|saved|changed|set)\b/i;
-const WORK_PRODUCT = /^\s*(?:\S+\s+){0,5}?(scenarios?|simulations?|calculations?|estimates?|analysis|comparison|figures|numbers|proposals?|proposed|pending|draft|suggest\w*|hypothetical|answer|assumptions?|breakdown|table|chart|context|details|summary|caveats?|question|benchmarks?|bucket|group|category|perspective|my (?:view|assessment|answer|estimate|take|opinion|recommendation))\b/i;
-
-function quotedRanges(s) {
-  const out = [];
-  for (const re of [/"[^"\n]{1,300}"/g, /(?:^|[\s(])'([^'\n]{3,300})'(?=[\s.,;:!?)]|$)/g]) {
-    let m;
-    while ((m = re.exec(s))) out.push([m.index, m.index + m[0].length]);
-  }
-  return out;
-}
-
-function sentenceSpans(text) {
-  const spans = [];
-  const re = /[.!?]+(?=\s|$)|\n/g;
-  let start = 0, m;
-  while ((m = re.exec(text))) {
-    const end = m.index + m[0].length;
-    spans.push([start, end]);
-    start = end;
-  }
-  if (start < text.length) spans.push([start, text.length]);
-  return spans;
-}
-
-function sentenceClaims(s) {
-  const quotes = quotedRanges(s);
-  const quoted = (i) => quotes.some(([a, b]) => i >= a && i < b);
-  const hypoBefore = (i) => HYPO.test(s.slice(0, i));
-  let m;
-  ACTOR_RE.lastIndex = 0;
-  while ((m = ACTOR_RE.exec(s))) {
-    const [, subject, aux, verb] = m;
-    const verbEnd = m.index + m[0].length;
-    if (quoted(m.index) || hypoBefore(m.index) || NEG_MODAL.test(aux)) continue;
-    if (/^(signal desk|the app)$/i.test(subject) && !new RegExp(`^(${TRADE_VERBS})$`, 'i').test(verb)) continue;
-    if (WORK_PRODUCT.test(s.slice(verbEnd, verbEnd + 80))) continue;
-    return true;
-  }
-  PASSIVE_RE.lastIndex = 0;
-  while ((m = PASSIVE_RE.exec(s))) {
-    const [, det, noun, aux, pred] = m;
-    if (quoted(m.index) || hypoBefore(m.index) || /^(no|none)/i.test(det || '') || NEG_MODAL.test(aux) || /n't\b/.test(aux)) continue;
-    if (DATED.test(s)) continue;
-    if (PERFECT.test(aux)) return true;
-    if (TRADE_PREDICATES.test(pred) && /^(orders?|trades?|sales?|purchases?|transactions?)$/i.test(noun)) return true;
-  }
-  if ((LEAD_RE.test(s) && !DATED.test(s)) || ORDER_DONE_RE.test(s)) return !quoted(s.search(/\S/));
-  BEHALF_RE.lastIndex = 0;
-  while ((m = BEHALF_RE.exec(s))) {
-    if (quoted(m.index) || hypoBefore(m.index) || NEG_BEFORE.test(s.slice(0, m.index))) continue;
-    return true;
-  }
-  return false;
-}
-
-export function guardText(text) {
-  if (text == null || text === '') return { text, flagged: false };
-  const original = String(text);
-  const norm = original.replace(/[‘’ʼ]/g, "'").replace(/[“”]/g, '"');
-  let out = '', last = 0, flagged = false;
-  for (const [a, b] of sentenceSpans(norm)) {
-    if (!sentenceClaims(norm.slice(a, b))) continue;
-    flagged = true;
-    const lead = original.slice(a, b).match(/^\s*/)[0];
-    const tail = original.slice(a, b).endsWith('\n') ? '\n' : '';
-    out += original.slice(last, a) + lead + REMOVED + tail;
-    last = b;
-  }
-  return { text: flagged ? out + original.slice(last) : original, flagged };
-}
+// The trade-claim guard lives in guard.js; validateAnswer applies it to every
+// answer field.
 
 // Follow-up suggestions are sent as the user's own words when clicked, so one
 // phrased as an instruction ("Record that I sold 10 VRT at 98") would satisfy
 // the proposal intent check without the user having said it. Drop those.
 const ACTION_START = /^\W*(?:please\s+)?(?:record|log|add|set|update|change|remove|delete|save|enter|create|put|mark|note|sell|buy|trim|purchase|short|place|execute|exit|liquidate|confirm|apply|cancel)\b|\b(?:for me|on my behalf)\b/i;
+const QUESTION_START = /^\W*(what|which|when|where|why|how|who|is|are|was|were|do|does|did|should|would|could|can|will|has|have)\b/i;
 export function unsafeFollowUp(text) {
   const f = String(text || '');
   if (ACTION_START.test(f)) return true;
-  return ['add_transaction', 'set_cash', 'add_price_alert', 'update_alert_threshold', 'set_strategy']
+  // A question is unsafe only if it would itself pass as an explicit request
+  // with values ("Can you record that I sold 10 VRT at 129.50?").
+  const passes = ['add_transaction', 'set_cash', 'add_price_alert', 'update_alert_threshold', 'set_strategy']
     .some((changeType) => checkUserIntent(f, f, { changeType, details: {} }) === null);
+  if (!passes) return false;
+  return !QUESTION_START.test(f) || /\b(can|could|would|will) you\b|\bplease\b/i.test(f) && /\d/.test(f);
 }
 
 const MUST_CITE = ['portfolio_record', 'external_fact', 'reported_claim', 'calculation'];
 const isReported = (item) => !!item && ((item.kind === 'news' && item.note !== 'confirmed') || item.kind === 'archived_report');
-const isStaleMarket = (item) => !!item && item.kind === 'market_data' && ['stale', 'unknown', 'missing'].includes(item.freshness);
+const isArchived = (item) => item?.kind === 'archived_report';
+// stale / unknown / missing quote or history, or a quote that can no longer update (no provider).
+function staleState(item) {
+  if (item?.kind !== 'market_data') return null;
+  if (['stale', 'unknown', 'missing'].includes(item.freshness)) return item.freshness;
+  return item.updating === false ? 'not_updating' : null;
+}
+const mentions = (text, sym) => !!sym && new RegExp(`(^|[^A-Za-z0-9])${sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9]|$)`).test(text);
 
-export function validateAnswer(raw, ledger) {
+export function validateAnswer(raw, ledger, { toolsRun = null } = {}) {
   const issues = [];
   const notes = [];
+  const removed = [];
   const str = (x) => (x == null ? null : String(x).trim() || null);
-  let executionClaim = false;
   const guard = (t) => {
     const g = guardText(t);
-    if (g.flagged) executionClaim = true;
+    if (g.flagged) removed.push(...g.removed);
     return g.text;
   };
   const a = {
@@ -195,10 +119,10 @@ export function validateAnswer(raw, ledger) {
     confidence: ['low', 'moderate', 'high', 'not_applicable'].includes(raw?.confidence) ? raw.confidence : 'not_applicable',
   };
   for (const f of (Array.isArray(raw?.follow_up_questions) ? raw.follow_up_questions : []).slice(0, 3).map((x) => String(x).slice(0, 200))) {
-    if (guardText(f).flagged || unsafeFollowUp(f)) { notes.push('A suggested follow-up phrased as an instruction was dropped.'); continue; }
+    if (findClaims(f).length || unsafeFollowUp(f)) { notes.push('A suggested follow-up phrased as an instruction was dropped.'); continue; }
     a.follow_up_questions.push(f);
   }
-  const staleCited = new Map();
+  const ledgerSymbols = new Set(ledger.items.map((i) => i.symbol).filter(Boolean));
   for (const d of (Array.isArray(raw?.details) ? raw.details : []).slice(0, 25)) {
     if (!d || typeof d !== 'object') continue;
     let category = ANSWER_CATEGORIES.includes(d.category) ? d.category : 'interpretation';
@@ -207,27 +131,55 @@ export function validateAnswer(raw, ledger) {
       issues.push(`Unknown reference ${r} removed`);
       return false;
     });
-    const out = { category, text: guard(String(d.text || '')), refs };
-    // A media report or an archived briefing is not a verified fact.
-    if (category === 'external_fact' && refs.length && refs.every((r) => isReported(ledger.get(r)))) {
+    const text = guard(String(d.text || ''));
+    const out = { category, text, refs };
+    // A media report, rumour or archived briefing is not a verified fact, even
+    // when it is cited next to a confirmed source.
+    const reported = refs.filter((r) => isReported(ledger.get(r)));
+    if (category === 'external_fact' && reported.length) {
       out.category = category = 'reported_claim';
       out.relabelled = 'external_fact';
-      notes.push(`A point citing only media reports or archived briefings was relabelled "reported" (${refs.join(', ')}).`);
+      notes.push(`A point citing ${reported.length < refs.length ? 'a media report or archived briefing alongside other sources' : 'only media reports or archived briefings'} was relabelled "reported" (${reported.join(', ')}).`);
+    } else if (['portfolio_record', 'calculation'].includes(category) && refs.length && refs.every((r) => isArchived(ledger.get(r)))) {
+      out.relabelled = category;
+      out.category = category = 'reported_claim';
+      notes.push(`A point taken only from an archived briefing was relabelled "reported" (${refs.join(', ')}); archived briefings are snapshots, not current records.`);
     }
     if (MUST_CITE.includes(category) && !refs.length) out.uncited = true;
-    for (const r of refs) if (isStaleMarket(ledger.get(r))) staleCited.set(r, ledger.get(r));
+    // A point about one ticker whose sources all concern other tickers.
+    const named = [...new Set((text.match(/\b[A-Z]{2,5}\b/g) || []).filter((x) => ledgerSymbols.has(x)))];
+    const refSyms = refs.map((r) => ledger.get(r)?.symbol);
+    if (named.length === 1 && refs.length && refSyms.every(Boolean) && !refSyms.includes(named[0])) {
+      out.refMismatch = true;
+      issues.push(`A point about ${named[0]} cites ${refs.join(', ')}, which concern ${[...new Set(refSyms)].join(', ')}.`);
+    }
     a.details.push(out);
   }
-  // Stale or undated market data that the answer relies on gets an explicit gap note.
-  for (const [ref, item] of staleCited) {
-    if (a.details.some((d) => d.category === 'data_gap' && d.refs.includes(ref))) continue;
-    a.details.push({ category: 'data_gap', refs: [ref], auto: true, text: `Possibly out of date: ${item.label} is ${item.freshness === 'stale' ? 'stale' : 'missing a reliable timestamp'}${item.asOf ? ` (as of ${formatNy(item.asOf)})` : ''}.` });
+  // Stale, undated or no-longer-updating market data the answer relies on (cited,
+  // or the ticker is mentioned anywhere) gets an explicit gap note.
+  const allText = [a.short_answer, a.what_would_change_it, ...a.details.map((d) => d.text), ...a.alternatives.flatMap((x) => [x.option, x.case_for, x.case_against])].filter(Boolean).join('\n');
+  const cited = new Set(a.details.flatMap((d) => d.refs));
+  const gaps = a.details.filter((d) => d.category === 'data_gap');
+  const notUpdating = [];
+  for (const item of ledger.items) {
+    const state = staleState(item);
+    if (!state || !(cited.has(item.ref) || mentions(allText, item.symbol))) continue;
+    if (state === 'not_updating') { notUpdating.push(item); continue; }
+    if (gaps.some((d) => d.refs.includes(item.ref) || mentions(d.text, item.symbol))) continue;
+    a.details.push({ category: 'data_gap', refs: [item.ref], auto: true, text: `Possibly out of date: ${item.label} is ${state === 'stale' ? 'stale' : 'missing a reliable timestamp'}${item.asOf ? ` (as of ${formatNy(item.asOf)})` : ''}.` });
   }
-  if (executionClaim) issues.push('A statement claiming a trade or record change was removed.');
+  if (notUpdating.length && !gaps.some((d) => /not (being )?(updated|refreshed)|no (market[- ]data )?provider|can(no|')t (be )?(update|refresh)/i.test(d.text))) {
+    const latest = notUpdating.map((i) => i.asOf).filter(Boolean).sort().at(-1);
+    a.details.push({ category: 'data_gap', refs: notUpdating.slice(0, 6).map((i) => i.ref), auto: true, text: `Prices are not being updated: no market-data provider is configured, so the quotes used are the last ones stored${latest ? ` (latest ${formatNy(latest)})` : ''}.` });
+  }
+  if (removed.length) issues.push('A statement claiming a trade or record change was removed.');
   const uncited = a.details.filter((d) => d.uncited).length;
   if (uncited) issues.push(`${uncited} factual point(s) had no supporting reference and are marked uncited.`);
   if (!a.short_answer) issues.push('The model returned no short answer.');
-  return { answer: { ...a, executionClaimRemoved: executionClaim, notes }, issues };
+  if (toolsRun === 0 && (a.details.some((d) => MUST_CITE.includes(d.category)) || /\d/.test(a.short_answer))) {
+    issues.push('No records were retrieved for this answer, so it may rest on earlier answers rather than current data.');
+  }
+  return { answer: { ...a, executionClaimRemoved: removed.length > 0, notes }, issues, removed };
 }
 
 // ---------- tool results ----------
@@ -354,7 +306,7 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
     return save({ status: 'unavailable', error: backend?.reason || 'No model backend configured', text: null });
   }
   const cc = backend.config || {};
-  const firstCheck = budgetCheck(ctx.cfg, cc, now);
+  const firstCheck = budgetCheck(ctx.cfg, cc);
   if (!firstCheck.ok) return save({ status: 'unavailable', error: firstCheck.reason });
 
   const ledger = new Ledger();
@@ -367,41 +319,71 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
   const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, cost_usd: 0, calls: 0, unpriced: false, models: [] };
   const maxRounds = cc.maxToolRounds ?? 8;
   const servedBy = () => usage.models.join(', ') || backend.model;
-  let final = null;
+  const account = (resp) => {
+    const rec = recordUsage(ctx, resp, backend.model, cc.priceOverride);
+    for (const k of ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens']) usage[k] += rec.tokens[k] || 0;
+    usage.cost_usd += rec.cost || 0;
+    if (rec.unpriced) usage.unpriced = true;
+    for (const m of rec.models) if (m && !usage.models.includes(m)) usage.models.push(m);
+  };
+  let checked = null; // validated final answer
   let unstructured = null;
+  let empty = false;
   let nudged = false;
+  let rephraseAsked = false;
   let stopNote = null;
 
   try {
     for (let round = 0; round <= maxRounds; round++) {
       if (signal?.aborted) throw new BackendError('aborted', ABORTED);
       if (round > 0) {
-        const b = budgetCheck(ctx.cfg, cc, now);
+        const b = budgetCheck(ctx.cfg, cc);
         if (!b.ok) { stopNote = `Stopped before finishing: ${b.reason}`; break; }
       }
       onEvent({ type: 'thinking', round });
-      const resp = await backend.create({ system: SYSTEM_PROMPT, tools, messages, signal });
+      const hold = reserveSpend(ctx.cfg);
+      let resp;
+      try {
+        resp = await backend.create({ system: SYSTEM_PROMPT, tools, messages, signal });
+      } catch (e) {
+        if (e?.partial) { usage.calls += 1; account(e.partial); }
+        throw e;
+      } finally {
+        hold.release();
+      }
       usage.calls += 1;
-      const rec = recordUsage(ctx, resp, backend.model, cc.priceOverride);
-      for (const k of ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens']) usage[k] += rec.tokens[k] || 0;
-      usage.cost_usd += rec.cost || 0;
-      if (rec.unpriced) usage.unpriced = true;
-      for (const m of rec.models) if (m && !usage.models.includes(m)) usage.models.push(m);
+      account(resp);
       if (resp.stop_reason === 'refusal') throw new BackendError('refusal', 'The model declined to answer this question.');
       if (resp.stop_reason === 'max_tokens') throw new BackendError('truncated', 'The model response was cut off before finishing.');
       const content = usableContent(resp.content);
       messages.push({ role: 'assistant', content: content.length ? content : [{ type: 'text', text: '(no content)' }] });
       const calls = content.filter((b) => b.type === 'tool_use');
       const submits = calls.filter((b) => b.name === 'submit_answer');
-      if (submits.length === 1 && calls.length === 1) { final = submits[0].input; break; }
+      // submit_answer on its own (or, in the last round, alongside other calls).
+      if (submits.length && (calls.length === 1 || round === maxRounds)) {
+        const v = validateAnswer(submits.at(-1).input, ledger, { toolsRun: toolLog.length });
+        // One chance to rephrase sentences that read as a trade or record-change claim.
+        if (v.removed.length && !rephraseAsked && round < maxRounds) {
+          rephraseAsked = true;
+          messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: submits.at(-1).id, is_error: true,
+            content: `Not delivered. These sentences read as saying a trade was made or a record was changed, which Signal Desk cannot do: ${v.removed.map((x) => JSON.stringify(x)).join(' ')} Rephrase them so they cannot be read that way (for example "No order has been placed" or "The post claims…"), then call submit_answer again with the full answer.` }] });
+          continue;
+        }
+        checked = v;
+        break;
+      }
       if (!calls.length) {
+        const text = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
         // A plain-text reply: ask once for the structured answer, which carries the sources.
         if (!nudged && round < maxRounds) {
           nudged = true;
-          messages.push({ role: 'user', content: 'Please deliver that answer by calling submit_answer, citing the reference ids from the tool results.' });
+          messages.push({ role: 'user', content: toolLog.length
+            ? 'Please deliver that answer by calling submit_answer, citing the reference ids from the tool results.'
+            : 'Please retrieve the records you need with the tools first, then call submit_answer citing their reference ids.' });
           continue;
         }
-        unstructured = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+        if (text) unstructured = text;
+        else empty = true;
         break;
       }
       if (round === maxRounds) break;
@@ -413,13 +395,18 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
         }
         if (signal?.aborted) throw new BackendError('aborted', ABORTED);
         onEvent({ type: 'tool_start', tool: call.name, input: call.input });
+        const refsBefore = new Set(ledger.items.map((i) => i.ref));
         const r = await runTool(handlers, call.name, call.input);
         toolLog.push({ tool: call.name, input: call.input, ok: r.ok, ms: r.ms, error: r.ok ? null : r.error });
         onEvent({ type: 'tool_end', tool: call.name, ok: r.ok, error: r.ok ? null : r.error, ms: r.ms });
-        results.push({ type: 'tool_result', tool_use_id: call.id, content: r.ok ? fitResult(r.result) : `Error: ${r.error}`, ...(r.ok ? {} : { is_error: true }) });
+        const body = r.ok ? fitResult(r.result) : `Error: ${r.error}`;
+        // Refs registered by this call that were cut from what the model sees are forgotten.
+        const unseen = ledger.items.filter((i) => !refsBefore.has(i.ref) && !new RegExp(`"${i.ref}"`).test(body)).map((i) => i.ref);
+        if (unseen.length) ledger.remove(unseen);
+        results.push({ type: 'tool_result', tool_use_id: call.id, content: body, ...(r.ok ? {} : { is_error: true }) });
       }
       // All tool results go back in one user message.
-      if (round === maxRounds - 1) results.push({ type: 'text', text: 'Tool budget nearly used: call submit_answer now with what you have, noting any gaps.' });
+      if (round === maxRounds - 1) results.push({ type: 'text', text: 'Tool budget nearly used: call submit_answer on its own now with what you have, noting any gaps.' });
       messages.push({ role: 'user', content: results });
     }
   } catch (e) {
@@ -430,18 +417,20 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
 
   let answer, issues;
   try {
-    if (final) ({ answer, issues } = validateAnswer(final, ledger));
+    if (checked) ({ answer, issues } = checked);
     else if (unstructured) {
-      ({ answer, issues } = validateAnswer({ short_answer: unstructured.slice(0, 1500), details: [] }, ledger));
+      ({ answer, issues } = validateAnswer({ short_answer: unstructured.slice(0, 1500), details: [] }, ledger, { toolsRun: toolLog.length }));
       issues.push('The model answered without the structured format, so sources could not be attached.');
     } else {
       answer = null;
-      issues = [stopNote || 'The model used its full tool budget without answering.'];
+      issues = [stopNote || (empty ? 'The model returned an empty reply. Try asking again.' : 'The model used its full tool budget without answering.')];
     }
-    // Only tickers actually held get a link to their position.
     if (answer) {
-      const held = new Set(computePortfolio(db, { now, catalog: ctx.catalog }).positions.map((p) => p.symbol));
-      answer.held_symbols = answer.affected_symbols.filter((s) => held.has(s));
+      const held = computePortfolio(db, { now, catalog: ctx.catalog }).positions.map((p) => p.symbol);
+      // Only tickers actually held get a link to their position.
+      answer.held_symbols = answer.affected_symbols.filter((s) => held.includes(s));
+      answer.portfolio_symbols = [...new Set(held)];
+      if (rephraseAsked && !answer.executionClaimRemoved) answer.notes.push('The first draft contained a sentence that read as a trade or record-change claim; the model rephrased it.');
     }
   } catch (e) {
     log.warn('chat', `answer check failed: ${e.message}`);

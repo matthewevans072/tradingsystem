@@ -20,13 +20,14 @@ export class Ledger {
   constructor() {
     this.items = [];
     this.byKey = new Map();
+    this.next = 1;
   }
 
   // Register a source; identical keys reuse the same ref.
   add({ key, kind, label, source = null, url = null, asOf = null, fetchedAt = null, freshness = null, symbol = null, tool = null, note = null }) {
     const k = key || `${kind}:${label}:${asOf}`;
     if (this.byKey.has(k)) return this.byKey.get(k).ref;
-    const ref = `R${this.items.length + 1}`;
+    const ref = `R${this.next++}`;
     const item = { ref, kind, label: String(label).slice(0, 300), source, url: safeUrl(url), asOf, fetchedAt, freshness, symbol, tool, note };
     this.items.push(item);
     this.byKey.set(k, item);
@@ -35,6 +36,14 @@ export class Ledger {
 
   has(ref) {
     return this.items.some((i) => i.ref === ref);
+  }
+
+  // Forget refs that were never shown to the model (e.g. items cut from an
+  // oversized tool result), so "Data used" lists only what was retrieved.
+  remove(refs) {
+    const drop = new Set(refs);
+    this.items = this.items.filter((i) => !drop.has(i.ref));
+    for (const [k, v] of this.byKey) if (drop.has(v.ref)) this.byKey.delete(k);
   }
 
   get(ref) {
