@@ -7,7 +7,10 @@ Signal Desk is a private, local web app for following your portfolio, the news t
 ## 1. Install and start (Windows)
 
 1. Install **Node.js 22 LTS or newer** (22.13+) from <https://nodejs.org> (default options are fine).
-2. Put the `signal-desk` folder somewhere permanent, e.g. `Documents\signal-desk`.
+2. Get the project from GitHub (private repository `matthewevans072/tradingsystem`) and put it somewhere permanent, e.g. `Documents\tradingsystem`:
+   - **With Git** (recommended, so updates are one command): `git clone https://github.com/matthewevans072/tradingsystem.git` in `Documents`, and later `git pull` inside the folder to update.
+   - **Without Git**: on the repository page, **Code → Download ZIP**, then extract it.
+   - Updating never touches your `data\` folder or `.env`: neither is in the repository. Don't delete them when replacing files.
 3. Double-click **`Start-Signal-Desk.bat`**.
    - First run installs one dependency (the Anthropic SDK, used only if you enable the AI analyst) and creates `.env` from `.env.example`.
    - Your browser opens <http://127.0.0.1:4317>.
@@ -127,7 +130,7 @@ Press **Ask** (bottom-right on every page) to ask questions such as "Why is my p
 
 - An automatic backup is taken once a day at startup (last 30 kept) in `data\backups`.
 - **Settings → Backup & restore**: create, restore (a safety copy is taken first), upload a backup file, or export JSON.
-- To move to a new PC: copy the whole `signal-desk` folder including `data\` and `.env`.
+- To move to a new PC: copy the whole project folder including `data\` and `.env` (neither is stored on GitHub).
 
 ## 9. Demo workspace
 

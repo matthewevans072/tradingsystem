@@ -6,10 +6,11 @@ checklist and the Alpaca history source. Read this, `../CLAUDE.md`,
 
 ## Where the code is
 
-In the cloud, the code lives on branch `signal-desk` of
-`matthewevans072/automated-reception-data-scraper`, in the `signal-desk/`
-folder. Work and commit there. A standalone `signal-desk` repo does not exist
-yet.
+The project lives in its own private repository,
+`matthewevans072/tradingsystem` (branch `main`), at the repository root.
+Work and commit there. The old copy on branch `signal-desk` of
+`matthewevans072/automated-reception-data-scraper` is superseded and kept
+only until the owner decides to delete it.
 
 ## The owner's current request (still in force)
 
