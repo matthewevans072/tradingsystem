@@ -20,6 +20,7 @@ import { checkSymbolBars, loadCorporateActions, dstChanges, periodTable, READY, 
 import { createAlpacaSource, ALPACA_BARS_URL } from '../server/strategy/sources/alpaca.js';
 import { tradingDays, sessionBarStarts } from '../server/strategy/sessions.js';
 import { zonedToUtc, NY } from '../server/time.js';
+import { NO_HOST_KEYS } from './no-host-keys.js';
 
 const CA = loadCorporateActions();
 const UNIVERSE = loadUniverse();
@@ -28,7 +29,7 @@ const KEY_ID = 'PKTESTKEYID0123456789';
 const SECRET_KEY = 'alpaca-secret-abcdefghijklmnopqrstuvwxyz';
 const MIN = 60000;
 
-const cfgFor = (dir, extra = {}) => loadConfig({ ENV_FILE: path.join(dir, 'none.env'), SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none', ...extra });
+const cfgFor = (dir, extra = {}) => loadConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none', ...extra });
 function labCtx(dir, extra = {}, market = null) {
   const ctx = { cfg: cfgFor(dir, extra), mode: 'real', providers: { market } };
   Object.defineProperty(ctx, 'db', { get() { throw new Error('the Strategy Lab touched the portfolio database'); } });

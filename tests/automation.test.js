@@ -13,10 +13,11 @@ import { evaluateAlerts, inQuietHours } from '../server/alerts.js';
 import { sendSmtp, deliver } from '../server/delivery.js';
 import { setSetting } from '../server/db.js';
 import { zonedToUtc } from '../server/time.js';
+import { NO_HOST_KEYS } from './no-host-keys.js';
 
 function makeCtx(extra = {}) {
   const dir = tempDir();
-  const cfg = loadConfig({ ENV_FILE: path.join(dir, 'none.env'), SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none', ...extra });
+  const cfg = loadConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none', ...extra });
   return createContext(cfg, 'real');
 }
 

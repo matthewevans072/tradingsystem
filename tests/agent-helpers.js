@@ -6,12 +6,13 @@ import { loadConfig } from '../server/config.js';
 import { createContext } from '../server/context.js';
 import { addTransaction, findInstrument, updateInstrument, setCash } from '../server/portfolio.js';
 import { zonedToUtc } from '../server/time.js';
+import { NO_HOST_KEYS } from './no-host-keys.js';
 
 export const NOW = zonedToUtc('2026-10-21', 14, 0); // regular session
 
 export function makeCtx() {
   const dir = tempDir();
-  const cfg = loadConfig({ ENV_FILE: path.join(dir, 'none.env'), SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none' });
+  const cfg = loadConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none' });
   const ctx = createContext(cfg, 'real');
   return ctx;
 }

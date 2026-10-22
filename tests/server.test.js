@@ -8,11 +8,12 @@ import { spawn } from 'node:child_process';
 import { tempDir } from './helpers.js';
 import { loadConfig } from '../server/config.js';
 import { createServer, lazyContexts, checkStartupSecurity } from '../server/index.js';
+import { NO_HOST_KEYS } from './no-host-keys.js';
 
 const SECRET = 'td_live_ABCDEFGHIJKLMNOP';
 
 async function startServer(dir, extra = {}) {
-  const cfg = loadConfig({ ENV_FILE: path.join(dir, 'none.env'), SIGNAL_DESK_DATA_DIR: dir, SIGNAL_DESK_PORT: '0', MARKET_DATA_PROVIDER: 'none', TWELVEDATA_API_KEY: SECRET, ...extra });
+  const cfg = loadConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, SIGNAL_DESK_PORT: '0', MARKET_DATA_PROVIDER: 'none', TWELVEDATA_API_KEY: SECRET, ...extra });
   const contexts = lazyContexts(cfg);
   const server = createServer(cfg, { contexts, scheduler: null, version: 'test' });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));

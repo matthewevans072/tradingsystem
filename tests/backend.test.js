@@ -10,6 +10,7 @@ import { loadConfig } from '../server/config.js';
 import { createBackend, usableContent } from '../server/agent/backend.js';
 import { toolsForApi } from '../server/agent/tools.js';
 import { SYSTEM_PROMPT } from '../server/agent/prompt.js';
+import { NO_HOST_KEYS } from './no-host-keys.js';
 
 const sse = (events) => events.map((e) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join('');
 
@@ -48,7 +49,7 @@ async function mockApi(handler) {
 function backendFor(url, extra = {}) {
   process.env.ANTHROPIC_BASE_URL = url;
   const dir = tempDir();
-  const cfg = loadConfig({ ENV_FILE: path.join(dir, 'none.env'), SIGNAL_DESK_DATA_DIR: dir, ANTHROPIC_API_KEY: 'sk-ant-test-key-123', ...extra });
+  const cfg = loadConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, ANTHROPIC_API_KEY: 'sk-ant-test-key-123', ...extra });
   return createBackend(cfg);
 }
 

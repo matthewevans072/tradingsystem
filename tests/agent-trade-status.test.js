@@ -18,6 +18,7 @@ import { createLab } from '../server/strategy/lab.js';
 import { createConversation, runChatTurn, getConversation, deleteConversation, validateAnswer, tradeClaims, TRADE_REMOVED, BROKER_REMOVED } from '../server/agent/agent.js';
 import { createProposal, confirmProposal, rejectProposal } from '../server/agent/proposals.js';
 import { Ledger, TRADE_STATUS } from '../server/agent/ledger.js';
+import { NO_HOST_KEYS } from './no-host-keys.js';
 
 const ALL_STATUSES = ['PROPOSED', 'SIMULATED', 'USER-REPORTED', 'BROKER-CONFIRMED'];
 const notice = `[${TRADE_REMOVED}]`;
@@ -328,7 +329,7 @@ test('the owner saying "I sold 10 VRT" gives no USER-REPORTED record until a pro
 let shared = null;
 const demoLab = () => (shared ||= (async () => {
   const dir = tempDir();
-  const ctx = { cfg: loadConfig({ ENV_FILE: path.join(dir, 'none.env'), SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none' }), mode: 'demo', providers: { market: null } };
+  const ctx = { cfg: loadConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none' }), mode: 'demo', providers: { market: null } };
   const lab = createLab(ctx, { demo: { symbols: ['NVDA', 'AMD', 'MSFT', 'SPY'], to: '2022-09-30' } });
   await lab.ready;
   return lab;

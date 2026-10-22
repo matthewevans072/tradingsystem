@@ -24,6 +24,7 @@ import { createWebhookServer, handleAlert, startLabWebhook } from '../server/str
 import { loadStrategyConfig, loadUniverse } from '../server/strategy/config.js';
 import { generateSyntheticBars } from '../server/strategy/synthetic.js';
 import { zonedToUtc, NY } from '../server/time.js';
+import { NO_HOST_KEYS } from './no-host-keys.js';
 
 const CONFIG = loadStrategyConfig();
 const UNIVERSE = loadUniverse();
@@ -31,7 +32,7 @@ const SYMS = UNIVERSE.symbols.map((s) => s.symbol);
 const MIN = 60000;
 const ZONE = NY;
 
-const cfgFor = (dir, extra = {}) => loadConfig({ ENV_FILE: path.join(dir, 'none.env'), SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none', ...extra });
+const cfgFor = (dir, extra = {}) => loadConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none', ...extra });
 // A context without a portfolio database: any access to ctx.db fails the test.
 function labCtx(dir, mode = 'real', market = null) {
   const ctx = { cfg: cfgFor(dir), mode, providers: { market } };

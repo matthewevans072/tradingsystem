@@ -21,6 +21,7 @@ import { createBackend, budgetCheck, spentToday, recordUsage } from '../server/a
 import { toolsForApi } from '../server/agent/tools.js';
 import { getSetting } from '../server/db.js';
 import { zonedToUtc, todayIn, addDays, NY } from '../server/time.js';
+import { NO_HOST_KEYS } from './no-host-keys.js';
 
 // ---------- daily P/L ----------
 
@@ -316,7 +317,7 @@ async function mockApi(handler) {
 function backendFor(url) {
   process.env.ANTHROPIC_BASE_URL = url;
   const dir = tempDir();
-  return createBackend(loadConfig({ ENV_FILE: path.join(dir, 'none.env'), SIGNAL_DESK_DATA_DIR: dir, ANTHROPIC_API_KEY: 'sk-ant-test-key-123' }));
+  return createBackend(loadConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, ANTHROPIC_API_KEY: 'sk-ant-test-key-123' }));
 }
 
 const call = (b, signal) => b.create({ system: 's', tools: toolsForApi(), messages: [{ role: 'user', content: 'x' }], signal });
