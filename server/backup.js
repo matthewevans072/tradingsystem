@@ -7,6 +7,7 @@ import { openDb, nowIso } from './db.js';
 import { createCatalog } from './catalog.js';
 import { log } from './log.js';
 import { labDbFile, backupLabDb } from './strategy/store.js';
+import { hxrDbFile, guardHxrFile } from './hxr/store.js';
 
 const KEEP_AUTO = 30;
 
@@ -29,7 +30,8 @@ export function createBackup(ctx, { reason = 'manual' } = {}) {
   log.info('backup', `created ${name}`);
   pruneAuto(ctx.cfg, ctx.mode);
   const lab = backupLab(ctx, st, reason);
-  return { name, size: fs.statSync(file).size, createdAt: nowIso(), ...(lab ? { lab } : {}) };
+  const hxr = backupHxr(ctx, st, reason);
+  return { name, size: fs.statSync(file).size, createdAt: nowIso(), ...(lab ? { lab } : {}), ...(hxr ? { hxr } : {}) };
 }
 
 // The Strategy Lab database is copied into its own folder (backups/strategy-lab),
@@ -53,6 +55,38 @@ function backupLab(ctx, st, reason) {
     return { name, size: fs.statSync(path.join(dir, name)).size };
   } catch (e) {
     log.warn('backup', `Strategy Lab backup failed: ${e.message}`);
+    return { error: e.message };
+  }
+}
+
+// The HXR simulation database (real workspace only) goes into backups/hxr the
+// same way: never listed for restore, and a failure never fails the portfolio backup.
+export function hxrBackupDir(cfg) {
+  return path.join(backupDir(cfg), 'hxr');
+}
+
+function backupHxr(ctx, st, reason) {
+  if (ctx.mode !== 'real') return null;
+  const src = hxrDbFile(ctx.cfg);
+  if (!fs.existsSync(src)) return null;
+  try {
+    const dir = hxrBackupDir(ctx.cfg);
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `hxr-sim-${st}-${reason}.sqlite`;
+    const dest = path.join(dir, name);
+    const db = new DatabaseSync(guardHxrFile(src), { readOnly: true });
+    try {
+      db.exec('PRAGMA busy_timeout = 5000;');
+      db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+    } finally {
+      db.close();
+    }
+    const auto = fs.readdirSync(dir).filter((f) => f.startsWith('hxr-sim-') && f.endsWith('-auto.sqlite')).sort().reverse();
+    for (const f of auto.slice(KEEP_AUTO)) fs.rmSync(path.join(dir, f), { force: true });
+    log.info('backup', `created ${name}`);
+    return { name, size: fs.statSync(dest).size };
+  } catch (e) {
+    log.warn('backup', `HXR backup failed: ${e.message}`);
     return { error: e.message };
   }
 }

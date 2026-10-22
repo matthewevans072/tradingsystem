@@ -529,3 +529,8 @@ r('POST', '/api/chat/proposals/:id/reject', (ctx, { params, body }) => rejectPro
 
 import { registerLabRoutes } from './strategy/api.js';
 registerLabRoutes(r, HttpError);
+
+// ---------- HXR (simulation only, real workspace only; server/hxr/api.js) ----------
+
+import { registerHxrRoutes } from './hxr/api.js';
+registerHxrRoutes(r, HttpError);

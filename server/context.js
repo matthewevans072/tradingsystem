@@ -9,6 +9,7 @@ import { computePortfolio } from './portfolio.js';
 import { runAssessments } from './assessments.js';
 import { seedDemo } from './providers/demo.js';
 import { attachLab } from './strategy/lab.js';
+import { attachHxr } from './hxr/service.js';
 
 export function dbFileFor(cfg, mode) {
   return path.join(cfg.dataDir, mode === 'demo' ? 'demo.sqlite' : 'signal-desk.sqlite');
@@ -23,6 +24,8 @@ export function createContext(cfg, mode = 'real', { fetchImpl, file } = {}) {
   ctx.rebuildProviders = () => { ctx.providers = buildProviders(ctx); };
   // Strategy Lab: its own database, opened on first use (the demo seeds synthetic data then).
   attachLab(ctx);
+  // HXR: its own database (real workspace only), opened on first use.
+  attachHxr(ctx);
   if (mode === 'demo') {
     seedDemo(db);
     ctx.ready = primeDemo(ctx);

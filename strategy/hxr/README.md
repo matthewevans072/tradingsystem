@@ -22,6 +22,35 @@ HXR is kept apart from everything else in Signal Desk:
 | Simulated ledger | A pretend account that processes each new session as it happens, records every decision with a timestamp and fills at the next open | **Yes**: the prospective account |
 | Platform paper trading | Sending orders to a broker's or platform's simulator (Alpaca, IBKR, TradingView Paper Trading, QuantConnect) | **No** (project rule: no order integrations) |
 
+## Using it (Signal Desk → HXR (simulated))
+
+1. **Download / refresh data.**
+   - Uses the Alpaca keys in `.env`; only market data is read.
+   - Gets daily bars from 2016, corporate actions, the first 15-minute bar of
+     each session, and opening quotes for the spread estimates.
+   - The opening quotes take the longest: allow an hour or more the first time.
+   - Later downloads add only what is new.
+2. **Check readiness.** Every stock must be complete for a period before
+   that period can run. A flagged split-like move can be marked as reviewed,
+   with a written reason.
+3. **Owner decisions.**
+   - Confirm SPCX = SpaceX, or leave it out.
+   - Keep or drop Micron in the evaluation. Dropping it means a restated
+     pre-registration before anything runs.
+4. **Run selection (once).**
+   - Runs C1, C2, C3 and the hold on 2017–2022.
+   - Freezes the pick as `hxr-1.0.0`, or stops if none is worth evaluating.
+   - Then add `configs/hxr-1.0.0.json` (the page shows its content and hash)
+     and log it in `EXPERIMENT-LOG.md`.
+5. **Run evaluation (once).**
+   - Runs on 2023–2026, with the stress, leave-one-out, realistic-fill and
+     full-list runs.
+   - The outcome is PASS, FAIL or INSUFFICIENT EVIDENCE.
+6. **Start the prospective account.**
+   - It processes each new session after the close.
+   - Each decision shows when it was recorded and the news known then.
+   - **Process now** catches up immediately, and **Pause** stops it.
+
 ## Files
 
 | File | Purpose |
@@ -33,4 +62,6 @@ HXR is kept apart from everything else in Signal Desk:
 | `criteria-hxr-v1.json` | G1–G6 and P1–P4 in machine-readable form |
 | `configs/` | The hold arm and candidates C1–C3 (all experimental) |
 | `EXPERIMENT-LOG.md` | Every activity that touched data, and whether results were seen |
-| `reports/` | Step reports |
+| `reports/` | Step reports (step 1: `2026-10-22-step1-capabilities.md`) |
+
+Code: `server/hxr/` (config, store, source, data, engine, metrics, service, api), page `public/views/hxr.js`, tests `tests/hxr-*.test.js`. Database: `data/hxr-sim.sqlite` (real workspace only; backed up to `backups/hxr/`).

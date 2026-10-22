@@ -42,6 +42,7 @@ function nyseObserved(dateStr, { skipSaturday = false } = {}) {
 
 const SPECIAL_CLOSURES = {
   NYSE: {
+    '2018-12-05': 'National Day of Mourning (President George H. W. Bush)',
     '2025-01-09': 'National Day of Mourning (President Carter)',
   },
   TSX: {},

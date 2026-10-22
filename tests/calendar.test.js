@@ -22,6 +22,15 @@ test('historic NYSE early closes and Saturday New Year are handled', () => {
   assert.ok(!isTradingDay('2025-01-09')); // special closure
 });
 
+test('the 2018-12-05 closure (National Day of Mourning, President George H. W. Bush) is not a session', () => {
+  assert.equal(isTradingDay('2018-12-05'), false);
+  assert.match(nyseHolidays(2018)['2018-12-05'], /George H\. W\. Bush/);
+  assert.equal(nextTradingDay('2018-12-04'), '2018-12-06');
+  assert.equal(isTradingDay('2018-12-04'), true);
+  assert.equal(isTradingDay('2018-12-06'), true);
+  assert.equal(dayInfo('2018-12-05').reason, 'National Day of Mourning (President George H. W. Bush)');
+});
+
 test('briefings are skipped on holidays and weekends', () => {
   assert.equal(briefingSlots('2026-11-26').length, 0); // Thanksgiving
   assert.equal(briefingSlots('2026-10-24').length, 0); // Saturday

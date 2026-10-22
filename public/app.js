@@ -9,6 +9,7 @@ import { renderWatchlist } from './views/watchlist.js';
 import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
 import { renderLab } from './views/lab.js';
+import { renderHxr } from './views/hxr.js';
 
 const VIEWS = {
   overview: { title: 'Overview', render: renderOverview },
@@ -17,6 +18,7 @@ const VIEWS = {
   watchlist: { title: 'AI Watchlist', render: renderWatchlist },
   reports: { title: 'Reports', render: renderReports },
   lab: { title: 'Strategy Lab', render: renderLab },
+  hxr: { title: 'HXR (simulated)', render: renderHxr },
   settings: { title: 'Settings', render: renderSettings },
 };
 

@@ -164,4 +164,19 @@ The **Lab** page tests one consolidation-breakout strategy in a hypothetical acc
 - **Results** say how many trades they rest on and the pre-registered outcome: not eligible, inconclusive or eligible for review. "Eligible for review" is not permission to trade.
 - The Pine Script version and TradingView steps are in `strategy/TRADINGVIEW-SETUP.md`. The Questrade assessment, and why nothing connects to a broker, is in `strategy/QUESTRADE-ASSESSMENT.md`.
 
+## 13. HXR — hold, exit, re-enter (simulation only)
+
+The **HXR (simulated)** page tests whether selling one of your stocks to cash when its price trend breaks, and buying it back when it recovers, beats simply holding the same stocks. It uses a hypothetical US$15,000 in USD, split equally across the stocks. Nothing is connected to a broker or a paper-trading account: every order is an internal record labelled SIMULATED. HXR sends no notifications and never reads or changes your real holdings, your cash or the Strategy Lab.
+
+- **The rules came first.** The rules, three experimental candidates, the costs, the test periods and the pass/fail criteria were fixed before any test (`strategy/hxr/PREREGISTRATION.md`). Everything that touches data is logged in `strategy/hxr/EXPERIMENT-LOG.md` and on the page.
+- **Data.** HXR uses the same Alpaca keys as the Strategy Lab (`.env`). **Download / refresh data** gets daily prices from 2016, splits, dividends, the first 15 minutes of each session and opening quotes for cost estimates. The readiness table shows anything missing.
+- **Your decisions first.**
+  - Confirm SpaceX as SPCX on Nasdaq; until you do, it is never priced.
+  - Decide whether Micron stays in the 2023–2026 evaluation, which overlaps the Strategy Lab's untouched holdout.
+- **Selection, then evaluation, each once.**
+  - **Run selection** compares the three candidates on 2017–2022 and freezes one as `hxr-1.0.0`. Add that config file to `strategy/hxr/configs/hxr-1.0.0.json` and log it.
+  - **Run evaluation** judges the frozen pick once on 2023–2026 against holding the same stocks. A repeat must give a reason and is marked contaminated.
+  - Outcomes are PASS, FAIL or INSUFFICIENT EVIDENCE. PASS means only that you may review the evidence; it is never permission to trade.
+- **The prospective account** processes each new session after the close. It records every decision with its time, fills at the next open and shows the news that was known at the time. It is the only clean evidence. In this version news does not change decisions. Historical, price-only results are never proof of a news-informed HXR.
+
 Run the automated tests with `npm test`.
