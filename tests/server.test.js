@@ -1,5 +1,6 @@
 // HTTP server: local-only binding, Host/Origin/CSRF checks, secret handling,
 // API round-trips and restart persistence.
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -138,7 +139,7 @@ test('backup, modify, restore', async () => {
 test('data persists across a real process restart', async () => {
   const dir = tempDir();
   const env = { ...process.env, SIGNAL_DESK_DATA_DIR: dir, SIGNAL_DESK_PORT: '47391', SIGNAL_DESK_SCHEDULER: 'false', MARKET_DATA_PROVIDER: 'none', SIGNAL_DESK_QUIET: '1' };
-  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const start = async () => {
     const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'server/index.js'], { cwd: root, env, stdio: 'ignore' });
     for (let i = 0; i < 50; i++) {

@@ -49,6 +49,7 @@ never drive it.
 | `PARAMETER-LOG.md` | Every change to rules, parameters, universe, split dates or acceptance criteria, with the reason and which data had been seen. |
 | `configs/cb-1.0.0.json` | The machine-readable strategy config for version 1.0.0. Each later version gets a new file. |
 | `universe-v1.json` | The 17 symbols chosen before any data was downloaded, with the AI/technology cluster tagged. |
+| `splits-v2.json` | Active periods: splits-v1's dates plus four sessions excluded for every symbol (Alpaca NYSE data gap; `PARAMETER-LOG.md`). |
 | `splits-v1.json` | Warm-up, development, validation, holdout and forward periods, plus the walk-forward grid. |
 | `acceptance-v1.json` | The pass/fail criteria (B1–B10, F1–F4), stress tests and neighbouring settings, fixed before any results. |
 | `pine/consolidation_breakout_v1.pine` | The Pine Script v6 version of the strategy, for TradingView's Strategy Tester and alerts. Not yet compiled by TradingView (see below). |

@@ -196,12 +196,34 @@ export function loadUniverse(file = path.join(STRATEGY_DIR, 'universe-v1.json'))
   return deepFreeze(u);
 }
 
-export function loadSplits(file = path.join(STRATEGY_DIR, 'splits-v1.json')) {
+// The active periods: splits-v2 (splits-v1's dates plus four excluded NYSE
+// sessions, decided before any result existed; PARAMETER-LOG.md). splits-v1
+// stays on disk unchanged as the earlier version.
+export const DEFAULT_SPLITS_PATH = path.join(STRATEGY_DIR, 'splits-v2.json');
+
+export function loadSplits(file = DEFAULT_SPLITS_PATH) {
   const s = readJson(file);
   for (const k of ['warmup', 'development', 'validation', 'holdout']) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s[k]?.from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(s[k]?.to || '')) throw new Error(`Splits file: ${k} needs from/to dates`);
   }
+  const ex = s.excludedSessions;
+  if (ex !== undefined) {
+    if (!ex || !Array.isArray(ex.sessions)) throw new Error('Splits file: excludedSessions needs a sessions list');
+    const seen = new Set();
+    for (const x of ex.sessions) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(x?.date || '')) throw new Error('Splits file: every excluded session needs a YYYY-MM-DD date');
+      if (!x.reason) throw new Error(`Splits file: excluded session ${x.date} needs a reason`);
+      if (x.date < s.warmup.from || x.date > s.holdout.to) throw new Error(`Splits file: excluded session ${x.date} is outside ${s.warmup.from} to ${s.holdout.to}`);
+      if (seen.has(x.date)) throw new Error(`Splits file: excluded session ${x.date} is listed twice`);
+      seen.add(x.date);
+    }
+  }
   return deepFreeze(s);
+}
+
+// Sorted dates (exchange-local) of the sessions a splits version excludes for every symbol.
+export function excludedSessionDates(splits) {
+  return [...new Set((splits?.excludedSessions?.sessions || []).map((x) => x.date))].sort();
 }
 
 export function loadAcceptance(file = path.join(STRATEGY_DIR, 'acceptance-v1.json')) {

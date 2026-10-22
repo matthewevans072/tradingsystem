@@ -1,0 +1,81 @@
+{
+  "name": "splits-v2",
+  "definedAt": "2026-10-22",
+  "definedBefore": "any backtest, holdout run or forward run for this strategy. Only the data-readiness checks (bar coverage, timestamps, OHLCV, overnight ratios) had been seen; no trade, signal or performance figure existed.",
+  "supersedes": "splits-v1",
+  "change": "Same periods, walk-forward and data requirements as splits-v1. Adds excludedSessions: four NYSE sessions dropped for every symbol because Alpaca has no NYSE (Tape A) trades for most of each of them (strategy/reports/2026-10-22-data-readiness.md, finding 1). Decided by the owner on 2026-10-22 (option C). This list stays the rule for every run under splits-v2 even if Alpaca later backfills these sessions; using a backfill would need a new splits version.",
+  "timezone": "America/New_York",
+  "warmup": {
+    "from": "2021-07-01",
+    "to": "2021-12-31",
+    "use": "indicator and regime warm-up only; no trades are counted"
+  },
+  "development": {
+    "from": "2022-01-01",
+    "to": "2023-12-31",
+    "use": "building and debugging the engine; inspecting individual trades is allowed"
+  },
+  "validation": {
+    "from": "2024-01-01",
+    "to": "2024-12-31",
+    "use": "checking the fixed rules, stress tests and the nearby-parameter neighbourhood; any rule change after looking at validation results creates a new version and is logged"
+  },
+  "holdout": {
+    "from": "2025-01-01",
+    "to": "2026-06-30",
+    "use": "one final evaluation per strategy version. Running it again requires a written reason and marks the result as contaminated."
+  },
+  "forward": {
+    "from": "the day forward testing is switched on (not before 2026-10-22)",
+    "use": "simulated forward test with the rules frozen"
+  },
+  "excludedSessions": {
+    "appliesTo": "every universe symbol (all 17), so the symbols stay on one common timeline",
+    "handling": "All bars of these sessions are removed when bars are loaded for a run (Strategy Lab and scripts/strategy-backtest.js) and the readiness checklist does not expect them. The engine and calendar are unchanged: the engine sees no bars on these days, so the existing data-gap rules in ENGINE-SPEC.md apply. A pending entry due in an excluded session lapses (entry_skipped: no next bar). A swing position whose last session is an excluded session closes at the last close before it (session_end_fallback, flagged). Any other open swing position is carried to the next session open, where a gap through the stop or target fills at that open. The excluded day still counts towards maxHoldSessions, and the first true range after it spans two overnight gaps.",
+    "sessions": [
+      {
+        "date": "2021-10-25",
+        "period": "warmup",
+        "reason": "Alpaca has no NYSE-listed trades 09:45-15:45 ET for all 10 NYSE symbols (only the 09:30 opening-auction print)"
+      },
+      {
+        "date": "2022-01-24",
+        "period": "development",
+        "reason": "Alpaca has no trades 10:45-15:45 ET for VRT, XOM, PG, CAT, NEE and PLD"
+      },
+      {
+        "date": "2022-01-26",
+        "period": "development",
+        "reason": "Alpaca has no trades 15:00-15:45 ET for VRT and XOM"
+      },
+      {
+        "date": "2022-03-08",
+        "period": "development",
+        "reason": "Alpaca has no NYSE-listed trades 09:45-15:45 ET for all 10 NYSE symbols (none at all for JNJ and CAT)"
+      }
+    ]
+  },
+  "walkForward": {
+    "range": {
+      "from": "2022-01-01",
+      "to": "2024-12-31"
+    },
+    "inSampleQuarters": 4,
+    "outOfSampleQuarters": 1,
+    "grid": {
+      "box.maxHeightAtr": [
+        2.5,
+        3,
+        3.5
+      ],
+      "entry.volumeMultiple": [
+        1.25,
+        1.5,
+        1.75
+      ]
+    },
+    "selection": "highest in-sample expectancy in R among grid points with at least 30 in-sample trades; otherwise the baseline. Out-of-sample quarters are concatenated and reported; the baseline is always reported next to it.",
+    "note": "The grid is deliberately small (9 points). Walk-forward is a robustness check, not a search for a profitable setting."
+  },
+  "dataRequirements": "Split-adjusted 15-minute regular-session OHLCV bars for every universe-v1 symbol from 2021-07-01 to 2026-06-30. Lower-timeframe (1-minute) bars are optional and only used to resolve bars that touch both stop and target. The sessions in excludedSessions are not required and are never used."
+}

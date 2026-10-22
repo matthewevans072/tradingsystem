@@ -248,7 +248,8 @@ export function normalizeBars(rawBars, { exchange = 'NYSE', intervalMinutes = 15
 
 // ---------- quality ----------
 
-export function qualityReport(bars, { exchange = 'NYSE', intervalMinutes = 15, bigMovePct = 20, listLimit = 50 } = {}) {
+export function qualityReport(bars, { exchange = 'NYSE', intervalMinutes = 15, bigMovePct = 20, listLimit = 50, excludedDates = [] } = {}) {
+  const excluded = new Set(excludedDates);
   const list = bars || [];
   let duplicates = 0, nonPositivePrices = 0, highBelowLow = 0, ohlcOutsideRange = 0, missingVolume = 0, outsideSession = 0, misaligned = 0, unsorted = 0;
   const seen = new Set(), perDay = new Map(), bigMoves = [];
@@ -274,7 +275,8 @@ export function qualityReport(bars, { exchange = 'NYSE', intervalMinutes = 15, b
     prev = { ms, c: b.c };
   }
   const firstDate = first != null ? localDate(first, exchange) : null, lastDate = last != null ? localDate(last, exchange) : null;
-  const days = firstDate ? tradingDays(firstDate, lastDate, exchange) : [];
+  // Sessions a splits version excludes for every symbol are not expected.
+  const days = firstDate ? tradingDays(firstDate, lastDate, exchange).filter((d) => !excluded.has(d)) : [];
   let expectedBars = 0, presentBars = 0;
   const incomplete = [];
   for (const d of days) {
@@ -285,7 +287,7 @@ export function qualityReport(bars, { exchange = 'NYSE', intervalMinutes = 15, b
   const missingSessions = incomplete.filter((x) => x.present === 0).length;
   return {
     exchange, intervalMinutes, bars: list.length, firstBar: first != null ? new Date(first).toISOString() : null, lastBar: last != null ? new Date(last).toISOString() : null,
-    sessions: days.length, sessionsWithBars: days.length - missingSessions, missingSessions,
+    sessions: days.length, sessionsWithBars: days.length - missingSessions, missingSessions, excludedSessions: [...excluded].filter((d) => firstDate && d >= firstDate && d <= lastDate).sort(),
     expectedBars, presentBars, missingBars: expectedBars - presentBars,
     incompleteSessions: incomplete.length, incompleteSessionList: incomplete.slice(0, listLimit),
     duplicates, unsorted, nonPositivePrices, highBelowLow, ohlcOutsideRange, outsideSession, misaligned,
@@ -293,6 +295,31 @@ export function qualityReport(bars, { exchange = 'NYSE', intervalMinutes = 15, b
     bigMoves: bigMoves.length, bigMovePct, bigMoveList: bigMoves.slice(0, listLimit),
     ok: duplicates + unsorted + nonPositivePrices + highBelowLow + ohlcOutsideRange + outsideSession + misaligned === 0 && expectedBars === presentBars,
   };
+}
+
+// ---------- excluded sessions ----------
+
+// Removes every bar of the given exchange-local session dates (a splits
+// version's excludedSessions) from Map<symbol, Bar[]>. Returns a new Map with
+// the same synthetic flags and a count of removed bars per symbol; the input
+// is not changed. exchangeOf(symbol) gives the listing for the session date.
+export function dropExcludedSessions(barsBySymbol, dates, { exchangeOf = () => 'NYSE' } = {}) {
+  const excluded = new Set(dates || []);
+  const src = barsBySymbol instanceof Map ? barsBySymbol : new Map(Object.entries(barsBySymbol || {}));
+  const out = new Map();
+  const removed = {};
+  for (const [sym, list] of src) {
+    let kept = list;
+    if (excluded.size) {
+      const ex = exchangeOf(sym) || 'NYSE';
+      kept = (list || []).filter((b) => !excluded.has(localDate(typeof b.t === 'number' ? b.t : Date.parse(b.t), ex)));
+      if (list?.synthetic) kept.synthetic = true;
+      if (kept.length !== (list || []).length) removed[sym] = (list || []).length - kept.length;
+    }
+    if (kept?.length) out.set(sym, kept);
+  }
+  if (src.synthetic) out.synthetic = true;
+  return { bars: out, removed, dates: [...excluded].sort() };
 }
 
 // ---------- hash ----------

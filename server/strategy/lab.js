@@ -8,18 +8,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import * as store from './store.js';
-import { loadStrategyConfig, loadUniverse, loadSplits, loadAcceptance, configHash, diffConfigs, validateConfig, STRATEGY_DIR, MODES, DESCRIPTIVE_KEYS } from './config.js';
+import { loadStrategyConfig, loadUniverse, loadSplits, loadAcceptance, configHash, diffConfigs, validateConfig, excludedSessionDates, STRATEGY_DIR, MODES, DESCRIPTIVE_KEYS } from './config.js';
 import { runSplit, runStress, runWalkForward, runHoldout as validationHoldout, evaluateAcceptance, splitRange, HoldoutRefused, OUTCOME_NOTE } from './validation.js';
 import { buildReport } from './report.js';
 import { buildRegimes } from './regimes.js';
 import { etDate } from './metrics.js';
-import { parseTradingViewCsv, parseGenericCsv, normalizeBars, qualityReport, datasetHash } from './data.js';
+import { parseTradingViewCsv, parseGenericCsv, normalizeBars, qualityReport, datasetHash, dropExcludedSessions } from './data.js';
 import { generateSyntheticBars } from './synthetic.js';
 import { whySetupQualifies, whySignal, whyRejectedOrSkipped, whatEnded } from './explain.js';
 import { dayStartMs, tradingDays } from './sessions.js';
 import { forwardTick, startForward, stopForward, replayForward, forwardAccount, forwardResults, DEFAULT_MAX_SIGNAL_DELAY_MIN } from './forward.js';
 import { createAlpacaSource } from './sources/alpaca.js';
-import { buildReadiness, loadCorporateActions, CORPORATE_ACTIONS_FILE, FORWARD_FEEDS } from './readiness.js';
+import { buildReadiness, loadCorporateActions, CORPORATE_ACTIONS_FILE, FORWARD_FEEDS, readinessBlockers, describeBlockers } from './readiness.js';
 import { todayIn, addDays, NY } from '../time.js';
 import { redact } from '../config.js';
 
@@ -140,12 +140,17 @@ function loadInputs(db, { configFile, split = null, to = null }) {
   const universe = loadUniverse(), splits = loadSplits(), acceptance = loadAcceptance();
   const names = universe.symbols.map((s) => s.symbol);
   const end = to || (split === 'walk_forward' ? splits.walkForward.range.to : splitRange(splits, split === 'stress' ? 'validation' : split).to);
-  const bars = store.barsBySymbol(db, names, { from: dayStartIso(splits.warmup.from), to: dayEndIso(end) });
+  const exchangeOf = (sym) => universe.symbols.find((u) => u.symbol === sym)?.exchange || 'NYSE';
+  // The splits version's excluded sessions are removed for every symbol before anything else sees the bars.
+  const excludedDates = excludedSessionDates(splits);
+  const dropped = dropExcludedSessions(store.barsBySymbol(db, names, { from: dayStartIso(splits.warmup.from), to: dayEndIso(end) }), excludedDates, { exchangeOf });
+  const bars = dropped.bars;
   const present = names.filter((s) => bars.has(s));
   const regimes = buildRegimes(bars.get(universe.regimeProxy || 'SPY') || []);
   const quality = {};
-  for (const s of present) quality[s] = scalars(qualityReport(bars.get(s), { exchange: universe.symbols.find((u) => u.symbol === s)?.exchange || 'NYSE' }));
-  return { config, universe, splits, acceptance, bars, present, regimes, synthetic: !!bars.synthetic, dataHash: datasetHash(bars), quality };
+  for (const s of present) quality[s] = scalars(qualityReport(bars.get(s), { exchange: exchangeOf(s), excludedDates }));
+  const excluded = { splits: splits.name, sessions: excludedDates, barsRemoved: dropped.removed };
+  return { config, universe, splits, acceptance, bars, present, regimes, synthetic: !!bars.synthetic, dataHash: datasetHash(bars), quality, excluded };
 }
 
 function reportFor(inp, mode, key, result, at) {
@@ -169,7 +174,7 @@ function storeResult(db, runId, { result, kind, inp, report, at, extra = {} }) {
     store.updateRun(db, runId, {
       status: 'done', finishedAt: at, metrics, report, dataHash: inp.dataHash, synthetic: !!(inp.synthetic || result.synthetic),
       symbols: inp.present, equity: kind === 'walk_forward' || kind === 'stress' ? [] : dailyEquity(result.equityCurve),
-      details: { ...details, boxParams: params, dataQuality: inp.quality, ...extra },
+      details: { ...details, boxParams: params, dataQuality: inp.quality, excludedSessions: inp.excluded, ...extra },
     });
   });
 }
@@ -276,6 +281,25 @@ export function createLab(ctx, opts = {}) {
       ? createAlpacaSource({ keyId: sec.ALPACA_API_KEY_ID, secretKey: sec.ALPACA_API_SECRET_KEY, fetchImpl: opts.alpacaFetch, sleep: opts.alpacaSleep, now: clock })
       : null;
   let readinessCache = null;
+  function readinessNow() {
+    let caText;
+    try { caText = fs.readFileSync(caFile, 'utf8'); } catch (e) { throw new LabError(500, `The corporate-actions file could not be read: ${e.message}`); }
+    const key = `${store.barsFingerprint(db)}|${caText}`;
+    if (!readinessCache || readinessCache.key !== key) {
+      readinessCache = { key, value: buildReadiness({ db, universe, splits, corporateActions: loadCorporateActions(caFile), now: clock(), synthetic: demo }) };
+    }
+    return readinessCache.value;
+  }
+  // The readiness gate (real workspace): a run is refused unless every
+  // universe symbol is READY for every period it reads. The demo workspace's
+  // synthetic data is never evidence and is not gated.
+  function requireReady(split) {
+    if (demo) return;
+    const blockers = readinessBlockers(readinessNow().symbols, split, universe.symbols.map((s) => s.symbol));
+    if (blockers.length) {
+      throw new LabError(409, `Not every symbol is READY for this run, so it was not started (data-readiness checklist, GET /api/lab/readiness): ${describeBlockers(blockers)}.`);
+    }
+  }
   // Sources in the history window, recomputed when barCoverage's cached rows change.
   const histKeysCache = new WeakMap();
   const historyKeys = () => {
@@ -919,6 +943,7 @@ export function createLab(ctx, opts = {}) {
       ensureIdle();
       const range = sp === 'walk_forward' ? splits.walkForward.range : splitRange(splits, sp === 'stress' ? 'validation' : sp);
       if (!barsInRange(range.from, range.to)) throw new LabError(400, `No bars are stored for ${range.from} to ${range.to}. Import CSV files or download history first.`);
+      requireReady(sp);
       const c = activeConfigEntry();
       claim('backtest', `${sp} (${mode})`);
       let runId;
@@ -954,6 +979,7 @@ export function createLab(ctx, opts = {}) {
       }
       const range = splitRange(splits, 'holdout');
       if (!barsInRange(range.from, range.to)) throw new LabError(400, `No bars are stored for the holdout period (${range.from} to ${range.to}). Running it now would use up the clean holdout run on no data.`);
+      requireReady('holdout');
       claim('holdout', `holdout (${mode})`);
       let runId;
       try {
@@ -1089,13 +1115,7 @@ export function createLab(ctx, opts = {}) {
     // The data-readiness checklist (readiness.js), recomputed only when the
     // stored bars or the corporate-actions file change. Read-only.
     readiness() {
-      let caText;
-      try { caText = fs.readFileSync(caFile, 'utf8'); } catch (e) { throw new LabError(500, `The corporate-actions file could not be read: ${e.message}`); }
-      const key = `${store.barsFingerprint(db)}|${caText}`;
-      if (!readinessCache || readinessCache.key !== key) {
-        readinessCache = { key, value: buildReadiness({ db, universe, splits, corporateActions: loadCorporateActions(caFile), now: clock(), synthetic: demo }) };
-      }
-      return wrap({ ...readinessCache.value, historySources: publicSources() });
+      return wrap({ ...readinessNow(), historySources: publicSources() });
     },
 
     // Scheduler hook: forward ticks for running modes and a paused history

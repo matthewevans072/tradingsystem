@@ -1,5 +1,19 @@
 # Data readiness — real-data checklist for universe-v1
 
+> **Current status (2026-10-22, splits-v2):** real Alpaca data is stored and
+> **all 17 symbols are READY for every period**; see
+> `reports/2026-10-22-readiness-splits-v2.md`. The sections below were written
+> before the download and are kept as the specification. Since then:
+> - **Excluded sessions.** `splits-v2.json` excludes 2021-10-25, 2022-01-24,
+>   2022-01-26 and 2022-03-08 for every symbol (an Alpaca NYSE data gap; owner
+>   decision, `PARAMETER-LOG.md`). The checklist does not expect them; their
+>   stored bars are set aside and every run removes them before the engine
+>   sees the data. The engine's data-gap rules apply on those days.
+> - **Reviewed move.** VRT 2022-02-23 is recorded in `reviewedOvernightMoves`.
+> - **Documented limitation.** The Nasdaq opening cross is double-counted in
+>   some 2022 to early-2023 09:30 bars (volume only). The owner chose to leave
+>   the data as it is.
+
 Status as of **2026-10-22**: **no market data has been downloaded.** Every one
 of the 17 symbols is **NO DATA** for every period, so **no period is usable**
 and no backtest, validation or holdout result exists on real data. Nothing in

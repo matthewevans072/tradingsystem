@@ -74,11 +74,11 @@ test('clean bars: READY in every period, on the exchange calendar', () => {
   // 2024-07-03 is a 1 p.m. early close (14 bars) and 2024-07-04 a holiday.
   assert.deepEqual(r.checks.coverage.development, {
     from: '2024-07-01', to: '2024-07-05', expectedSessions: 4, sessionsWithBars: 4, earlyCloses: 1, missingSessions: 0, missingSessionRanges: [],
-    partialSessions: 0, partialSample: [], expectedBars: 26 * 3 + 14, presentBars: 92, missingBars: 0, pctComplete: 100, status: 'pass',
+    partialSessions: 0, partialSample: [], expectedBars: 26 * 3 + 14, presentBars: 92, missingBars: 0, pctComplete: 100, excludedSessions: [], status: 'pass',
   });
   assert.deepEqual(r.checks.timestamps.lastBarTimes.earlyCloses, { '12:45': 1 });
   assert.deepEqual(r.checks.timestamps.earlyCloses.problems, []);
-  assert.equal(r.checks.instrument.status, 'verified by research');
+  assert.equal(r.checks.instrument.status, 'verified');
   assert.equal(r.checks.adjustment.dividends.status, 'declared by source, not independently verified');
   assert.equal(r.checks.adjustment.unknownSplitScan.candidates.length, 0);
 });
@@ -122,8 +122,8 @@ test('planted defects: missing session, off-grid and pre-market bars, zero volum
   assert.equal(ck.ohlcv.status, 'fail');
   assert.deepEqual({ z: ck.ohlcv.zeroVolume, m: ck.ohlcv.missingVolume, i: ck.ohlcv.duplicates.identical, c: ck.ohlcv.duplicates.conflicting }, { z: 1, m: 0, i: 1, c: 1 });
   assert.equal(ck.adjustment.status, 'pass');
-  assert.equal(ck.instrument.status, 'likely, not verified');
-  assert.ok(r.openItems.includes('listing exchange likely, not verified'));
+  assert.equal(ck.instrument.status, 'verified');
+  assert.ok(!r.openItems.some((x) => /listing exchange/.test(x)), 'a verified listing is not an open item');
 });
 
 test('known split: an unadjusted NVDA 10-for-1 blocks every period whose run includes 2024-06-10', () => {
@@ -145,7 +145,7 @@ test('known split: an unadjusted NVDA 10-for-1 blocks every period whose run inc
   assert.deepEqual(r.periods.holdout.reasons, why);
   assert.equal(r.checks.adjustment.unknownSplitScan.candidates.length, 0, 'the known split is not reported twice');
   assert.equal(r.checks.adjustment.dividends.status, 'not verified');
-  assert.equal(r.checks.instrument.status, 'unverified');
+  assert.equal(r.checks.instrument.status, 'verified');
 
   // Split-adjusted prices but raw volume: still not ready.
   const half = sessionBars('2024-05-28', '2024-06-21', { start: 120, volume: (d) => (d < '2024-06-10' ? 100 : 1000) });
@@ -230,7 +230,11 @@ test('Lab readiness over the real window: an empty database is NO DATA everywher
   assert.equal(r.symbols.length, 17);
   assert.ok(r.symbols.every((s) => s.status === NO_DATA));
   assert.deepEqual(r.summary, { symbols: 17, ready: 0, notReady: 0, noData: 17, usablePeriods: [] });
-  assert.deepEqual(r.symbols[0].checks.coverage.warmup.missingSessionRanges, [{ from: '2021-07-01', to: '2021-12-31', sessions: 128 }]);
+  // splits-v2 excludes 2021-10-25 for every symbol, so it is neither expected nor missing.
+  assert.deepEqual(r.symbols[0].checks.coverage.warmup.missingSessionRanges, [{ from: '2021-07-01', to: '2021-10-22', sessions: 80 }, { from: '2021-10-26', to: '2021-12-31', sessions: 47 }]);
+  assert.deepEqual(r.periods.map((p) => [p.key, p.sessions, p.expectedBars]), [['warmup', 127, 3290], ['development', 498, 12912], ['validation', 252, 6516], ['holdout', 373, 9662]]);
+  assert.deepEqual(r.excludedSessions.dates, ['2021-10-25', '2022-01-24', '2022-01-26', '2022-03-08']);
+  assert.equal(r.splits, 'splits-v2');
   assert.ok(r.symbols.every((s) => Object.values(s.periods).every((p) => p.status === NO_DATA)));
   assert.equal(r.sources.sources.find((x) => x.id === 'twelvedata').facts.find((f) => f.item === 'History depth').status, 'unverified (conflicting official pages)');
 
@@ -245,10 +249,13 @@ test('Lab readiness over the real window: an empty database is NO DATA everywher
   const by = Object.fromEntries(r.symbols.map((s) => [s.symbol, s]));
   assert.equal(by.SPY.status, READY);
   assert.deepEqual(by.SPY.blocking, []);
+  // SPY's bars on the four excluded sessions are stored but set aside, never checked or used.
+  assert.deepEqual(by.SPY.bars.excludedSessions, { '2021-10-25': 26, '2022-01-24': 26, '2022-01-26': 26, '2022-03-08': 26 });
+  assert.equal(by.SPY.bars.inWindow, spy.length - 4 * 26);
   assert.equal(by.SPY.checks.timestamps.dst.length, 10);
   assert.ok(by.SPY.checks.timestamps.dst.every((x) => x.status === 'pass'));
   assert.deepEqual([by.SPY.checks.timestamps.earlyCloses.sessionsWithBars, by.SPY.checks.timestamps.earlyCloses.ok], [10, 10]);
-  assert.equal(by.SPY.checks.instrument.status, 'verified by research');
+  assert.equal(by.SPY.checks.instrument.status, 'verified');
   assert.equal(by.NVDA.status, NOT_READY);
   assert.deepEqual(['warmup', 'development', 'validation', 'holdout'].map((k) => by.NVDA.periods[k].status), [READY, READY, NOT_READY, NOT_READY]);
   assert.equal(by.NVDA.checks.adjustment.knownSplits[0].status, 'pass', 'the 4-for-1 is adjusted');

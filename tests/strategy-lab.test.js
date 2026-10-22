@@ -3,6 +3,7 @@
 // test with a fake provider and clock, the TradingView alert receiver, the
 // /api/lab routes through the real HTTP server, backups and the scheduler
 // hook. Synthetic prices only test code; nothing here is strategy performance.
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -96,7 +97,7 @@ test('versions: configs, parameter log and a diff between versions', () => {
   const dir = tempDir();
   const configs = path.join(dir, 'configs');
   fs.mkdirSync(configs);
-  const base = JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '../strategy/configs/cb-1.0.0.json'), 'utf8'));
+  const base = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../strategy/configs/cb-1.0.0.json'), 'utf8'));
   fs.writeFileSync(path.join(configs, 'cb-1.0.0.json'), JSON.stringify(base));
   fs.writeFileSync(path.join(configs, 'cb-1.1.0.json'), JSON.stringify({ ...base, version: '1.1.0', box: { ...base.box, maxHeightAtr: 3.5 } }));
   const log = path.join(dir, 'PARAMETER-LOG.md');
@@ -689,6 +690,17 @@ test('API: /api/lab routes through the real server, with the CSRF header require
     }
     r = await s.api('POST', '/api/lab/runs', { mode: 'intraday', split: 'holdout' });
     assert.equal(r.status, 400);
+    // The readiness gate: two symbols (with the generator's planted missing volumes) are not enough.
+    r = await s.api('POST', '/api/lab/runs', { mode: 'intraday', split: 'development' });
+    assert.equal(r.status, 409, JSON.stringify(r.body));
+    assert.match(r.body.error, /Not every symbol is READY/);
+    assert.equal((await s.api('GET', '/api/lab/runs?mode=intraday')).body.runs.length, 0);
+    // All 17 symbols, complete through development (volume filled where the generator left it out).
+    const all = generateSyntheticBars({ symbols: loadUniverse().symbols.map((x) => x.symbol), from: '2021-07-01', to: '2023-12-31', seed: 5 });
+    for (const [sym, list] of all.bars) {
+      r = await s.api('POST', '/api/lab/import', { symbol: sym, text: tvCsv(list.map((b) => ({ ...b, v: b.v > 0 ? b.v : 1000 }))) });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+    }
     r = await s.api('POST', '/api/lab/runs', { mode: 'intraday', split: 'development' });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.run.status, 'running');

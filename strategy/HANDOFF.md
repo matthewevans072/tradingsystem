@@ -77,21 +77,58 @@ strategy as profitable or live-ready without supporting results.
 - No backtest, holdout run or forward run has ever been made. No performance
   figure exists.
 
+## Update 2026-10-22 (later session): owner's decisions implemented
+
+- **Decisions.** The owner chose option C, recorded VRT 2022-02-23 as a
+  reviewed earnings move, and left the opening-volume double count as a
+  documented limitation (`PARAMETER-LOG.md`, three rows).
+- **New data version.** `splits-v2.json` is the default. It has the same dates
+  as splits-v1 and excludes 2021-10-25, 2022-01-24, 2022-01-26 and
+  2022-03-08 for all 17 symbols. This stays the rule even if Alpaca backfills.
+  Bars are removed at load in the Lab worker (`loadInputs`) and the CLI
+  (`withoutExcludedSessions`). The checklist does not expect them, and every
+  report names them. The engine and calendar are unchanged; its gap rules
+  apply, as tested in `tests/strategy-exclusions.test.js`.
+- **Readiness: 17 of 17 READY in every period.** See
+  `reports/2026-10-22-readiness-splits-v2.md`. The database was not modified.
+- **Tests.** `npm test`: 272 of 272 pass. Two tests failed on Windows because
+  of their path handling (`server.test.js`, `strategy-lab.test.js`); they were
+  fixed.
+- **Environment.** The project now lives in
+  `C:/Users/matth/OneDrive/Desktop/trading system` (unzipped, not a git
+  checkout). `.env` there holds the Alpaca keys.
+- **Still no runs.** No backtest, holdout run or forward run exists, and no
+  performance figure has been seen.
+- **Missing guard.** `lab.startBacktest` does not itself enforce the
+  readiness gate. It is harmless while all 17 are READY.
+
+## Update 2026-10-22 (third session): first real-data runs
+
+- **Gate and labels.** The readiness gate was added (Lab and CLI); listing
+  labels are now `verified` (documentation only). Both are logged in
+  `PARAMETER-LOG.md`. `npm test`: 275 of 275.
+- **Runs.** Development, validation, stress and walk-forward ran in both
+  modes under cb-1.0.0 and splits-v2. They are Lab runs 1–8 in
+  `data/strategy-lab.sqlite`. A copy of the database from before the runs is
+  not kept in the project. **The holdout was not run**, and
+  `lab_holdout_runs` is empty.
+- **Result: not eligible in both modes.**
+  - B8 fails: 1 of 12 neighbours positive intraday, 8 of 12 swing.
+  - Trades: intraday 2 in development and 0 in validation; swing 8 and 1.
+  - The reward-to-risk entry limit sits below the breakout close in almost
+    every order, so most orders are skipped at the next open.
+  - Report: `reports/2026-10-22-development-validation.md`.
+- **No rule changed.** No rule or parameter was changed after the results.
+
 ## Next steps
 
-1. Wait for the owner to choose a remedy for the Alpaca gap (options A–D in
-   the report) and say whether to record VRT 2022-02-23 as a reviewed
-   overnight move. Do not pick one yourself, and do not run anything until
-   then.
-2. Implement only the chosen remedy (with a `PARAMETER-LOG.md` entry if it
-   changes a frozen file), re-run the readiness checklist and show it.
-3. If every symbol is READY for warm-up, development and validation, run
-   development and validation in both modes (`lab.startBacktest({ mode,
-   split })` or `scripts/strategy-backtest.js`). **Do not run the
-   holdout.** Report against `acceptance-v1.json` with trade counts and the
-   outcome (not eligible, inconclusive or eligible for review; that last one
-   is not permission to trade).
-4. Commit reports only (no bars, no keys).
+1. Owner decision. cb-1.0.0 cannot meet acceptance-v1: B8 fails, and
+   validation has 0 or 1 trades against the 60 needed. Any new rule version
+   would be designed with development and validation already seen, and must
+   be logged as such. Only the holdout and a forward test would then be
+   unseen data.
+2. Do not run the holdout for cb-1.0.0 unless the owner explicitly asks.
+3. Commit reports only (no bars, no keys).
 
 ## Open items carried over
 

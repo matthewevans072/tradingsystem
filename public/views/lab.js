@@ -363,7 +363,7 @@ function forwardControl(L) {
 // forward run only, kept apart from the historical runs. With no forward run
 // it says "not started" and shows zeros; nothing is estimated.
 const READY_KIND = { READY: 'ok', 'NOT READY': 'danger', 'NO DATA': 'muted' };
-const CHECK_KIND = { pass: 'ok', fail: 'danger', 'no data': 'muted', 'verified by research': 'ok', mismatch: 'danger' };
+const CHECK_KIND = { pass: 'ok', fail: 'danger', 'no data': 'muted', 'verified by research': 'ok', verified: 'ok', mismatch: 'danger' };
 const byReason = (o) => (o && Object.keys(o).length ? ` (${Object.entries(o).map(([k, n]) => `${String(k).replace(/_/g, ' ')} ${n}`).join(', ')})` : '');
 
 function forwardReportBlock(L) {

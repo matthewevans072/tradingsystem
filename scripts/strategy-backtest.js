@@ -15,7 +15,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { loadStrategyConfig, configHash, loadUniverse, loadSplits, loadAcceptance, DEFAULT_CONFIG_PATH, STRATEGY_DIR } from '../server/strategy/config.js';
+import { loadStrategyConfig, configHash, loadUniverse, loadSplits, loadAcceptance, excludedSessionDates, DEFAULT_CONFIG_PATH, STRATEGY_DIR } from '../server/strategy/config.js';
+import { checkSymbolBars, loadCorporateActions, readinessBlockers, describeBlockers, periodsForRun } from '../server/strategy/readiness.js';
 import { buildRegimes } from '../server/strategy/regimes.js';
 import { runSplit, runStress, runWalkForward, runHoldout, createFileLedger, HoldoutRefused } from '../server/strategy/validation.js';
 import { buildReport, SYNTHETIC_BANNER } from '../server/strategy/report.js';
@@ -149,6 +150,36 @@ async function syntheticBars({ symbols, from, to, seed }) {
   return { bars, quality, dataHash: datasetHash(bars), synthetic: true, seed, skipped: [], source: `synthetic (seed ${seed}, ${from} to ${to})` };
 }
 
+// The readiness checklist (server/strategy/readiness.js) on bars loaded from
+// files: the same checks as the Lab's, with this splits version's periods and
+// excluded sessions and corporate-actions-v1.json. Returns the blockers.
+export function cliReadiness({ bars, symbols, universe, splits, runs, corporateActions = loadCorporateActions() }) {
+  const periods = Object.fromEntries(['warmup', 'development', 'validation', 'holdout'].map((k) => [k, { from: splits[k].from, to: splits[k].to }]));
+  const excluded = excludedSessionDates(splits);
+  const results = symbols.filter((s) => bars.get(s)?.length).map((symbol) => {
+    const u = universe.symbols.find((x) => x.symbol === symbol);
+    return checkSymbolBars(bars.get(symbol), {
+      symbol, exchange: u?.exchange || 'NYSE', periods, excluded,
+      actions: corporateActions.symbols?.[symbol] || null, listing: corporateActions.listings?.symbols?.[symbol] || null,
+      reviewed: corporateActions.reviewedOvernightMoves?.symbols?.[symbol] || [],
+    });
+  });
+  return readinessBlockers(results, runs, symbols);
+}
+
+// Removes the splits version's excluded sessions (every symbol) and recomputes
+// the dataset hash and quality report on what is left.
+export async function withoutExcludedSessions(loaded, splits, exchanges = new Map()) {
+  const data = await import('../server/strategy/data.js');
+  const { excludedSessionDates } = await import('../server/strategy/config.js');
+  const dates = excludedSessionDates(splits);
+  const r = data.dropExcludedSessions(loaded.bars, dates, { exchangeOf: (s) => exchanges.get(s) || 'NYSE' });
+  if (loaded.synthetic) r.bars.synthetic = true;
+  const quality = { ...loaded.quality };
+  for (const [sym, list] of r.bars) quality[sym] = { ...quality[sym], ...scalars(data.qualityReport(list, { exchange: exchanges.get(sym) || 'NYSE', excludedDates: dates })) };
+  return { ...loaded, bars: r.bars, quality, dataHash: data.datasetHash(r.bars), excluded: { splits: splits.name, sessions: dates, barsRemoved: r.removed } };
+}
+
 export function dataRequirements(splits, universe) {
   return `No data given. A backtest needs real market data (or --synthetic to test the code only).
 
@@ -214,12 +245,23 @@ export async function main(argv = process.argv.slice(2), { now = () => new Date(
     const symbols = a.symbols ? a.symbols.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) : universe.symbols.map((s) => s.symbol);
     const seed = a.synthetic ? Number(a.seed ?? 1) : null;
     if (a.synthetic && !Number.isInteger(seed)) throw new UsageError('--seed must be a whole number');
-    const data = a.synthetic
+    const loaded = a.synthetic
       ? await syntheticBars({ symbols, from: a.from || splits.warmup.from, to: a.to || splits.holdout.to, seed })
       : await loadBars(a.data, { format: a.format, symbols, from: a.from, to: a.to, exchanges: new Map(universe.symbols.map((s) => [s.symbol, s.exchange])) });
+    const data = await withoutExcludedSessions(loaded, splits, new Map(universe.symbols.map((s) => [s.symbol, s.exchange])));
     const synthetic = !!data.synthetic;
     const present = symbols.filter((s) => data.bars.get(s)?.length);
     if (!present.length) { console.error(`No bars for any requested symbol in ${data.source}.\n\n${dataRequirements(splits, universe)}`); return 2; }
+    // The readiness gate: real data runs only if every requested symbol is
+    // READY for every period the requested runs read (synthetic data tests code only).
+    if (!synthetic) {
+      const blockers = cliReadiness({ bars: data.bars, symbols, universe, splits, runs: [...want] });
+      if (blockers.length) {
+        console.error(`Refused: not every symbol is READY for the requested runs (data-readiness checklist, strategy/DATA-READINESS.md): ${describeBlockers(blockers)}.`);
+        return 4;
+      }
+      console.log(`Readiness: all ${symbols.length} symbols READY for ${[...new Set([...want].flatMap(periodsForRun))].join(', ')}`);
+    }
 
     const out = path.resolve(a.out || DEFAULT_OUT);
     fs.mkdirSync(out, { recursive: true });
@@ -237,9 +279,10 @@ export async function main(argv = process.argv.slice(2), { now = () => new Date(
     console.log(`Config ${config.strategy} ${config.version}  hash ${hash}`);
     console.log(`Data   ${data.source}  hash ${data.dataHash}${seed != null ? `  seed ${seed}` : ''}`);
     if (lower) console.log(`1-minute bars for ${lower.symbols.length ? lower.symbols.join(', ') : 'no symbol'} (resolving bars that touch stop and target)  hash ${lower.dataHash}`);
+    if (data.excluded.sessions.length) console.log(`Excluded sessions (${splits.name}, every symbol): ${data.excluded.sessions.join(', ')}; ${Object.values(data.excluded.barsRemoved).reduce((x, y) => x + y, 0)} bars removed`);
     console.log(`Symbols ${present.length}/${symbols.length}${present.length < symbols.length ? ` (no bars: ${symbols.filter((s) => !present.includes(s)).join(', ')})` : ''}; regimes from ${regimeSym}${regimes.available ? '' : ' (not available: no bars)'}`);
 
-    const runs = { meta: { synthetic, seed, dataHash: data.dataHash, lowerTfHash: lower?.dataHash ?? null, configHash: hash, version: config.version, dataSource: data.source, generatedAt: now().toISOString(), command }, modes: {} };
+    const runs = { meta: { synthetic, seed, dataHash: data.dataHash, excludedSessions: data.excluded, lowerTfHash: lower?.dataHash ?? null, configHash: hash, version: config.version, dataSource: data.source, generatedAt: now().toISOString(), command }, modes: {} };
     let code = 0;
     for (const mode of modes) {
       const md = {};

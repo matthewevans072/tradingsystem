@@ -9,7 +9,7 @@
 // usable only when every symbol is READY for it.
 import fs from 'node:fs';
 import path from 'node:path';
-import { STRATEGY_DIR, deepFreeze } from './config.js';
+import { STRATEGY_DIR, deepFreeze, excludedSessionDates } from './config.js';
 import { barInfo, tradingDays, expectedBarsInSession, sessionBarStarts, sessionBounds, etClock, dayStartMs } from './sessions.js';
 import { previousTradingDay, nextTradingDay } from '../calendar.js';
 import { addDays, weekdayOf } from '../time.js';
@@ -137,14 +137,19 @@ export function dstChanges(from, to) {
   return out;
 }
 
-export function periodTable(periods, exchange = 'NYSE') {
+// Sessions and bars each period expects. Sessions the splits version excludes
+// for every symbol are not expected and are listed separately.
+export function periodTable(periods, exchange = 'NYSE', excluded = []) {
+  const ex = new Set(excluded);
   return PERIODS.map((k) => {
     const { from, to } = periods[k];
-    const days = tradingDays(from, to, exchange);
+    const all = tradingDays(from, to, exchange);
+    const days = all.filter((d) => !ex.has(d));
     const early = days.filter((d) => sessionBounds(d, exchange)?.earlyClose);
     return {
       key: k, label: PERIOD_LABEL[k], from, to, sessions: days.length, earlyCloses: early.length, earlyCloseDates: early,
       expectedBars: days.reduce((s, d) => s + expectedBarsInSession(d, exchange), 0),
+      excludedSessions: all.filter((d) => ex.has(d)),
     };
   });
 }
@@ -182,9 +187,15 @@ function summarize(list) {
 // entry in listings; keys: the stored source keys in the window; ingestion:
 // totals over the symbol's stored bar sets.
 export function checkSymbolBars(bars, {
-  symbol, exchange = 'NYSE', periods, actions = null, listing = null, keys = [], ingestion = null, reviewed = [], sourceReportedExchange = null,
+  symbol, exchange = 'NYSE', periods, actions = null, listing = null, keys = [], ingestion = null, reviewed = [], sourceReportedExchange = null, excluded = [],
 } = {}) {
   const win = { from: periods.warmup.from, to: periods.holdout.to };
+  // Sessions the splits version excludes for every symbol: their bars are set
+  // aside (runs never see them) and nothing is expected on those days.
+  const excludedSet = new Set(excluded);
+  const prevSession = (d) => { let x = previousTradingDay(d, exchange); while (excludedSet.has(x)) x = previousTradingDay(x, exchange); return x; };
+  const nextSession = (d) => { let x = nextTradingDay(d, exchange); while (excludedSet.has(x)) x = nextTradingDay(x, exchange); return x; };
+  const excludedBars = new Map();
   const issues = [];
   const issue = (item, code, message, where = {}) => issues.push({ item, code, message, ...where });
 
@@ -222,6 +233,7 @@ export function checkSymbolBars(bars, {
     const bi = barInfo(r.ms, exchange, 15);
     if (bi.date < win.from) { outsideWindow.before++; continue; }
     if (bi.date > win.to) { outsideWindow.after++; continue; }
+    if (excludedSet.has(bi.date)) { excludedBars.set(bi.date, (excludedBars.get(bi.date) || 0) + 1); continue; }
     if (!bi.inSession) {
       if (bi.reason === 'no session that day') outside.nonTradingDay++;
       else if (bi.reason === 'before the open') outside.preMarket++;
@@ -245,7 +257,8 @@ export function checkSymbolBars(bars, {
   const coverage = {};
   for (const k of PERIODS) {
     const { from, to } = periods[k];
-    const days = tradingDays(from, to, exchange);
+    const allDays = tradingDays(from, to, exchange);
+    const days = allDays.filter((d) => !excludedSet.has(d));
     let expectedBars = 0, presentBars = 0, early = 0;
     const missing = [], partial = [];
     for (const d of days) {
@@ -266,6 +279,7 @@ export function checkSymbolBars(bars, {
       missingSessions: missing.length, missingSessionRanges: ranges(missing, exchange).slice(0, SAMPLE),
       partialSessions: partial.length, partialSample: partial.slice(0, SAMPLE),
       expectedBars, presentBars, missingBars: expectedBars - presentBars, pctComplete: pct(presentBars, expectedBars),
+      excludedSessions: allDays.filter((d) => excludedSet.has(d)).map((d) => ({ date: d, barsSetAside: excludedBars.get(d) || 0 })),
       status: !presentBars ? 'no data' : presentBars === expectedBars ? 'pass' : 'fail',
     };
     if (presentBars && presentBars < expectedBars) {
@@ -295,7 +309,7 @@ export function checkSymbolBars(bars, {
       const ok = list[0].ms === s.openMs && list.length === expectedBarsInSession(d, exchange);
       return { session: d, firstBar: etClock(list[0].ms, exchange), lastBar: etClock(list[list.length - 1].ms, exchange), bars: list.length, firstBarUtc: iso(list[0].ms), status: ok ? 'pass' : 'fail' };
     };
-    const before = check(previousTradingDay(x.change, exchange)), after = check(nextTradingDay(x.change, exchange));
+    const before = check(prevSession(x.change)), after = check(nextSession(x.change));
     return { ...x, before, after, status: [before, after].some((c) => c.status === 'fail') ? 'fail' : [before, after].every((c) => c.status === 'pass') ? 'pass' : 'no data' };
   });
   for (const x of dst.filter((y) => y.status === 'fail')) {
@@ -352,8 +366,9 @@ export function checkSymbolBars(bars, {
     if (!list || list.length < expectedBarsInSession(d, exchange) || list.some((b) => !(b.v > 0))) return null;
     return list.reduce((s, b) => s + b.v, 0);
   };
+  // The previous session the runs see (excluded sessions are skipped, as in the engine).
   const overnight = (d) => {
-    const prev = previousTradingDay(d, exchange);
+    const prev = prevSession(d);
     const a = perDay.get(prev), b = perDay.get(d);
     if (!a || !b) return null;
     return { prevSession: prev, prevClose: a[a.length - 1].c, open: b[0].o, ratio: b[0].o / a[a.length - 1].c, prevCloseIsLastBar: a[a.length - 1].ms === sessionBounds(prev, exchange).closeMs - 15 * 60000, openIsFirstBar: b[0].ms === sessionBounds(d, exchange).openMs };
@@ -371,7 +386,7 @@ export function checkSymbolBars(bars, {
     const base = { label: a.label, ratio: N, firstAdjustedSession: D, source: a.source ?? null, expectedIfAdjusted: 1, expectedIfUnadjusted: round(1 / N) };
     if (D < win.from || D > win.to) return { ...base, status: 'outside the window' };
     const on = overnight(D);
-    if (!on) return { ...base, status: 'no data', note: `no bars for ${previousTradingDay(D, exchange)} and ${D}` };
+    if (!on) return { ...base, status: 'no data', note: `no bars for ${prevSession(D)} and ${D}` };
     const lr = Math.log(on.ratio);
     const price = Math.abs(lr) < SPLIT_TOL ? 'adjusted' : Math.abs(lr + Math.log(N)) < SPLIT_TOL ? 'not adjusted' : 'unclear';
     const vol = volumeAround(D);
@@ -434,13 +449,14 @@ export function checkSymbolBars(bars, {
   const uni = upper(exchange), res = listing ? upper(listing.exchange) : null;
   let instStatus;
   if (sourceReportedExchange && upper(sourceReportedExchange) !== uni) instStatus = 'mismatch';
-  else if (res && res !== uni) instStatus = listing.status === 'official search summary' ? 'mismatch' : 'unverified (research belief differs)';
+  else if (res && res !== uni) instStatus = ['official search summary', 'verified'].includes(listing.status) ? 'mismatch' : 'unverified (research belief differs)';
+  else if (listing?.status === 'verified') instStatus = 'verified';
   else if (listing?.status === 'official search summary') instStatus = 'verified by research';
   else if (listing?.status === 'likely') instStatus = 'likely, not verified';
   else instStatus = 'unverified';
   if (instStatus === 'mismatch') issue('instrument', 'exchange_mismatch', `universe-v1 says ${exchange}; ${sourceReportedExchange ? `the source reports ${sourceReportedExchange}` : `the research found ${listing.exchange}`}`, { all: true });
   const instrument = {
-    status: instStatus, universeExchange: exchange, research: listing ? { exchange: listing.exchange, status: listing.status, source: listing.source ?? null, note: listing.note ?? null } : null,
+    status: instStatus, universeExchange: exchange, research: listing ? { exchange: listing.exchange, status: listing.status, source: listing.source ?? null, note: listing.evidence ?? listing.note ?? null, verifiedAt: listing.verifiedAt ?? null } : null,
     sourceReported: sourceReportedExchange || null, sourceNote: sourceReportedExchange ? null : 'the bars endpoints used here do not report a listing exchange',
   };
 
@@ -467,14 +483,14 @@ export function checkSymbolBars(bars, {
     blocking.push(...summarize(issues));
   }
   const openItems = [];
-  if (instStatus !== 'verified by research') openItems.push(`listing exchange ${instStatus}`);
+  if (!['verified', 'verified by research'].includes(instStatus)) openItems.push(`listing exchange ${instStatus}`);
   if (adjustment.dividends.status !== 'declared by source, not independently verified' && keys.length) openItems.push('dividend adjustment not declared by the source');
   if (cleanCount && !knownSplits.length && (actions?.inWindowStatus === 'none found, unverified' || !actions)) openItems.push('corporate actions: none found, unverified (scan of bars only)');
   return {
     symbol, exchange, status, blocking, openItems,
     periods: periodStatus,
     checks: { instrument, coverage, timestamps, ohlcv, adjustment, sources },
-    bars: { input: (bars || []).length, inWindow: cleanCount, outsideWindow },
+    bars: { input: (bars || []).length, inWindow: cleanCount, outsideWindow, excludedSessions: Object.fromEntries([...excludedBars].sort()) },
   };
 }
 
@@ -501,6 +517,7 @@ export function buildReadiness({ db, universe, splits, corporateActions = loadCo
   const win = { from: splits.warmup.from, to: splits.holdout.to };
   const periods = Object.fromEntries(PERIODS.map((k) => [k, { from: splits[k].from, to: splits[k].to }]));
   const listings = corporateActions.listings?.symbols || {};
+  const excluded = excludedSessionDates(splits);
   const reviewedAll = corporateActions.reviewedOvernightMoves?.symbols || {};
   const symbols = universe.symbols.map((u) => {
     const bars = store.getBars(db, u.symbol, { from: dayStartIso(win.from), to: dayEndIso(win.to) });
@@ -508,7 +525,7 @@ export function buildReadiness({ db, universe, splits, corporateActions = loadCo
     const after = store.barSourceKeys(db, u.symbol, { from: dayEndIso(win.to) });
     const r = checkSymbolBars(bars, {
       symbol: u.symbol, exchange: u.exchange, periods, actions: corporateActions.symbols?.[u.symbol] || null, listing: listings[u.symbol] || null,
-      keys, ingestion: ingestionTotals(store.listBarSets(db, { symbol: u.symbol, limit: 5000 })), reviewed: reviewedAll[u.symbol] || [],
+      keys, ingestion: ingestionTotals(store.listBarSets(db, { symbol: u.symbol, limit: 5000 })), reviewed: reviewedAll[u.symbol] || [], excluded,
     });
     r.afterWindow = after.map((k) => ({ source: k.source, adjustment: k.adjustment ?? null, feed: k.feed ?? null, bars: k.bars, first: k.first, last: k.last }));
     return r;
@@ -523,10 +540,52 @@ export function buildReadiness({ db, universe, splits, corporateActions = loadCo
     name: 'data-readiness', generatedAt: iso(now.getTime()), synthetic,
     universe: universe.name, splits: splits.name, corporateActions: corporateActions.name, window: win,
     requirement: splits.dataRequirements,
-    periods: periodTable(periods, 'NYSE'), usable,
+    periods: periodTable(periods, 'NYSE', excluded), usable,
+    excludedSessions: { splits: splits.name, dates: excluded, sessions: (splits.excludedSessions?.sessions || []).map((x) => ({ date: x.date, period: x.period ?? null, reason: x.reason })), handling: splits.excludedSessions?.handling ?? null },
     summary: { symbols: symbols.length, ready: count(READY), notReady: count(NOT_READY), noData: count(NO_DATA), usablePeriods: PERIODS.filter((k) => usable[k].usable) },
-    rule: 'A period is usable only if every symbol is READY for it. READY means the stored bars pass every check bars can prove; listing, dividend treatment and licence are reported as open items. Nothing is shortened, replaced or adjusted automatically, and this checklist proposes no dates.',
+    rule: 'A period is usable only if every symbol is READY for it. READY means the stored bars pass every check bars can prove; listing, dividend treatment and licence are reported as open items. Nothing is shortened, replaced or adjusted automatically, and this checklist proposes no dates. Sessions the splits version excludes for every symbol are not expected; their stored bars are set aside and never used by a run.',
     symbols, sources: SOURCE_FACTS, forwardFeeds: FORWARD_FEEDS, openItems: OPEN_ITEMS,
     calendar: { source: 'server/calendar.js', verified: 'NYSE published schedule 2026-2027 only; 2021-2025 generated from the holiday rules plus the 2025-01-09 closure' },
   };
+}
+
+// ---------- the run gate ----------
+
+// Periods a run reads: every run warms up from the start of the warm-up and
+// continues to the end of its own period (stress tests use validation; the
+// walk-forward spans development and validation).
+const RUN_PERIODS = {
+  development: ['warmup', 'development'],
+  validation: ['warmup', 'development', 'validation'],
+  stress: ['warmup', 'development', 'validation'],
+  walk_forward: ['warmup', 'development', 'validation'],
+  holdout: ['warmup', 'development', 'validation', 'holdout'],
+};
+export function periodsForRun(split) {
+  const p = RUN_PERIODS[split === 'walk-forward' ? 'walk_forward' : split];
+  if (!p) throw new Error(`Unknown run "${split}"`);
+  return p;
+}
+
+// Every (symbol, period) pair that is not READY for the given runs. symbols:
+// checkSymbolBars results; want: the symbols the run uses (all when null; a
+// wanted symbol without a result counts as NO DATA). Empty means the run may go.
+export function readinessBlockers(symbols, splitsToRun, want = null) {
+  const periods = [...new Set([].concat(splitsToRun).flatMap(periodsForRun))];
+  const by = new Map((symbols || []).map((s) => [s.symbol, s]));
+  const names = want ? [...want] : [...by.keys()];
+  const out = [];
+  for (const sym of names) {
+    const s = by.get(sym);
+    for (const k of periods) {
+      const st = s?.periods?.[k]?.status ?? NO_DATA;
+      if (st !== READY) out.push({ symbol: sym, period: k, status: st, reasons: s?.periods?.[k]?.reasons?.slice(0, 3) ?? [] });
+    }
+  }
+  return out;
+}
+
+export function describeBlockers(blockers, limit = 8) {
+  const text = blockers.slice(0, limit).map((b) => `${b.symbol} ${PERIOD_LABEL[b.period]}: ${b.status}${b.reasons.length ? ` (${b.reasons[0]})` : ''}`).join('; ');
+  return `${text}${blockers.length > limit ? `; and ${blockers.length - limit} more` : ''}`;
 }

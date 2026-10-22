@@ -300,6 +300,7 @@ export function buildReport({ runs, acceptance, universe, splits, config, dataQu
     ['Strategy version', config?.version ?? meta.version], ['Config hash', meta.configHash], ['Data hash', meta.dataHash],
     ...(meta.lowerTfHash ? [['1-minute data hash (stop/target resolution)', meta.lowerTfHash]] : []),
     ['Data', meta.dataSource], ['Synthetic seed', meta.seed ?? '—'], ['Universe / splits / criteria', `${universe?.name ?? '—'} / ${splits?.name ?? '—'} / ${acceptance?.name ?? '—'}`],
+    ...((splits?.excludedSessions?.sessions || []).length ? [['Excluded sessions (every symbol)', `${splits.excludedSessions.sessions.map((x) => x.date).join(', ')} (${splits.name}; their bars are removed before the run)`]] : []),
     ['Command', meta.command ? `\`${meta.command}\`` : '—'],
   ]);
   md += `\n## Data quality\n\n${dataQualitySection(dataQuality)}`;
