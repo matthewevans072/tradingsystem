@@ -7,7 +7,7 @@
 import { HxrError } from './service.js';
 
 const ID = /^\d{1,12}$/;
-const KINDS = ['selection', 'evaluation', 'variant', 'prospective'];
+const KINDS = ['selection', 'validation', 'evaluation', 'variant', 'prospective'];
 const MAX_SYMBOLS = 20;
 
 export function registerHxrRoutes(r, HttpError) {
@@ -60,6 +60,12 @@ export function registerHxrRoutes(r, HttpError) {
     const b = obj(body);
     return hxr.runSelection({ confirm: bool(b.confirm, 'confirm'), reason: text(b.reason, 'reason') });
   });
+  // The validation gate (PREREGISTRATION-3.md section 5): once per frozen version, between the development pick and the final run.
+  route('POST', '/api/hxr/validation', (hxr, { body }) => {
+    const b = obj(body);
+    return hxr.runValidation({ confirm: bool(b.confirm, 'confirm'), reason: text(b.reason, 'reason') });
+  });
+  // The final run (stored as kind 'evaluation'): once, only after the validation gate passes.
   route('POST', '/api/hxr/evaluation', (hxr, { body }) => {
     const b = obj(body);
     return hxr.runEvaluation({ confirm: bool(b.confirm, 'confirm'), reason: text(b.reason, 'reason'), withoutFullList: bool(b.withoutFullList, 'withoutFullList') });

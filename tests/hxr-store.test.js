@@ -191,15 +191,17 @@ test('ledger and experiment log are append-only; frozen versions never change', 
   const e = { kind: 'selection', prereg: 'hxr-prereg-1', version: 'c1-0.1.0', configHash: 'h1', runIds: [1, 2], at: '2026-10-22T20:00:00Z' };
   store.appendLedger(db, e);
   store.appendLedger(db, { ...e, kind: 'evaluation', contaminated: true, reason: 'repeat' });
+  store.appendLedger(db, { ...e, kind: 'validation' }); // hxr-prereg-3a: the validation gate (migration 2)
   assert.equal(store.countLedger(db, 'selection', 'hxr-prereg-1', 'c1-0.1.0', 'h1'), 1);
   assert.equal(store.countLedger(db, 'evaluation', 'hxr-prereg-1', 'c1-0.1.0', 'h1'), 1);
+  assert.equal(store.countLedger(db, 'validation', 'hxr-prereg-1', 'c1-0.1.0', 'h1'), 1);
   assert.equal(store.countLedger(db, 'evaluation', 'hxr-prereg-1', 'c1-0.1.0', 'other'), 0);
-  assert.deepEqual(store.listLedger(db).map((x) => [x.kind, x.contaminated, x.runIds]), [['selection', false, [1, 2]], ['evaluation', true, [1, 2]]]);
+  assert.deepEqual(store.listLedger(db).map((x) => [x.kind, x.contaminated, x.runIds]), [['selection', false, [1, 2]], ['evaluation', true, [1, 2]], ['validation', false, [1, 2]]]);
   assert.throws(() => db.exec('DELETE FROM hxr_ledger'), /append-only/);
   assert.throws(() => db.exec('UPDATE hxr_ledger SET contaminated = 0'), /append-only/);
   assert.throws(() => store.appendLedger(db, { ...e, kind: 'variant' }), /CHECK constraint/);
   assert.throws(() => store.appendLedger(db, { ...e, configHash: '' }), /needs configHash/);
-  assert.equal(store.listLedger(db).length, 2);
+  assert.equal(store.listLedger(db).length, 3);
 
   store.appendExperiment(db, { at: '2026-10-22T12:00:00Z', what: 'pre-registration', dataTouched: 'none', resultsSeen: 'none' });
   assert.deepEqual(store.listExperiments(db).map((x) => [x.what, x.resultsSeen]), [['pre-registration', 'none']]);
@@ -225,10 +227,13 @@ test('runs with their fills, decisions, episodes and equity', () => {
   assert.deepEqual([r.kind, r.status, r.metrics, r.details, r.config, r.symbols, r.period, r.delay, r.contaminated], ['selection', 'done', { endValue: 1 }, { x: 1 }, { a: 1 }, ['MU'], { start: '2017-10-02' }, 1, false]);
   assert.equal(store.getRun(db, id, { full: false }).config, undefined);
   const id2 = store.createRun(db, { kind: 'variant', version: 'c1-0.1.0', configHash: 'h2' });
-  assert.deepEqual(store.listRuns(db).map((x) => x.id), [id2, id]);
+  const idV = store.createRun(db, { kind: 'validation', version: 'v', configHash: 'h' }); // hxr-prereg-3a: the validation kind (migration 2)
+  assert.deepEqual(store.listRuns(db).map((x) => x.id), [idV, id2, id]);
   assert.deepEqual(store.listRuns(db, { kind: 'selection' }).map((x) => x.id), [id]);
-  assert.equal(store.failInterruptedRuns(db, '2026-10-22T01:00:00Z'), 1);
+  assert.deepEqual(store.listRuns(db, { kind: 'validation' }).map((x) => x.id), [idV]);
+  assert.equal(store.failInterruptedRuns(db, '2026-10-22T01:00:00Z'), 2);
   assert.equal(store.getRun(db, id2).status, 'failed');
+  assert.equal(store.getRun(db, idV).status, 'failed');
 
   const fills = [{ id: 'f2', date: '2017-10-03', symbol: 'MU', side: 'sell', shares: 10, price: 30 }, { id: 'f1', date: '2017-10-02', symbol: 'MU', side: 'buy', shares: 10, price: 29, raw: 28.99 }];
   assert.deepEqual(store.insertFills(db, id, fills), { inserted: 2, duplicates: 0 });

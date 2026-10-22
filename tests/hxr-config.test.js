@@ -15,7 +15,7 @@ import { configHash } from '../server/strategy/config.js';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const C1 = path.join(HXR_CONFIG_DIR, 'hxr-c1-0.1.0.json');
 
-test('the pre-registered configs (hxr-prereg-1 C1-C3 and the hold; hxr-prereg-2 X1-X3) load, validate, freeze and hash like the Strategy Lab', () => {
+test('the pre-registered configs (prereg-1 C1-C3 and the hold; prereg-2 X1-X3; prereg-3a X1A-X3C) load, validate, freeze and hash like the Strategy Lab', () => {
   const list = listHxrConfigs();
   assert.deepEqual(list.map((c) => [c.file, c.version, c.ruleType, c.error]), [
     ['hxr-c1-0.1.0.json', 'c1-0.1.0', 'ma_band', undefined],
@@ -23,10 +23,31 @@ test('the pre-registered configs (hxr-prereg-1 C1-C3 and the hold; hxr-prereg-2 
     ['hxr-c3-0.1.0.json', 'c3-0.1.0', 'pct_trail', undefined],
     ['hxr-hold-0.1.0.json', 'hold-0.1.0', 'hold', undefined],
     ['hxr-x1-0.2.0.json', 'x1-0.2.0', 'recovery_break', undefined],
+    ['hxr-x1a-0.3.0.json', 'x1a-0.3.0', 'recovery_break', undefined],
+    ['hxr-x1b-0.3.0.json', 'x1b-0.3.0', 'recovery_break', undefined],
+    ['hxr-x1c-0.3.0.json', 'x1c-0.3.0', 'recovery_break', undefined],
     ['hxr-x2-0.2.0.json', 'x2-0.2.0', 'move_allowance', undefined],
+    ['hxr-x2a-0.3.0.json', 'x2a-0.3.0', 'move_allowance', undefined],
+    ['hxr-x2b-0.3.0.json', 'x2b-0.3.0', 'move_allowance', undefined],
+    ['hxr-x2c-0.3.0.json', 'x2c-0.3.0', 'move_allowance', undefined],
     ['hxr-x3-0.2.0.json', 'x3-0.2.0', 'giveback', undefined],
+    ['hxr-x3a-0.3.0.json', 'x3a-0.3.0', 'giveback', undefined],
+    ['hxr-x3b-0.3.0.json', 'x3b-0.3.0', 'giveback', undefined],
+    ['hxr-x3c-0.3.0.json', 'x3c-0.3.0', 'giveback', undefined],
   ]);
-  assert.equal(new Set(list.map((c) => c.hash)).size, 7);
+  assert.equal(new Set(list.map((c) => c.hash)).size, 16);
+  // hxr-prereg-3a: the nine 0.3.0 configs are risk-sized with the prereg-3 budgets and the policy of their letter.
+  const policy = { a: 'stay_out', b: 'fresh_entry_recovery_point', c: 'fresh_entry_after_sessions' };
+  for (const x of ['x1', 'x2', 'x3']) for (const [l, pol] of Object.entries(policy)) {
+    const c = loadHxrConfig(`hxr-${x}${l}-0.3.0.json`);
+    assert.equal(c.account.allocation, 'risk_sized');
+    assert.deepEqual([c.risk.plannedLossPerTradeUsd, c.risk.maxPositionUsd, c.risk.totalOpenRiskUsd, c.risk.maxTechAiExposureUsd, c.risk.pauseDeclineUsd, c.risk.resumeDeclineUsd, c.risk.minPositionFractionOfPlannedLoss, c.initialLoss.multiple], [150, 3000, 750, 10500, 1500, 750, 0.5, 2.5]);
+    assert.equal(c.rule.afterMissedRebound, pol);
+    assert.equal(c.rule.entryWhenNeverHeld, 'recovery_point_any_price');
+    assert.equal(c.rule.freshEntryMinSessions, l === 'c' ? 60 : undefined);
+    const base = loadHxrConfig(`hxr-${x}-0.2.0.json`);
+    for (const k of ['volSessions', 'pivotSessions', 'reboundMultiple']) assert.equal(c.rule[k], base.rule[k], `${x}${l} ${k} as prereg-2`);
+  }
   // PREREGISTRATION-2.md section 3: the exact pre-registered numbers.
   const buyBack = { pivotSessions: 5, reboundMultiple: 1, afterMissedRebound: 'stay_out' };
   assert.deepEqual(loadHxrConfig('hxr-x1-0.2.0.json').rule, { type: 'recovery_break', volSessions: 20, bufferMultiple: 0.5, ...buyBack });
@@ -197,15 +218,17 @@ test('halfSpreadFor applies the floor, then the variant multiplier', () => {
 
 test('universe: baskets in listed order, SPCX only with pending symbols, validation', () => {
   const u = loadHxrUniverse();
-  // universe-hxr-v2 (hxr-prereg-2): GOOG added to every basket; robustness basket R.
-  assert.equal(u.name, 'universe-hxr-v2');
-  assert.deepEqual(basketSymbols(u, 'A').map((s) => s.symbol), ['MU', 'AMZN', 'META', 'TSLA', 'VST', 'GOOG']);
-  assert.deepEqual(basketSymbols(u, 'B').map((s) => s.symbol), ['MU', 'MUU', 'NBIS', 'HOOD', 'AMZN', 'META', 'TSLA', 'VST', 'GOOG']);
-  assert.deepEqual(basketSymbols(u, 'prospective').map((s) => s.symbol), ['MU', 'MUU', 'NBIS', 'HOOD', 'AMZN', 'META', 'TSLA', 'VST', 'GOOG']);
-  assert.deepEqual(basketSymbols(u, 'A')[4], { symbol: 'VST', exchange: 'NYSE', listedFrom: '2017-05-10' });
-  assert.deepEqual(basketSymbols(u, 'A')[5], { symbol: 'GOOG', exchange: 'NASDAQ', listedFrom: '2016-01-04' });
-  assert.deepEqual(basketSymbols(u, 'R').map((s) => s.symbol), ['INTC', 'CSCO', 'PYPL', 'SNAP']);
-  assert.equal(basketSymbols(u, 'R')[3].listedFrom, '2017-03-02');
+  // universe-hxr-v3 (hxr-prereg-3): the owner's six plus the four laggards in basket A; techAi tags; basket R folded in.
+  assert.equal(u.name, 'universe-hxr-v3');
+  const A = ['MU', 'AMZN', 'META', 'TSLA', 'VST', 'GOOG', 'INTC', 'CSCO', 'PYPL', 'SNAP'];
+  assert.deepEqual(basketSymbols(u, 'A').map((s) => s.symbol), A);
+  assert.deepEqual(basketSymbols(u, 'B').map((s) => s.symbol), [...A, 'MUU', 'NBIS', 'HOOD']);
+  assert.deepEqual(basketSymbols(u, 'prospective').map((s) => s.symbol), [...A, 'MUU', 'NBIS', 'HOOD']);
+  assert.deepEqual(basketSymbols(u, 'A')[4], { symbol: 'VST', exchange: 'NYSE', listedFrom: '2017-05-10', techAi: false });
+  assert.deepEqual(basketSymbols(u, 'A')[5], { symbol: 'GOOG', exchange: 'NASDAQ', listedFrom: '2016-01-04', techAi: true });
+  assert.deepEqual(basketSymbols(u, 'A').filter((s) => !s.techAi).map((s) => s.symbol), ['VST'], 'only VST is untagged');
+  assert.equal(basketSymbols(u, 'A')[9].listedFrom, '2017-03-02');
+  assert.throws(() => basketSymbols(u, 'R'), /Unknown HXR basket R/);
   // The superseded v1 list is unchanged and still valid.
   assert.deepEqual(basketSymbols(loadHxrUniverse(path.join(HXR_DIR, 'universe-hxr-v1.json')), 'A').map((s) => s.symbol), ['MU', 'AMZN', 'META', 'TSLA', 'VST']);
   assert.ok(!basketSymbols(u, 'prospective').some((s) => s.symbol === 'SPCX'));
@@ -213,13 +236,14 @@ test('universe: baskets in listed order, SPCX only with pending symbols, validat
   assert.throws(() => basketSymbols(u, 'C'), /Unknown HXR basket C/);
   assert.ok(Object.isFrozen(u.symbols[0]));
 
-  const raw = JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'universe-hxr-v1.json'), 'utf8'));
+  const raw = JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'universe-hxr-v3.json'), 'utf8'));
   assert.deepEqual(validateHxrUniverse(raw), []);
+  assert.deepEqual(validateHxrUniverse(JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'universe-hxr-v1.json'), 'utf8'))), [], 'the superseded v1 file is still valid');
   const cases = [
     [(x) => { x.symbols[0].listedFrom = '2016-02-30'; }, /MU needs a listedFrom date/],
     [(x) => { x.symbols[1].symbol = 'MU'; }, /MU is listed twice/],
     [(x) => { x.baskets.A.symbols.push('NVDA'); }, /basket A names an unknown symbol NVDA/],
-    [(x) => { x.symbols[5].baskets.push('A'); }, /HOOD says it is in basket A, which does not list it/],
+    [(x) => { x.symbols[6].baskets.push('A'); }, /HOOD says it is in basket A, which does not list it/],
     [(x) => { x.symbols[0].baskets.push('Z'); }, /MU names an unknown basket Z/],
     [(x) => { delete x.symbols[2].exchange; }, /META needs an exchange/],
   ];
@@ -234,20 +258,24 @@ test('periods: dates, baskets and excluded sessions with reasons', () => {
   const u = loadHxrUniverse();
   const p = loadHxrPeriods();
   assert.deepEqual(excludedDates(p), ['2021-10-25', '2022-01-24', '2022-01-26', '2022-03-08']);
-  assert.equal(p.periods.selection.start, '2017-10-02');
+  // periods-hxr-v3 (hxr-prereg-3): development, validation, final (used once) and the full-list check.
+  assert.equal(p.name, 'periods-hxr-v3');
+  assert.deepEqual(['development', 'validation', 'final', 'fullList'].map((k) => [p.periods[k].start, p.periods[k].end]), [['2017-10-02', '2021-12-31'], ['2022-01-03', '2023-12-29'], ['2024-01-02', '2026-10-21'], ['2025-03-18', '2026-10-21']]);
   assert.equal(p.warmupSessions, 100);
-  const raw = JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'periods-hxr-v1.json'), 'utf8'));
+  const raw = JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'periods-hxr-v3.json'), 'utf8'));
   assert.deepEqual(validateHxrPeriods(raw, u), []);
+  // The superseded v1 file names the old periods, so it no longer validates as the active file.
+  assert.ok(validateHxrPeriods(JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'periods-hxr-v1.json'), 'utf8')), u).includes('period development is missing'));
   const cases = [
-    [(x) => { x.periods.selection.start = '2017-13-02'; }, /period selection needs a start date/],
-    [(x) => { x.periods.evaluation.end = '2022-01-01'; }, /period evaluation: start is after end/],
+    [(x) => { x.periods.development.start = '2017-13-02'; }, /period development needs a start date/],
+    [(x) => { x.periods.final.end = '2022-01-01'; }, /period final: start is after end/],
     [(x) => { x.periods.fullList.basket = 'Z'; }, /period fullList names an unknown basket Z/],
     [(x) => { x.excludedSessions[1].reason = ''; }, /excluded session 2022-01-24 needs a reason/],
     [(x) => { x.excludedSessions.push({ date: '2021-10-25', reason: 'again' }); }, /listed twice/],
     [(x) => { x.excludedSessions.push({ date: '2021/10/26', reason: 'x' }); }, /YYYY-MM-DD/],
-    [(x) => { delete x.periods.evaluation; }, /period evaluation is missing/],
+    [(x) => { delete x.periods.validation; }, /period validation is missing/],
     [(x) => { x.warmupSessions = 0; }, /warmupSessions/],
-    [(x) => { x.periods.selection.warmupFrom = '2015-01-02'; }, /warmupFrom is before dataFrom/],
+    [(x) => { x.periods.development.warmupFrom = '2015-01-02'; }, /warmupFrom is before dataFrom/],
   ];
   for (const [mutate, re] of cases) {
     const x = clone(raw);
@@ -260,16 +288,27 @@ test('criteria: G1-G6 and P1-P4 with their numbers', () => {
   const c = loadHxrCriteria();
   assert.equal(criterion(c, 'G1').minSessions, 500);
   assert.equal(criterion(c, 'G2').maxRatioToHold, 0.75);
-  // criteria-hxr-v2: G6 restated for six basket A stocks (at most one may fail).
-  assert.equal(c.name, 'criteria-hxr-v2');
-  assert.equal(criterion(c, 'G6').minPassing, 5);
+  // criteria-hxr-v3a: G6 for ten stocks (at most one may fail), the validation gate, the pick rule pending the owner's choice, two benchmarks.
+  assert.equal(c.name, 'criteria-hxr-v3a');
+  assert.equal(criterion(c, 'G6').minPassing, 9);
+  assert.equal(c.selection.pickRule, 'pending_owner_choice');
+  assert.deepEqual(c.selection.benchmarks, ['hold', 'hold_day_one']);
+  assert.equal(c.selection.pickRules.return_to_drawdown.mustReachTimesBenchmarks, 1.1);
+  assert.deepEqual([c.validation.V1.minRoundTrips, c.validation.V2.minRatioToHold, c.validation.V2.benchmarks], [10, 1.1, ['hold', 'hold_day_one']]);
+  assert.deepEqual(criterion(c, 'G2').benchmarks, ['hold', 'hold_day_one']);
   assert.equal(criterion(loadHxrCriteria(path.join(HXR_DIR, 'criteria-hxr-v1.json')), 'G6').minPassing, 4);
+  assert.equal(criterion(loadHxrCriteria(path.join(HXR_DIR, 'criteria-hxr-v2.json')), 'G6').minPassing, 5);
+  for (const bad of [{ pickRule: 'most_profit' }, { benchmarks: [] }]) {
+    const x = JSON.parse(JSON.stringify(c));
+    Object.assign(x.selection, bad);
+    assert.ok(validateHxrCriteria(x).length, JSON.stringify(bad));
+  }
   const v1 = JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'criteria-hxr-v1.json'), 'utf8'));
   const v2 = JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'criteria-hxr-v2.json'), 'utf8'));
   const without = (x) => ({ ...x, name: null, definedBefore: null, criteria: x.criteria.filter((y) => y.id !== 'G6') });
   assert.deepEqual(without(v2), without(v1), 'only G6 differs');
   assert.equal(criterion(c, 'P3').maxMedianBps, 25);
-  assert.equal(c.selection.stopUnlessAtLeastTimesHold, 1.1);
+  assert.equal(c.selection.stopUnlessAtLeastTimesHold, undefined, 'v3a names the bar under pickRules');
   const raw = JSON.parse(fs.readFileSync(path.join(HXR_DIR, 'criteria-hxr-v1.json'), 'utf8'));
   assert.deepEqual(validateHxrCriteria(raw), []);
   const cases = [

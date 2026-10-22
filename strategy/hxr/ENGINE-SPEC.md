@@ -1,4 +1,4 @@
-# HXR engine and module specification (hxr-engine-2)
+# HXR engine and module specification (hxr-engine-3)
 
 The exact behaviour of the HXR simulation code in `server/hxr/`. If code and
 this file disagree, one of them has a bug. The rules being tested are in
@@ -185,6 +185,119 @@ sleeve has no last exit or `stayOut` is set, nothing happens.
 Both are journalled as warnings, not decisions, so they never count as
 orders. Older rule types are unchanged.
 
+### 5b. hxr-prereg-3 and 3a (hxr-engine-3): pooled cash, risk sizing, the initial-loss rule, the pause, fresh entries, the day-one hold
+
+Active when `account.allocation = risk_sized` (every 0.3.0 config and the
+derived day-one hold). `equal_sleeves` configs behave exactly as before.
+
+**Cash and state.** Cash is one pool (`S.cash`); sleeves keep shares and
+rule state only, with `startCash = null`. The state adds `peak`, `paused`,
+`pausedSince`, and per sleeve `L0` (the initial-loss level), `plannedLoss`,
+`fresh` (`{ since, sessions, afterMissedRebound }` or `null`), `everHeld` and
+`techAi` (from the universe). Every value is plain JSON and kept in
+snapshots.
+
+**Sizing a buy** (`sizeBuy`, PREREGISTRATION-3.md 1.2) at the decision close
+`c` with typical move `m` over `initialLoss.volSessions` (the rule's
+`volSessions`; 20 for the derived hold) and the planned loss asked for:
+
+- `d = initialLoss.multiple × m` per share; `k` = that date's half-spread
+  plus slippage;
+- `n` is the largest whole number under every cap: `plannedLoss / d`,
+  `maxPositionUsd / c`, the open-risk room `/ d`, the tech/AI room `/ c` for a
+  tagged stock, and the cash room
+  `(availableCash − commissionPerOrder) / (c(1+k) + commissionPerShare)`;
+- open risk now is Σ over held positions of
+  `shares × max(0, lastClose − effective level)`; rooms subtract what pending
+  buys reserved (`plannedLoss`, cost and tech cost);
+- **minimum**: `n × d ≥ minPositionFractionOfPlannedLoss × the planned loss
+  asked for`; otherwise the signal lapses (`entry_skipped`, code `budget`,
+  with every number). The engine reads the pre-registration's "half the
+  planned loss" against the amount asked for, so the initial allocation
+  (which asks for a share of the open-risk budget) is not lapsed by rounding.
+- Pending buys carry `shares` and the `sizing` record; the decision carries
+  it too.
+
+**Initial allocation** (1.3): at the close of the last warm-up session
+(`nextSession(date) === firstTradingSession`), every sleeve's initial order
+is sized in alphabetical order, asking for
+`min(totalOpenRiskUsd / N, plannedLossPerTradeUsd)`. Without a typical move
+(too little warm-up) the order lapses with code `insufficient_history`. A
+run with no warm-up session cannot size any initial order.
+
+**Fills.** A pooled buy uses the order's `shares`; a higher open can only
+reduce them to what the cash pays (`reduced_for_cash`), never raise them. At
+the fill `L0 = E − d` and `plannedLoss = n × d`, recorded with the fill. A
+sell resets `L0`, `plannedLoss`, `level`, `entryPrice` and `gbActive`.
+
+**Exit while holding** (`evaluateHolding`): the rule's own signal, or a sell
+with `trigger = initial_loss` when `c < L0` and the rule is silent (the
+rule's signal, when both fire, carries `trigger = rule`). The hold rule never
+sells. `effectiveLevel = max(L0, rule level)`, where the rule level is X1's
+`level`, X2's `anchorHigh − multiple × m`, or X3's give-back level once
+active.
+
+**Pause** (1.4): at every trading close `peak = max(peak, value)`; paused
+from `peak − value ≥ pauseDeclineUsd` (`pause_start`) until
+`peak − value ≤ resumeDeclineUsd` (`pause_end`). While paused, buy signals
+lapse (`entry_skipped`, code `paused`) and a pending buy due to fill is
+cancelled (`order_cancelled`, code `paused`); exits run. The initial
+allocation is never cancelled by the pause.
+
+**Signals in alphabetical order** across sleeves, each sizing against the
+room the earlier ones reserved (1.2 step 6).
+
+**Fresh entries** (PREREGISTRATION-3.md 8, 3a 1). A sleeve is in fresh mode
+(`sl.fresh` set) when its buy lapsed, when it was never held, or after a
+missed rebound under policy B or C. In fresh mode, with
+`entryWhenNeverHeld = recovery_point_any_price`, the next recovery point
+confirmed after `sinceFill` was reset gives a buy at any price (no ceiling),
+after at least `freshEntryMinSessions` sessions out under policy C. On a
+missed rebound: policy A sets `stayOut` (retired); B and C set `fresh` with
+`afterMissedRebound = true` and reset `sinceFill`. A fresh-entry fill records
+a `freshEntries` journal item (price, the previous sale price in current
+units, premium %, sessions out, whether after a missed rebound or never
+held), starts an episode with `startKind = fresh_entry`, records no round
+trip, and clears `lastExit`.
+
+**Day-one hold** (`holdDayOneConfig`): the candidate's config with
+`rule.type = hold`, `version = <candidate>:hold-day-one`,
+`initialLoss.volSessions` carried over and
+`benchmark = { kind: hold_day_one, from, baseHash }` (the candidate's hash; not
+a variant, so the final run's cost, delay, fill and withholding variants can be
+built from it). Its initial allocation is therefore the candidate's, and it
+never sells.
+
+**Equity points** add `openRisk`, `techAi` (market value of tagged
+holdings), `paused` and `peak`; per-sleeve `openRisk` and `level`. The
+output adds `freshEntries` and `pool`; fills carry `trigger`, `fresh`,
+`ceiling`, `sizing`, `initialLossLevel` and `plannedLoss`; episodes carry
+`endTrigger`.
+
+**Metrics** (`metrics.js`, pooled runs): per-stock P/L is the P/L of the
+stock's holdings; `freshEntries`, `buyBacks`, `reboundsMissedEvents`,
+`initialLossExits`, `ruleExits`, `sizing` (average position and planned
+loss, binding caps, lapsed signals, cash reductions), `neverEntered`,
+`exposure` (open risk and tech/AI averages and maxima, invested fraction,
+return on average invested capital) and `pauses`. `compareBenchmarks` gives
+HXR against each benchmark; `evaluateCriteria` judges G2–G6 against every
+benchmark a criterion lists (pass only if it passes against each; G1's
+decline requirement uses the fully invested hold); `evaluateValidation`
+implements V1–V2; `selectCandidate` applies `selection.pickRule`
+(`ending_value` or `return_to_drawdown` against both benchmarks) and refuses
+`pending_owner_choice`.
+
+**Service** (hxr-prereg-3a): periods `development`, `validation`, `final`,
+`fullList`; run kinds `selection` (the development pick), `validation`,
+`evaluation` (the final run), `variant`, `prospective` (store migration 2
+adds `validation` to the run and ledger kinds without cascading deletes).
+The development pick runs the hold, the day-one hold, six candidates and
+three comparisons, each also with VWAP fills, then the winner's ten
+neighbours (reported). The validation run (once per frozen version) runs the
+pick and both benchmarks; `settings.validation` records its outcome, and the
+final run refuses to start unless it is `validated`. The final run's
+variants are triples (HXR, hold, day-one hold).
+
 ## 6. Determinism and no look-ahead
 
 - Everything on session `d` uses only data dated `d` or earlier, plus the
@@ -192,7 +305,8 @@ orders. Older rule types are unchanged.
 - `processSession` must be called in date order, and repeating a date throws.
 - `snapshot()` returns plain JSON. `createEngine({ state })` continues
   exactly as an uninterrupted run would.
-- **Required tests**:
+- **Required tests** (for every rule type, including the 0.3.0 candidates and
+  the derived day-one hold):
   - **Prefix invariance**: for runs cut at 20%, 45%, 70% and 93% of the
     sessions, decisions, fills and equity up to the cut are identical.
   - **Future-change test**: changing every bar after `T` leaves everything

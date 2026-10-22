@@ -47,19 +47,26 @@ test('overview: every config carries its rule, status and assumptions before any
   try {
     const o = hxr.overview();
     assert.equal(o.runs.length, 0);
-    assert.deepEqual(o.configs.map((c) => c.rule.type).sort(), ['giveback', 'hold', 'ma_band', 'move_allowance', 'pct_trail', 'recovery_break', 'vol_trail']);
-    // hxr-prereg-2 roles: X1 and X2 can be picked, X3 is the owner's comparison, C1-C3 are superseded and never run.
+    assert.deepEqual([...new Set(o.configs.map((c) => c.rule.type))].sort(), ['giveback', 'hold', 'ma_band', 'move_allowance', 'pct_trail', 'recovery_break', 'vol_trail']);
+    assert.equal(o.configs.length, 16);
+    // hxr-prereg-3a roles: six candidates, three comparisons, the hold; everything earlier is superseded and never run.
     assert.deepEqual(Object.fromEntries(o.configs.map((c) => [c.version, c.role])), {
       'c1-0.1.0': 'superseded', 'c2-0.1.0': 'superseded', 'c3-0.1.0': 'superseded', 'hold-0.1.0': 'hold',
-      'x1-0.2.0': 'candidate', 'x2-0.2.0': 'candidate', 'x3-0.2.0': 'comparison',
+      'x1-0.2.0': 'superseded', 'x2-0.2.0': 'superseded', 'x3-0.2.0': 'superseded',
+      'x1a-0.3.0': 'candidate', 'x1b-0.3.0': 'candidate', 'x1c-0.3.0': 'candidate', 'x2a-0.3.0': 'candidate', 'x2b-0.3.0': 'candidate', 'x2c-0.3.0': 'candidate',
+      'x3a-0.3.0': 'comparison', 'x3b-0.3.0': 'comparison', 'x3c-0.3.0': 'comparison',
     });
-    assert.equal(o.prereg.id, 'hxr-prereg-2');
-    assert.deepEqual(Object.keys(o.neighbours), ['x1-0.2.0', 'x2-0.2.0']);
+    assert.equal(o.prereg.id, 'hxr-prereg-3a');
+    assert.equal(o.pickRule, 'pending_owner_choice');
+    assert.equal(o.validation, null);
+    assert.deepEqual(o.benchmarks, ['hold', 'holdDayOne']);
+    assert.deepEqual(Object.keys(o.neighbours), ['x1', 'x2']);
+    assert.ok(o.configs.find((c) => c.version === 'x1a-0.3.0').assumptions.risk.plannedLossPerTradeUsd === 150);
     for (const c of o.configs) {
       const f = JSON.parse(read(`strategy/hxr/configs/${c.file}`));
       assert.deepEqual(c.rule, f.rule, c.file);
       assert.equal(c.status, f.status);
-      assert.deepEqual(c.assumptions, { account: f.account, execution: f.execution, costs: f.costs, dividends: f.dividends, cash: f.cash }, c.file);
+      assert.deepEqual(c.assumptions, { account: f.account, execution: f.execution, costs: f.costs, dividends: f.dividends, cash: f.cash, risk: f.risk ?? null, initialLoss: f.initialLoss ?? null }, c.file);
     }
     assert.match(o.universe.selectedBefore, /any HXR backtest or result/);
     assert.equal(o.criteria.passMeaning, "eligible for the owner's review; never permission to trade");

@@ -90,6 +90,9 @@ test('API: /api/hxr routes through the real server', { timeout: 120000 }, async 
       ['/api/hxr/selection', { confirm: 1 }, 400, /confirm must be true or false/],
       ['/api/hxr/selection', { confirm: true, reason: 7 }, 400, /reason must be text/],
       ['/api/hxr/selection', { confirm: true }, 409, /pending MU decision/],
+      ['/api/hxr/validation', {}, 400, /confirm: true/],
+      ['/api/hxr/validation', { confirm: true, reason: 7 }, 400, /reason must be text/],
+      ['/api/hxr/validation', { confirm: true }, 409, /No frozen version/],
       ['/api/hxr/evaluation', {}, 400, /confirm: true/],
       ['/api/hxr/evaluation', { confirm: true }, 409, /No frozen version/],
       ['/api/hxr/evaluation', { confirm: true, withoutFullList: 'yes' }, 400, /withoutFullList must be true or false/],
@@ -123,7 +126,8 @@ test('API: /api/hxr routes through the real server', { timeout: 120000 }, async 
     assert.equal((await s.api('GET', '/api/hxr/overview')).body.decisions.mu.choice, 'keep');
     r = await s.api('POST', '/api/hxr/selection', { confirm: true });
     assert.equal(r.status, 409);
-    assert.match(r.body.error, /selection period is not ready/);
+    assert.match(r.body.error, /pick rule is pending the owner's choice/, 'amendment 3b first (criteria-hxr-v3a.json)');
+    assert.equal((await s.api('GET', '/api/hxr/runs?kind=validation')).status, 200);
     r = await s.api('POST', '/api/hxr/spcx', { confirmed: true, confirm: true });
     assert.equal(r.status, 200);
     assert.equal(r.body.spcx.confirmed, true);

@@ -13,12 +13,13 @@ import crypto from 'node:crypto';
 import { configHash, canonicalJson } from '../strategy/config.js';
 import { isTradingDay, nextTradingDay } from '../calendar.js';
 
-export const ENGINE_VERSION = 'hxr-engine-2'; // hxr-engine-1 rules unchanged; adds the hxr-prereg-2 rule types
+export const ENGINE_VERSION = 'hxr-engine-3'; // hxr-engine-1 and -2 behaviour unchanged; adds risk sizing, the initial-loss rule, the pause and the fresh-entry policies (hxr-prereg-3a)
 const STATE_FORMAT = 'hxr-engine-state-1';
 export const RULE_TYPES = ['hold', 'ma_band', 'vol_trail', 'pct_trail', 'recovery_break', 'move_allowance', 'giveback'];
 // hxr-prereg-2 (PREREGISTRATION-2.md section 3): exit rules that share one
 // buy-back rule (a confirmed recovery point, filling only below the exit price).
 export const BUY_BACK_RULES = ['recovery_break', 'move_allowance', 'giveback'];
+export const MISSED_REBOUND_POLICIES = ['stay_out', 'fresh_entry_recovery_point', 'fresh_entry_after_sessions'];
 export const FILL_MODELS = ['open', 'vw15'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EPS = 1e-9;
@@ -96,12 +97,34 @@ function checkConfig(config) {
     num(r.volSessions, 'rule.volSessions', { min: 1, int: true });
     num(r.pivotSessions, 'rule.pivotSessions', { min: 1, int: true });
     num(r.reboundMultiple, 'rule.reboundMultiple');
-    if (r.afterMissedRebound !== 'stay_out') errs.push('rule.afterMissedRebound must be "stay_out"');
+    if (r.afterMissedRebound === 'pending_owner_choice') throw new Error("HXR engine: rule.afterMissedRebound is pending the owner's choice (PREREGISTRATION-3a.md): this config cannot run");
+    if (!MISSED_REBOUND_POLICIES.includes(r.afterMissedRebound)) errs.push(`rule.afterMissedRebound must be ${MISSED_REBOUND_POLICIES.join(', ')}`);
+    if (r.afterMissedRebound === 'fresh_entry_after_sessions') num(r.freshEntryMinSessions, 'rule.freshEntryMinSessions', { min: 1, int: true });
+    if (r.entryWhenNeverHeld !== undefined && r.entryWhenNeverHeld !== 'recovery_point_any_price') errs.push('rule.entryWhenNeverHeld must be "recovery_point_any_price"');
     if (r.type === 'recovery_break') num(r.bufferMultiple, 'rule.bufferMultiple');
     if (r.type === 'move_allowance') num(r.multiple, 'rule.multiple', { gt: 0 });
     if (r.type === 'giveback') { num(r.givebackPct, 'rule.givebackPct', { gt: 0, max: 100 }); num(r.activationMultiple, 'rule.activationMultiple'); }
   }
+  // hxr-prereg-3 (PREREGISTRATION-3.md sections 1-2): pooled cash and risk sizing.
+  const pooled = a.allocation === 'risk_sized';
+  if (a.allocation !== undefined && a.allocation !== 'equal_sleeves' && !pooled) errs.push('account.allocation must be equal_sleeves or risk_sized');
+  if (pooled) {
+    const k = config.risk, il = config.initialLoss;
+    if (!k || !il) throw new Error('HXR engine: a risk_sized config needs risk and initialLoss sections');
+    for (const f of ['plannedLossPerTradeUsd', 'maxPositionUsd', 'totalOpenRiskUsd', 'pauseDeclineUsd']) num(k[f], `risk.${f}`, { gt: 0 });
+    for (const f of ['maxTechAiExposureUsd', 'resumeDeclineUsd']) num(k[f], `risk.${f}`);
+    num(k.minPositionFractionOfPlannedLoss, 'risk.minPositionFractionOfPlannedLoss', { max: 1 });
+    if (!(k.resumeDeclineUsd < k.pauseDeclineUsd)) errs.push('risk.resumeDeclineUsd must be below risk.pauseDeclineUsd');
+    num(il.multiple, 'initialLoss.multiple', { gt: 0 });
+    if (il.volSessions !== undefined) num(il.volSessions, 'initialLoss.volSessions', { min: 1, int: true });
+  }
   if (errs.length) throw new Error(`HXR engine: invalid config: ${errs.join('; ')}`);
+}
+
+// The typical-move window used for sizing and the initial-loss level: the
+// rule's own, or initialLoss.volSessions for a rule without one (the day-one hold).
+export function sizingVolSessions(config) {
+  return config.initialLoss?.volSessions ?? config.rule?.volSessions ?? 20;
 }
 
 function normSymbols(symbols) {
@@ -114,7 +137,7 @@ function normSymbols(symbols) {
     if (seen.has(symbol)) throw new Error(`HXR engine: symbol ${symbol} is listed twice`);
     if (o.listedFrom != null && !DATE.test(o.listedFrom)) throw new Error(`HXR engine: ${symbol} listedFrom must be YYYY-MM-DD`);
     seen.add(symbol);
-    return { symbol, exchange: o.exchange || 'NASDAQ', listedFrom: o.listedFrom ?? null };
+    return { symbol, exchange: o.exchange || 'NASDAQ', listedFrom: o.listedFrom ?? null, techAi: !!o.techAi };
   });
 }
 
@@ -150,9 +173,11 @@ function typicalMove(closes, n) {
   return s / n;
 }
 
-export function historyLength(rule) {
-  return Math.max(1, rule.smaSessions ?? 0, (rule.volSessions ?? -1) + 1, BUY_BACK_RULES.includes(rule.type) ? 2 * rule.pivotSessions + 1 : 0);
+export function historyLength(rule, config = null) {
+  const pooled = config?.account?.allocation === 'risk_sized';
+  return Math.max(1, rule.smaSessions ?? 0, (rule.volSessions ?? -1) + 1, BUY_BACK_RULES.includes(rule.type) ? 2 * rule.pivotSessions + 1 : 0, pooled ? sizingVolSessions(config) + 1 : 0);
 }
+export const historyLengthFor = (config) => historyLength(config.rule, config);
 
 // ---------- hxr-prereg-2 rules (PREREGISTRATION-2.md section 3) ----------
 
@@ -232,11 +257,25 @@ function evaluateBuyBackRule(rule, sl, c) {
     const level = sl.entryPrice + (1 - rule.givebackPct / 100) * (sl.anchorHigh - sl.entryPrice);
     return c <= level ? { side: 'sell', values: { close: c, entryPrice: sl.entryPrice, anchorHigh: sl.anchorHigh, givebackPct: rule.givebackPct, level }, reason: `close ${c} gives back ${rule.givebackPct}% or more of the peak gain (entry ${sl.entryPrice}, highest close ${sl.anchorHigh}, level ${level})` } : null;
   }
-  // Out: the one buy-back rule (section 3.5).
+  // Out: the one buy-back rule (section 3.5), or a fresh entry (hxr-prereg-3a).
   if (sl.stayOut) return null;
   const P = exitPriceNow(sl);
+  if (sl.fresh) {
+    // Never held, a lapsed buy, or a missed rebound under policy B or C: the
+    // next confirmed recovery point, at any price (PREREGISTRATION-3.md section 8).
+    if (rule.entryWhenNeverHeld !== 'recovery_point_any_price') return null;
+    const minOut = rule.afterMissedRebound === 'fresh_entry_after_sessions' && sl.fresh.afterMissedRebound ? rule.freshEntryMinSessions : 0;
+    if (sl.fresh.sessions < minOut) return null;
+    const rp = recoveryAfterFill(rule, sl, m);
+    if (!rp) return null;
+    return {
+      side: 'buy', fresh: true,
+      values: { close: c, previousExitPrice: P, recoveryClose: rp.close, highestAfter: rp.highestAfter, m, pivotSessions: rule.pivotSessions, reboundMultiple: rule.reboundMultiple, sessionsOut: sl.fresh.sessions, afterMissedRebound: !!sl.fresh.afterMissedRebound },
+      reason: `fresh entry: a recovery point (close ${rp.close}, ${rule.pivotSessions} sessions ago) is confirmed${P != null ? ` after a missed rebound (previous exit ${P})` : ' for a stock not held'}; buy at the next open at any price`,
+    };
+  }
   if (P == null) return null;
-  if (c >= P) return { side: 'stay_out', values: { close: c, exitPrice: P }, reason: `close ${c} is at or above the exit price ${P} before any buy-back signal: rebound missed, the sleeve stays in cash for the rest of the period` };
+  if (c >= P) return { side: 'stay_out', values: { close: c, exitPrice: P }, reason: `close ${c} is at or above the exit price ${P} before any buy-back signal: rebound missed` };
   const rp = recoveryAfterFill(rule, sl, m);
   if (!rp) return null;
   return {
@@ -244,6 +283,38 @@ function evaluateBuyBackRule(rule, sl, c) {
     values: { close: c, exitPrice: P, recoveryClose: rp.close, highestAfter: rp.highestAfter, m, pivotSessions: rule.pivotSessions, reboundMultiple: rule.reboundMultiple },
     reason: `a recovery point (close ${rp.close}, ${rule.pivotSessions} sessions ago) is confirmed below the exit price ${P}; buy at the next open only if the fill is below ${P}`,
   };
+}
+
+// The rule's own exit level right now (null when it has none), for the open
+// risk of a position and the effective exit level (PREREGISTRATION-3.md 2).
+export function ruleLevelNow(rule, sl) {
+  if (!BUY_BACK_RULES.includes(rule.type) || sl.state !== 'in') return null;
+  const m = typicalMoveNow(rule, sl.history);
+  if (rule.type === 'recovery_break') return sl.level ?? null;
+  if (m == null) return null;
+  if (rule.type === 'move_allowance') return sl.anchorHigh != null ? sl.anchorHigh - rule.multiple * m : null;
+  return sl.gbActive && sl.entryPrice != null && sl.anchorHigh != null ? sl.entryPrice + (1 - rule.givebackPct / 100) * (sl.anchorHigh - sl.entryPrice) : null;
+}
+
+// The higher of the initial-loss level and the rule's own level.
+export function effectiveLevel(rule, sl) {
+  const a = sl.L0 ?? null, b = ruleLevelNow(rule, sl);
+  if (a == null) return b;
+  if (b == null) return a;
+  return Math.max(a, b);
+}
+
+// The signal while holding, with the initial-loss rule applied to every exit
+// rule: exit when the close is below L0 even if the rule itself is silent.
+function evaluateHolding(rule, sl) {
+  if (rule.type === 'hold') return null; // the hold arms never sell: the initial-loss rule is for exit rules only
+  const sig = evaluateRule(rule, sl);
+  const c = sl.history[sl.history.length - 1];
+  if (sl.L0 != null && c < sl.L0 - EPS) {
+    if (sig?.side === 'sell') return { ...sig, trigger: 'rule', values: { ...sig.values, initialLossLevel: sl.L0 } };
+    return { side: 'sell', trigger: 'initial_loss', values: { close: c, initialLossLevel: sl.L0, ruleLevel: ruleLevelNow(rule, sl) }, reason: `close ${c} is below the initial-loss level ${sl.L0}` };
+  }
+  return sig?.side === 'sell' ? { ...sig, trigger: 'rule', values: { ...sig.values, initialLossLevel: sl.L0 ?? null } } : sig;
 }
 
 // ENGINE-SPEC section 5. closes ends with today's close c. Returns null or the
@@ -328,6 +399,9 @@ function newSleeve(s, cash) {
     // hxr-prereg-2 rules: closes since the last fill, X1's level, the effective
     // buy price (X3), X3's activation and the stay-in-cash flag after a missed rebound.
     sinceFill: 0, level: null, entryPrice: null, gbActive: false, stayOut: false,
+    // hxr-prereg-3a: the initial-loss level, the planned loss of the holding and
+    // the fresh-entry state ({ since, sessions, afterMissedRebound } or null).
+    L0: null, plannedLoss: null, fresh: null, everHeld: false, techAi: !!s.techAi,
   };
 }
 
@@ -338,7 +412,10 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
   const cHash = configHash(config);
   const rule = config.rule, costs = config.costs;
   const fillModel = config.execution.fillModel, delay = config.execution.delaySessions;
-  const HIST = historyLength(rule);
+  const HIST = historyLength(rule, config);
+  const pooled = config.account.allocation === 'risk_sized';
+  const risk = config.risk ?? null;
+  const sizingVol = sizingVolSessions(config);
   const list = normSymbols(symbols);
   const exList = [...exclusionSet(excludedSessions)].sort();
   const ex = new Set(exList);
@@ -357,27 +434,36 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     }
   } else {
     const p = normPeriod(period);
-    const cash = sleeveCash(config.account.startingCash, list.length);
+    const cash = pooled ? list.map(() => 0) : sleeveCash(config.account.startingCash, list.length);
     const firstFill = firstSessionOnOrAfter(p.start, ex);
     S = {
       format: STATE_FORMAT, engineVersion: ENGINE_VERSION, strategy: config.strategy ?? 'hxr', version: config.version ?? null,
       configHash: cHash, ruleType: rule.type, fillModel, delaySessions: delay,
       symbols: list, period: p, firstSession: firstSessionOnOrAfter(p.warmupFrom, ex), firstTradingSession: firstFill,
       excludedSessions: exList, startingCash: config.account.startingCash,
+      // Pooled cash and the account-decline pause (risk_sized only).
+      pooled, cash: pooled ? config.account.startingCash : null, peak: pooled ? config.account.startingCash : null, paused: false, pausedSince: null,
       lastDate: null, finished: false,
       sleeves: list.map((s, i) => {
         const sl = newSleeve(s, cash[i]);
         // Each sleeve starts out with a pending buy filling at the start's open.
+        // Pooled: its size is set at the last warm-up close (sizeInitialOrders).
         sl.pending = {
           id: `order-${s.symbol}-initial-buy`, symbol: s.symbol, side: 'buy', reason: 'initial allocation', initial: true,
-          decisionId: null, decisionDate: null, fillDate: firstFill, waited: 0,
+          decisionId: null, decisionDate: null, fillDate: firstFill, waited: 0, ...(pooled ? { shares: null, sized: false } : {}),
         };
         return sl;
       }),
-      journal: { fills: [], decisions: [], episodes: [], roundTrips: [], dividends: [], splits: [], equity: [], warnings: [] },
+      journal: { fills: [], decisions: [], episodes: [], roundTrips: [], dividends: [], splits: [], equity: [], warnings: [], freshEntries: [] },
     };
   }
+  if (!S.journal.freshEntries) S.journal.freshEntries = [];
   const bySymbol = new Map(S.sleeves.map((sl) => [sl.symbol, sl]));
+  const alphabetical = [...S.sleeves].sort((a, b) => (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
+  // Cash lives in the pool when risk_sized, in the sleeve otherwise.
+  const cashOf = (sl) => (S.pooled ? S.cash : sl.cash);
+  const setCash = (sl, v) => { if (S.pooled) S.cash = v; else sl.cash = v; };
+  const addCash = (sl, d) => setCash(sl, cashOf(sl) + d);
   let out = null, warnSeq = 0;
 
   const spreadFn = halfSpreadSource(config, halfSpreadBps);
@@ -489,7 +575,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       const hs = halfSpread(sl.symbol, date);
       const price = bar.o * (1 - hs / 10000), cash = frac * price;
       sl.shares = Math.floor(sl.shares);
-      sl.cash += cash;
+      addCash(sl, cash);
       if (sl.episode) sl.episode.cashInLieu += cash;
       record('splits', {
         id: `cil-${sl.symbol}-${date}`, kind: 'cash_in_lieu', symbol: sl.symbol, date, fraction: frac, open: bar.o, halfSpreadBps: hs,
@@ -551,7 +637,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       if (!due.length) continue;
       sl.receivables = sl.receivables.filter((r) => r.payDate > date);
       for (const r of due) {
-        sl.cash += r.net;
+        addCash(sl, r.net);
         record('dividends', { id: r.id.replace(/^div-/, 'divpay-'), kind: 'payment', symbol: sl.symbol, exDate: r.exDate, payDate: r.payDate, paidOn: date, net: r.net, entitlementId: r.id });
       }
     }
@@ -575,7 +661,8 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       initial: !!o.initial, reason: o.reason, decisionDate: o.decisionDate, fillDate: o.fillDate, date, waitedSessions: o.waited,
       shares, rawPrice: px.raw, price: px.price, basis: px.basis, fillModel, open: bar.o, vw15: bar.vw15,
       halfSpreadBps: px.halfSpreadBps, slippageBps: px.slippageBps, spreadSlippage: shares * Math.abs(px.price - px.raw), fees,
-      value: shares * px.price, cashBefore, cashAfter: sl.cash, splitFactor: sl.splitFactor, flags: px.flags,
+      value: shares * px.price, cashBefore, cashAfter: cashOf(sl), splitFactor: sl.splitFactor, flags: px.flags,
+      trigger: o.trigger ?? null, fresh: !!o.fresh, ceiling: !!o.ceiling, sizing: o.sizing ?? null,
     };
   }
 
@@ -588,21 +675,26 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     }
     const px = priceOf(sl, 'sell', bar, date);
     const fees = sellFees(costs, shares, px.price);
-    const cashBefore = sl.cash, after = cashBefore + shares * px.price - fees.total;
+    const cashBefore = cashOf(sl), after = cashBefore + shares * px.price - fees.total;
     checkCash(sl, after, `selling ${shares} ${sl.symbol} on ${date}`);
-    sl.cash = after;
+    setCash(sl, after);
     const fill = record('fills', fillRecord(sl, o, bar, date, px, shares, fees, cashBefore));
-    closeEpisode(sl, { date, fillId: fill.id, price: px.price, proceeds: shares * px.price - fees.total, sellCosts: fill.spreadSlippage + fees.total, endKind: 'exit' });
+    closeEpisode(sl, { date, fillId: fill.id, price: px.price, proceeds: shares * px.price - fees.total, sellCosts: fill.spreadSlippage + fees.total, endKind: 'exit', endTrigger: o.trigger ?? null });
     sl.lastExit = { fillId: fill.id, date, price: px.price, shares, splitFactor: sl.splitFactor, highestClose: null, sessionsOut: 0 };
     sl.shares = 0;
     sl.state = 'out';
     sl.anchorLow = null;
     sl.pending = null;
-    Object.assign(sl, { sinceFill: 0, level: null, entryPrice: null, gbActive: false });
+    Object.assign(sl, { sinceFill: 0, level: null, entryPrice: null, gbActive: false, L0: null, plannedLoss: null });
   }
 
   function buy(sl, o, bar, date) {
     const px = priceOf(sl, 'buy', bar, date);
+    if (S.pooled && (o.shares == null || !(o.shares >= 1))) {
+      warn(date, sl.symbol, 'order_cancelled', `buy order ${o.id} cancelled: it was never sized (no typical daily move before ${date})`, { orderId: o.id, code: 'insufficient_history' });
+      lapse(sl, date);
+      return;
+    }
     // The buy-back fills only below the exit price (PREREGISTRATION-2.md 3.5).
     if (o.ceiling) {
       const P = exitPriceNow(sl);
@@ -614,20 +706,40 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     }
     const cpo = costs.commissionPerOrder, cps = costs.commissionPerShare;
     const costOf = (n) => n * px.price + cpo + cps * n;
-    let n = Math.floor((sl.cash - cpo) / (px.price + cps));
-    while (n > 0 && costOf(n) > sl.cash) n--; // never let float rounding overspend
+    const cashNow = cashOf(sl);
+    // Pooled: the shares were sized at the decision; a higher open can only reduce them.
+    let n = S.pooled ? Math.min(o.shares, Math.floor((cashNow - cpo) / (px.price + cps))) : Math.floor((cashNow - cpo) / (px.price + cps));
+    while (n > 0 && costOf(n) > cashNow) n--; // never let float rounding overspend
     if (!(n >= 1)) {
-      warn(date, sl.symbol, 'insufficient_cash', `buy order ${o.id} cancelled: sleeve cash ${sl.cash} cannot buy one share at ${px.price}`, { orderId: o.id, cash: sl.cash, price: px.price, initial: !!o.initial });
+      warn(date, sl.symbol, 'insufficient_cash', `buy order ${o.id} cancelled: ${S.pooled ? 'pooled' : 'sleeve'} cash ${cashNow} cannot buy one share at ${px.price}`, { orderId: o.id, cash: cashNow, price: px.price, initial: !!o.initial });
       sl.pending = null;
+      if (S.pooled) lapse(sl, date);
       return;
     }
-    const cost = costOf(n), cashBefore = sl.cash, after = cashBefore - cost;
+    if (S.pooled && n < o.shares) warn(date, sl.symbol, 'reduced_for_cash', `buy order ${o.id}: ${o.shares} shares planned, ${n} affordable at the open ${bar.o}`, { orderId: o.id, planned: o.shares, filled: n });
+    const cost = costOf(n), cashBefore = cashNow, after = cashBefore - cost;
     checkCash(sl, after, `buying ${n} ${sl.symbol} on ${date}`);
-    sl.cash = after;
+    setCash(sl, after);
     const fees = { commission: cpo + cps * n, sec: 0, taf: 0, total: cpo + cps * n };
-    const fill = record('fills', fillRecord(sl, o, bar, date, px, n, fees, cashBefore));
-    const startKind = o.initial ? 'initial' : sl.lastExit ? 'buy_back' : 'rule_buy';
-    if (sl.lastExit && !o.initial) {
+    // The initial-loss level is set from the actual fill (PREREGISTRATION-3.md 2).
+    if (S.pooled) {
+      const d = o.sizing?.d ?? null;
+      sl.L0 = d != null ? px.price - d : null;
+      sl.plannedLoss = d != null ? n * d : null;
+    }
+    const fill = record('fills', { ...fillRecord(sl, o, bar, date, px, n, fees, cashBefore), initialLossLevel: sl.L0, plannedLoss: sl.plannedLoss });
+    const startKind = o.initial ? 'initial' : o.fresh ? 'fresh_entry' : sl.lastExit ? 'buy_back' : 'rule_buy';
+    if (o.fresh) {
+      const x = sl.lastExit;
+      const prev = x ? x.price / (sl.splitFactor / x.splitFactor) : null;
+      record('freshEntries', {
+        id: `fresh-${sl.symbol}-${date}`, symbol: sl.symbol, date, fillId: fill.id, price: px.price, shares: n, previousExitPrice: prev,
+        previousExitDate: x?.date ?? null, premiumPct: prev != null ? (px.price / prev - 1) * 100 : null,
+        sessionsOut: sl.fresh?.sessions ?? null, afterMissedRebound: !!sl.fresh?.afterMissedRebound, neverHeld: !sl.everHeld,
+      });
+      sl.lastExit = null;
+    }
+    if (sl.lastExit && !o.initial && !o.fresh) {
       const x = sl.lastExit;
       const adj = sl.splitFactor / x.splitFactor; // current units -> exit units
       const buyBackAdj = px.price * adj;
@@ -649,16 +761,26 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     sl.state = 'in';
     sl.anchorHigh = null;
     sl.pending = null;
-    Object.assign(sl, { sinceFill: 0, level: null, entryPrice: px.price, gbActive: false });
+    Object.assign(sl, { sinceFill: 0, level: null, entryPrice: px.price, gbActive: false, fresh: null, everHeld: true });
   }
 
-  function closeEpisode(sl, { date, fillId, price, proceeds, sellCosts, endKind }) {
+  // A buy that could not happen (budget, pause, cash, no sizing): the stock
+  // waits for the next recovery point at any price, if the rule allows it.
+  function lapse(sl, date) {
+    sl.pending = null;
+    if (rule.entryWhenNeverHeld === 'recovery_point_any_price' && !sl.stayOut) {
+      sl.fresh = sl.fresh ?? { since: date, sessions: 0, afterMissedRebound: false };
+      sl.sinceFill = 0;
+    }
+  }
+
+  function closeEpisode(sl, { date, fillId, price, proceeds, sellCosts, endKind, endTrigger = null }) {
     const e = sl.episode;
     if (!e) return;
     const adj = sl.splitFactor / e.splitFactor; // current units -> start units
     const pnl = proceeds + e.cashInLieu + e.dividendsNet - e.cost;
     record('episodes', {
-      ...e, open: false, endFillId: fillId, endDate: date, endKind, sharesAtEnd: sl.shares, exitPrice: price,
+      ...e, open: false, endFillId: fillId, endDate: date, endKind, endTrigger, sharesAtEnd: sl.shares, exitPrice: price,
       exitPriceAdj: price != null ? price * adj : null, proceeds, sellCosts, costs: e.buyCosts + sellCosts,
       pnl, pnlPct: e.cost > 0 ? (pnl / e.cost) * 100 : null,
     });
@@ -666,6 +788,16 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
   }
 
   function fills(date, bars) {
+    // While the account is paused (decided at the previous close) no buy fills (PREREGISTRATION-3.md 1.4).
+    if (S.pooled && S.paused) {
+      for (const sl of S.sleeves) {
+        const o = sl.pending;
+        if (o?.side === 'buy' && !o.initial && o.fillDate <= date) {
+          warn(date, sl.symbol, 'order_cancelled', `buy order ${o.id} cancelled: the account is paused after a decline of ${(S.peak - lastValue()).toFixed(2)} from its peak`, { orderId: o.id, code: 'paused' });
+          lapse(sl, date);
+        }
+      }
+    }
     for (const side of ['sell', 'buy']) {
       for (const sl of S.sleeves) {
         const o = sl.pending;
@@ -699,47 +831,172 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
         sl.lastExit.highestClose = maxOf(sl.lastExit.highestClose, bar.c * (sl.splitFactor / sl.lastExit.splitFactor));
         sl.lastExit.sessionsOut++;
       }
+      if (sl.fresh) sl.fresh.sessions++;
     }
     const pct = config.cash?.annualInterestPct ?? 0;
-    if (trading && pct > 0) for (const sl of S.sleeves) sl.cash += sl.cash * pct / 100 / 252;
+    if (trading && pct > 0) {
+      if (S.pooled) S.cash += S.cash * pct / 100 / 252;
+      else for (const sl of S.sleeves) sl.cash += sl.cash * pct / 100 / 252;
+    }
+  }
+
+  // ---------- risk sizing (PREREGISTRATION-3.md section 1) ----------
+
+  const lastValue = () => S.sleeves.reduce((a, sl) => a + (sl.shares > 0 ? sl.shares * sl.lastClose : 0), 0) + (S.pooled ? S.cash : S.sleeves.reduce((a, sl) => a + sl.cash, 0));
+  const pendingBuys = () => S.sleeves.filter((sl) => sl.pending?.side === 'buy' && sl.pending.sizing).map((sl) => sl.pending);
+  const openRiskOf = (sl) => {
+    if (sl.state !== 'in' || !(sl.shares > 0) || sl.lastClose == null) return 0;
+    const lvl = effectiveLevel(rule, sl);
+    return lvl == null ? sl.shares * sl.lastClose : sl.shares * Math.max(0, sl.lastClose - lvl);
+  };
+  const openRiskNow = () => S.sleeves.reduce((a, sl) => a + openRiskOf(sl), 0);
+  const techExposureNow = () => S.sleeves.reduce((a, sl) => a + (sl.techAi && sl.state === 'in' && sl.shares > 0 && sl.lastClose != null ? sl.shares * sl.lastClose : 0), 0);
+  const reservedCash = () => pendingBuys().reduce((a, o) => a + o.sizing.reserveCash, 0);
+  const reservedRisk = () => pendingBuys().reduce((a, o) => a + o.sizing.plannedLoss, 0);
+  const reservedTech = () => pendingBuys().reduce((a, o) => a + o.sizing.techCost, 0);
+
+  // Shares for a buy of `sl` at the decision close c with typical move m and the
+  // planned loss asked for: the largest whole number under every cap. The
+  // minimum is a fraction of the planned loss asked for (the initial
+  // allocation asks for a share of the total open-risk budget).
+  function sizeBuy(sl, c, m, plannedLoss, date) {
+    const d = config.initialLoss.multiple * m;
+    const hs = halfSpread(sl.symbol, date), k = (hs + costs.slippageBps) / 10000;
+    const cpo = costs.commissionPerOrder, cps = costs.commissionPerShare;
+    const avail = S.cash - reservedCash();
+    const caps = {
+      plannedLoss: Math.floor(plannedLoss / d + EPS),
+      position: Math.floor(risk.maxPositionUsd / c + EPS),
+      openRisk: Math.floor((risk.totalOpenRiskUsd - openRiskNow() - reservedRisk()) / d + EPS),
+      techAi: sl.techAi ? Math.floor((risk.maxTechAiExposureUsd - techExposureNow() - reservedTech()) / c + EPS) : null, // null: the cap does not apply (plain JSON, unlike Infinity)
+      cash: Math.floor((avail - cpo) / (c * (1 + k) + cps) + EPS),
+    };
+    let n = Math.max(0, Math.min(...Object.values(caps).filter((v) => v != null)));
+    const binding = Object.entries(caps).filter(([, v]) => v != null && v === n).map(([key]) => key);
+    const minLoss = risk.minPositionFractionOfPlannedLoss * plannedLoss;
+    const ok = n >= 1 && n * d >= minLoss - EPS;
+    const reason = ok ? null : n < 1 ? `no whole share fits the budgets (${binding.join(', ')} binding)` : `planned loss ${(n * d).toFixed(2)} is below the minimum ${minLoss.toFixed(2)} (${binding.join(', ')} binding)`;
+    if (!ok) n = 0;
+    return {
+      shares: n, d, m, close: c, k, halfSpreadBps: hs, plannedLossAsked: plannedLoss, plannedLoss: n * d, caps, binding, minLoss,
+      reserveCash: n > 0 ? n * c * (1 + k) + cpo + cps * n : 0, techCost: sl.techAi ? n * c : 0,
+      openRiskNow: openRiskNow(), reservedRisk: reservedRisk(), techExposureNow: techExposureNow(), reservedTech: reservedTech(), availableCash: avail, paused: S.paused, reason,
+    };
+  }
+
+  // The initial allocation (section 1.3): sized at the last warm-up close, each
+  // stock asking for an equal share of the total open-risk budget, in
+  // alphabetical order. A stock that cannot be sized waits for a recovery point.
+  function sizeInitialOrders(date) {
+    const share = risk.totalOpenRiskUsd / S.sleeves.length;
+    for (const sl of alphabetical) {
+      const o = sl.pending;
+      if (!o?.initial || o.sized) continue;
+      o.sized = true;
+      const m = sl.history.length >= sizingVol + 1 ? typicalMove(sl.history, sizingVol) : null;
+      if (m == null || sl.lastClose == null) {
+        warn(date, sl.symbol, 'entry_skipped', `initial allocation of ${sl.symbol} skipped: no typical daily move yet (needs ${sizingVol + 1} closes)`, { orderId: o.id, code: 'insufficient_history' });
+        lapse(sl, date);
+        continue;
+      }
+      const sz = sizeBuy(sl, sl.lastClose, m, Math.min(share, risk.plannedLossPerTradeUsd), date);
+      if (!sz.shares) {
+        warn(date, sl.symbol, 'entry_skipped', `initial allocation of ${sl.symbol} skipped: ${sz.reason}`, { orderId: o.id, code: 'budget', sizing: sz });
+        lapse(sl, date);
+        continue;
+      }
+      o.shares = sz.shares;
+      o.sizing = sz;
+      o.decisionDate = date;
+      record('decisions', {
+        id: `dec-${sl.symbol}-${date}-initial`, orderId: o.id, symbol: sl.symbol, date, side: 'buy', action: 'initial_allocation', rule: rule.type,
+        reason: `initial allocation: ${sz.shares} shares, planned loss ${sz.plannedLoss.toFixed(2)} (asked ${sz.plannedLossAsked.toFixed(2)}; ${sz.binding.join(', ')} binding)`,
+        values: { close: sl.lastClose, m, initialLossMultiple: config.initialLoss.multiple }, sizing: sz, state: sl.state, shares: sl.shares, cash: S.cash, fillDate: o.fillDate, delaySessions: delay,
+      });
+    }
+  }
+
+  // The account-decline pause (section 1.4), updated at every trading close.
+  function updatePause(date, value) {
+    if (!S.pooled) return;
+    S.peak = Math.max(S.peak ?? S.startingCash, value);
+    const decline = S.peak - value;
+    if (!S.paused && decline >= risk.pauseDeclineUsd - EPS) {
+      S.paused = true;
+      S.pausedSince = date;
+      warn(date, null, 'pause_start', `new entries paused: the account is ${decline.toFixed(2)} below its peak ${S.peak.toFixed(2)} (pause at ${risk.pauseDeclineUsd})`, { peak: S.peak, value, decline });
+    } else if (S.paused && decline <= risk.resumeDeclineUsd + EPS) {
+      S.paused = false;
+      warn(date, null, 'pause_end', `new entries resume: the account is ${decline.toFixed(2)} below its peak ${S.peak.toFixed(2)} (resume at ${risk.resumeDeclineUsd})`, { peak: S.peak, value, decline, pausedSince: S.pausedSince });
+      S.pausedSince = null;
+    }
   }
 
   const receivableOf = (sl) => sl.receivables.reduce((a, r) => a + r.net, 0);
 
   function equityPoint(date) {
-    let cash = 0, invested = 0, receivable = 0, sleevesOut = 0;
+    let cash = S.pooled ? S.cash : 0, invested = 0, receivable = 0, sleevesOut = 0, openRisk = 0, techAi = 0;
     const sleeves = {};
     for (const sl of S.sleeves) {
       const value = sl.shares > 0 ? sl.shares * sl.lastClose : 0;
       const rec = receivableOf(sl);
-      cash += sl.cash; invested += value; receivable += rec;
+      if (!S.pooled) cash += sl.cash;
+      invested += value; receivable += rec;
       if (sl.state === 'out') sleevesOut++;
-      sleeves[sl.symbol] = { cash: sl.cash, shares: sl.shares, value, equity: sl.cash + value, out: sl.state === 'out', receivable: rec };
+      const risk = S.pooled ? openRiskOf(sl) : null;
+      if (S.pooled) { openRisk += risk; if (sl.techAi && sl.state === 'in') techAi += value; }
+      sleeves[sl.symbol] = { cash: S.pooled ? 0 : sl.cash, shares: sl.shares, value, equity: (S.pooled ? 0 : sl.cash) + value, out: sl.state === 'out', receivable: rec, ...(S.pooled ? { openRisk: risk, level: effectiveLevel(rule, sl) } : {}) };
     }
-    const p = { date, equity: cash + invested, cash, invested, sleevesOut, receivable, sleeves };
+    const value = cash + invested;
+    if (S.pooled) updatePause(date, value);
+    const p = { date, equity: value, cash, invested, sleevesOut, receivable, sleeves, ...(S.pooled ? { openRisk, techAi, paused: S.paused, peak: S.peak } : {}) };
     record('equity', p);
     if (out) out.equity = p;
   }
 
   function signals(date, bars) {
-    for (const sl of S.sleeves) {
+    // Pooled: alphabetical order, each signal seeing the room the earlier ones reserved (section 1.2 step 6).
+    for (const sl of S.pooled ? alphabetical : S.sleeves) {
       if (!bars.has(sl.symbol) || sl.pending) continue;
       updateRuleState(rule, sl);
-      const sig = evaluateRule(rule, sl);
+      const sig = sl.state === 'in' && S.pooled ? evaluateHolding(rule, sl) : evaluateRule(rule, sl);
       if (!sig) continue;
       if (sig.side === 'stay_out') {
-        sl.stayOut = true;
-        warn(date, sl.symbol, 'rebound_missed', `${sl.symbol}: ${sig.reason}`, sig.values);
+        warn(date, sl.symbol, 'rebound_missed', `${sl.symbol}: ${sig.reason}`, { ...sig.values, policy: rule.afterMissedRebound ?? 'stay_out' });
+        if (rule.afterMissedRebound === 'fresh_entry_recovery_point' || rule.afterMissedRebound === 'fresh_entry_after_sessions') {
+          sl.fresh = { since: date, sessions: 0, afterMissedRebound: true };
+          sl.sinceFill = 0;
+        } else sl.stayOut = true;
         continue;
+      }
+      let sizing = null;
+      if (sig.side === 'buy' && S.pooled) {
+        if (S.paused) { warn(date, sl.symbol, 'entry_skipped', `${sl.symbol}: ${sig.reason}; skipped, the account is paused`, { code: 'paused', signal: sig.values }); if (sig.fresh) { sl.fresh = sl.fresh ?? { since: date, sessions: 0, afterMissedRebound: false }; sl.sinceFill = 0; } else sl.sinceFill = 0; continue; }
+        const m = sl.history.length >= sizingVol + 1 ? typicalMove(sl.history, sizingVol) : null;
+        const c = sl.history[sl.history.length - 1];
+        sizing = m != null ? sizeBuy(sl, c, m, risk.plannedLossPerTradeUsd, date) : null;
+        if (!sizing?.shares) {
+          warn(date, sl.symbol, 'entry_skipped', `${sl.symbol}: ${sig.reason}; skipped: ${sizing?.reason ?? 'no typical daily move yet'}`, { code: 'budget', signal: sig.values, sizing });
+          // The signal lapses: the next recovery point is needed (sections 1.2 step 4 and 8).
+          sl.sinceFill = 0;
+          if (sig.fresh) sl.fresh = sl.fresh ?? { since: date, sessions: 0, afterMissedRebound: false };
+          continue;
+        }
       }
       const fillDate = addSessions(date, delay, ex);
       const id = `dec-${sl.symbol}-${date}`;
-      const action = sig.side === 'sell' ? 'exit' : 'buy_back';
+      const action = sig.side === 'sell' ? 'exit' : sig.fresh ? 'fresh_entry' : 'buy_back';
       record('decisions', {
         id, orderId: `order-${sl.symbol}-${date}-${sig.side}`, symbol: sl.symbol, date, side: sig.side, action, rule: rule.type,
-        reason: sig.reason, values: sig.values, state: sl.state, shares: sl.shares, cash: sl.cash, fillDate, delaySessions: delay,
+        reason: sig.reason, values: sig.values, state: sl.state, shares: sl.shares, cash: cashOf(sl), fillDate, delaySessions: delay,
+        ...(sig.trigger ? { trigger: sig.trigger } : {}), ...(sizing ? { sizing } : {}),
       });
-      sl.pending = { id: `order-${sl.symbol}-${date}-${sig.side}`, symbol: sl.symbol, side: sig.side, reason: action === 'exit' ? 'exit rule' : 'buy-back rule', initial: false, decisionId: id, decisionDate: date, fillDate, waited: 0, ...(sig.ceiling != null ? { ceiling: true } : {}) };
+      sl.pending = {
+        id: `order-${sl.symbol}-${date}-${sig.side}`, symbol: sl.symbol, side: sig.side, reason: action === 'exit' ? 'exit rule' : action === 'fresh_entry' ? 'fresh entry' : 'buy-back rule',
+        initial: false, decisionId: id, decisionDate: date, fillDate, waited: 0,
+        ...(sig.ceiling != null ? { ceiling: true } : {}), ...(sig.fresh ? { fresh: true } : {}), ...(sig.trigger ? { trigger: sig.trigger } : {}),
+        ...(sizing ? { shares: sizing.shares, sizing } : {}),
+      };
     }
   }
 
@@ -763,6 +1020,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       fills(date, bars);
     }
     closes(date, bars, trading);
+    if (S.pooled && !trading && nextSession(date, ex) === S.firstTradingSession) sizeInitialOrders(date);
     if (trading) {
       equityPoint(date);
       signals(date, bars);
@@ -812,10 +1070,12 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
   function sleeveSummary() {
     return S.sleeves.map((sl) => {
       const value = sl.shares > 0 ? sl.shares * sl.lastClose : 0;
+      const cash = S.pooled ? 0 : sl.cash;
       return {
-        symbol: sl.symbol, startCash: sl.startCash, cash: sl.cash, shares: sl.shares, lastClose: sl.lastClose, lastBarDate: sl.lastBarDate,
-        value, equity: sl.cash + value, state: sl.state, receivable: receivableOf(sl), splitFactor: sl.splitFactor,
+        symbol: sl.symbol, startCash: S.pooled ? null : sl.startCash, cash, shares: sl.shares, lastClose: sl.lastClose, lastBarDate: sl.lastBarDate,
+        value, equity: cash + value, state: sl.state, receivable: receivableOf(sl), splitFactor: sl.splitFactor,
         anchorHigh: sl.anchorHigh, anchorLow: sl.anchorLow, pendingOrderId: sl.pending?.id ?? null,
+        ...(S.pooled ? { initialLossLevel: sl.L0, plannedLoss: sl.plannedLoss, effectiveLevel: effectiveLevel(rule, sl), openRisk: openRiskOf(sl), fresh: sl.fresh ? { ...sl.fresh } : null, retired: !!sl.stayOut, everHeld: !!sl.everHeld, techAi: !!sl.techAi } : {}),
       };
     });
   }
@@ -829,6 +1089,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       pendingAtEnd: pendingOrders(),
       receivables: S.sleeves.flatMap((sl) => sl.receivables.map((r) => ({ symbol: sl.symbol, ...r }))),
       sleeves: sleeveSummary(),
+      pool: S.pooled ? { cash: S.cash, peak: S.peak, paused: S.paused, pausedSince: S.pausedSince, openRisk: openRiskNow(), techAiExposure: techExposureNow() } : null,
       lastDate: S.lastDate,
       finished: S.finished,
     };
@@ -874,6 +1135,7 @@ export function runBacktest({ config, symbols, period, inputs = {}, excludedSess
     strategy: config.strategy ?? 'hxr', version: config.version ?? null, label, engineVersion: ENGINE_VERSION, configHash: engine.configHash,
     ruleType: config.rule.type, rule: clone(config.rule), period: p, basket: list.map((s) => s.symbol), symbols: list,
     fillModel: config.execution.fillModel, delaySessions: config.execution.delaySessions, startingCash: config.account.startingCash,
+    allocation: config.account.allocation ?? 'equal_sleeves', pooled: config.account.allocation === 'risk_sized', risk: config.risk ? clone(config.risk) : null, initialLoss: config.initialLoss ? clone(config.initialLoss) : null,
     slippageBps: config.costs.slippageBps, halfSpreadMultiplier: config.costs.halfSpreadMultiplier ?? 1,
     excludedSessions: [...exclusionSet(excludedSessions)].sort(), sessionsProcessed: sessions.length,
     firstSession: sessions[0] ?? null, lastSession: sessions.at(-1) ?? null, tradingSessions: res.equity.length,

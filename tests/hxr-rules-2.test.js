@@ -48,7 +48,7 @@ function run(config, rows, opts = {}) {
 const flat = (closes) => closes.map((c, i) => [i ? closes[i - 1] : c, c]); // open = previous close
 
 test('the engine version and history length for the new rule types', () => {
-  assert.equal(ENGINE_VERSION, 'hxr-engine-2');
+  assert.equal(ENGINE_VERSION, 'hxr-engine-3');
   assert.equal(historyLength(X1.rule), 21, 'max(20 + 1, 2 x 5 + 1)');
   assert.equal(historyLength({ ...X1.rule, pivotSessions: 15 }), 31);
 });

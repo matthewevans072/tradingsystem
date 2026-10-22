@@ -8,19 +8,26 @@ import { STRATEGY_DIR, canonicalJson, configHash, deepFreeze } from '../strategy
 
 export const HXR_DIR = path.join(STRATEGY_DIR, 'hxr');
 export const HXR_CONFIG_DIR = path.join(HXR_DIR, 'configs');
-// The active pre-registration is hxr-prereg-2 (PREREGISTRATION-2.md). The v1
-// files of hxr-prereg-1 stay on disk unchanged and are loadable by path.
-export const UNIVERSE_PATH = path.join(HXR_DIR, 'universe-hxr-v2.json');
-export const PERIODS_PATH = path.join(HXR_DIR, 'periods-hxr-v2.json');
-export const CRITERIA_PATH = path.join(HXR_DIR, 'criteria-hxr-v2.json');
-export const PREREG = 'hxr-prereg-2';
+// The active pre-registration is hxr-prereg-3a (PREREGISTRATION-3.md and
+// PREREGISTRATION-3a.md). Earlier versions' files stay on disk unchanged and
+// are loadable by path.
+export const UNIVERSE_PATH = path.join(HXR_DIR, 'universe-hxr-v3.json');
+export const PERIODS_PATH = path.join(HXR_DIR, 'periods-hxr-v3.json');
+export const CRITERIA_PATH = path.join(HXR_DIR, 'criteria-hxr-v3a.json');
+export const PREREG = 'hxr-prereg-3a';
+// Fresh-entry policies after a missed rebound (PREREGISTRATION-3a.md section 1);
+// pending_owner_choice is accepted by the loader (so the file can be listed and
+// hashed) and refused by the engine.
+export const MISSED_REBOUND_POLICIES = ['stay_out', 'fresh_entry_recovery_point', 'fresh_entry_after_sessions', 'pending_owner_choice'];
+export const PICK_RULES = ['ending_value', 'return_to_drawdown', 'pending_owner_choice'];
 
 export const RULE_TYPES = ['hold', 'ma_band', 'vol_trail', 'pct_trail', 'recovery_break', 'move_allowance', 'giveback'];
 export const FILL_MODELS = ['open', 'vw15'];
-export const BACKTEST_PERIODS = ['selection', 'evaluation', 'fullList'];
-// Reported-only periods (PREREGISTRATION-2.md section 5): validated and checked
-// for readiness when present, never a gate.
-export const REPORTED_PERIODS = ['robustSelection', 'robustEvaluation'];
+// hxr-prereg-3 (PREREGISTRATION-3.md section 3): development, validation,
+// final (used once) and the reported-only full-list check.
+export const BACKTEST_PERIODS = ['development', 'validation', 'final', 'fullList'];
+// Reported-only extra periods, when a periods file defines them; none in v3.
+export const REPORTED_PERIODS = [];
 export const periodKeys = (periods) => [...BACKTEST_PERIODS, ...REPORTED_PERIODS.filter((k) => periods?.periods?.[k])];
 // Descriptive keys allowed beside the rule-relevant ones (left out of the hash
 // by canonicalJson's DESCRIPTIVE_KEYS).
@@ -48,7 +55,7 @@ const oneOf = (values) => ({ type: 'string', values });
 // silently ignored.
 const SECTIONS = {
   account: {
-    startingCash: num({ gt: 0 }), currency: exact('USD'), allocation: exact('equal_sleeves'),
+    startingCash: num({ gt: 0 }), currency: exact('USD'), allocation: oneOf(['equal_sleeves', 'risk_sized']),
     wholeShares: exact(true), allowMargin: exact(false), allowShort: exact(false),
   },
   execution: {
@@ -63,24 +70,40 @@ const SECTIONS = {
   },
   dividends: { credit: { type: 'boolean' }, creditOn: exact('pay_date'), withholdingPct: num({ min: 0, max: 100 }) },
   cash: { annualInterestPct: num({ min: 0 }) },
+  // hxr-prereg-3 (PREREGISTRATION-3.md sections 1-2): required when
+  // account.allocation is risk_sized, refused otherwise.
+  risk: {
+    plannedLossPerTradeUsd: num({ gt: 0 }), maxPositionUsd: num({ gt: 0 }), totalOpenRiskUsd: num({ gt: 0 }), maxTechAiExposureUsd: num({ min: 0 }),
+    pauseDeclineUsd: num({ gt: 0 }), resumeDeclineUsd: num({ min: 0 }), minPositionFractionOfPlannedLoss: num({ min: 0, max: 1 }),
+    initialAllocation: exact('equal_share_of_total_open_risk'), contentionOrder: exact('alphabetical'),
+  },
+  initialLoss: { multiple: num({ gt: 0 }), volSessions: int({ min: 1, optional: true }) },
 };
+const RISK_SECTIONS = ['risk', 'initialLoss'];
 
 const RULE_PARAMS = {
   hold: {},
   ma_band: { smaSessions: int({ min: 2 }), bandPct: num({ min: 0 }) },
   vol_trail: { volSessions: int({ min: 1 }), multiple: num({ gt: 0 }) },
   pct_trail: { exitDrawdownPct: num({ gt: 0, lt: 100 }), reentryRisePct: num({ gt: 0 }) },
-  // hxr-prereg-2 (PREREGISTRATION-2.md section 3): each exit rule plus the one buy-back rule.
+  // hxr-prereg-2 (PREREGISTRATION-2.md section 3): each exit rule plus the one
+  // buy-back rule; hxr-prereg-3a adds the fresh-entry policy and the entry for a
+  // stock never held.
   recovery_break: { volSessions: int({ min: 1 }), bufferMultiple: num({ min: 0 }), ...buyBackParams() },
   move_allowance: { volSessions: int({ min: 1 }), multiple: num({ gt: 0 }), ...buyBackParams() },
   giveback: { volSessions: int({ min: 1 }), givebackPct: num({ gt: 0, lt: 100 }), activationMultiple: num({ min: 0 }), ...buyBackParams() },
 };
 
 function buyBackParams() {
-  return { pivotSessions: int({ min: 1 }), reboundMultiple: num({ min: 0 }), afterMissedRebound: exact('stay_out') };
+  return {
+    pivotSessions: int({ min: 1 }), reboundMultiple: num({ min: 0 }), afterMissedRebound: oneOf(MISSED_REBOUND_POLICIES),
+    entryWhenNeverHeld: { type: 'string', values: ['recovery_point_any_price'], optional: true }, freshEntryMinSessions: int({ min: 1, optional: true }),
+  };
 }
 
-const TOP_KEYS = new Set(['strategy', 'version', ...DESCRIPTIVE, ...Object.keys(SECTIONS), 'rule', 'baseHash', 'variant']);
+const TOP_KEYS = new Set(['strategy', 'version', ...DESCRIPTIVE, ...Object.keys(SECTIONS), 'rule', 'baseHash', 'variant', 'benchmark']);
+const BENCHMARK_KINDS = ['hold_day_one'];
+const BUY_BACK_RULE_TYPES = ['recovery_break', 'move_allowance', 'giveback'];
 
 function checkValue(p, v, s, errors) {
   if (v === undefined) { if (!s.optional) errors.push(`${p} is required`); return; }
@@ -116,13 +139,34 @@ export function validateHxrConfig(cfg) {
   if (cfg.strategy !== 'hxr') errors.push('strategy must be "hxr"');
   if (typeof cfg.version !== 'string' || !cfg.version.trim()) errors.push('version is required');
   for (const k of Object.keys(cfg)) if (!TOP_KEYS.has(k)) errors.push(`${k} is not a known setting`);
-  for (const [name, schema] of Object.entries(SECTIONS)) checkSection(name, cfg[name], schema, errors);
+  const pooled = cfg.account?.allocation === 'risk_sized';
+  for (const [name, schema] of Object.entries(SECTIONS)) {
+    if (RISK_SECTIONS.includes(name)) {
+      if (pooled) checkSection(name, cfg[name], schema, errors);
+      else if (cfg[name] !== undefined) errors.push(`${name} is only used when account.allocation is risk_sized`);
+      continue;
+    }
+    checkSection(name, cfg[name], schema, errors);
+  }
+  if (pooled && cfg.risk && isNum(cfg.risk.resumeDeclineUsd) && isNum(cfg.risk.pauseDeclineUsd) && !(cfg.risk.resumeDeclineUsd < cfg.risk.pauseDeclineUsd)) errors.push('risk.resumeDeclineUsd must be below risk.pauseDeclineUsd');
   const rule = cfg.rule;
   if (!rule || typeof rule !== 'object' || Array.isArray(rule)) errors.push('rule must be an object');
   else if (!RULE_TYPES.includes(rule.type)) errors.push(`rule.type must be ${RULE_TYPES.map((t) => JSON.stringify(t)).join(' or ')}`);
-  else checkSection('rule', rule, RULE_PARAMS[rule.type], errors, ['type']);
+  else {
+    checkSection('rule', rule, RULE_PARAMS[rule.type], errors, ['type']);
+    if (BUY_BACK_RULE_TYPES.includes(rule.type)) {
+      if (rule.afterMissedRebound === 'fresh_entry_after_sessions' && !Number.isInteger(rule.freshEntryMinSessions)) errors.push('rule.freshEntryMinSessions is required for fresh_entry_after_sessions');
+      if (rule.afterMissedRebound !== 'fresh_entry_after_sessions' && rule.freshEntryMinSessions !== undefined) errors.push('rule.freshEntryMinSessions is only used with fresh_entry_after_sessions');
+    }
+  }
   if (cfg.baseHash !== undefined && !/^[0-9a-f]{64}$/.test(String(cfg.baseHash))) errors.push('baseHash must be a SHA-256 hex digest');
   if (cfg.variant !== undefined && (cfg.baseHash === undefined || !cfg.variant || typeof cfg.variant !== 'object')) errors.push('variant needs an object and a baseHash');
+  // A derived benchmark (holdDayOneConfig): the candidate it was derived from and its hash.
+  if (cfg.benchmark !== undefined) {
+    const b = cfg.benchmark;
+    if (!b || typeof b !== 'object' || !BENCHMARK_KINDS.includes(b.kind) || typeof b.from !== 'string' || !/^[0-9a-f]{64}$/.test(String(b.baseHash))) errors.push(`benchmark needs kind (${BENCHMARK_KINDS.join(', ')}), from and the candidate's baseHash`);
+    else if (cfg.rule?.type !== 'hold') errors.push('a derived benchmark uses the hold rule');
+  }
   return errors;
 }
 
@@ -203,6 +247,26 @@ export function variantConfig(cfg, opts = {}) {
   return deepFreeze(out);
 }
 
+// The second benchmark of hxr-prereg-3a section 5: the candidate's day-one
+// positions, held. The candidate's account, costs and sizing settings with the
+// hold rule, so its initial allocation is the candidate's and it never sells.
+// Derived at run time, never a file; `benchmark.baseHash` records the candidate's.
+export function holdDayOneConfig(cfg) {
+  if (cfg?.account?.allocation !== 'risk_sized') throw new Error('The day-one hold benchmark is derived from a risk-sized candidate');
+  if (cfg.variant !== undefined || cfg.baseHash !== undefined) throw new Error('holdDayOneConfig needs a base candidate, not a variant');
+  const out = clone(cfg);
+  out.version = `${cfg.version}:hold-day-one`;
+  out.rule = { type: 'hold' };
+  out.initialLoss = { ...out.initialLoss, volSessions: cfg.initialLoss?.volSessions ?? cfg.rule?.volSessions ?? 20 };
+  // Not a variant: the final run builds cost, delay, fill and withholding variants of it.
+  out.benchmark = { kind: 'hold_day_one', from: cfg.version, baseHash: hxrConfigHash(cfg) };
+  out.label = `Hold the day-one positions (benchmark, derived from ${cfg.version})`;
+  out.status = 'benchmark: the positions the candidate opens at the period start, never sold (PREREGISTRATION-3a.md section 5)';
+  const errors = validateHxrConfig(out);
+  if (errors.length) throw new Error(`The day-one hold config is invalid: ${errors.join('; ')}`);
+  return deepFreeze(out);
+}
+
 // The half-spread (bps) a config uses for one symbol and date: a fixed number,
 // or the calibrated table value; the floor applies first, then any variant
 // multiplier. calibrated(symbol, date) is the table lookup (data.js halfSpreadFn).
@@ -276,7 +340,7 @@ export function basketSymbols(universe, name, { withPending = false } = {}) {
   const list = [...b.symbols, ...(withPending ? b.addWhenConfirmed || [] : [])];
   return deepFreeze(list.map((sym) => {
     const e = universeEntry(universe, sym);
-    return { symbol: e.symbol, exchange: e.exchange, listedFrom: e.listedFrom };
+    return { symbol: e.symbol, exchange: e.exchange, listedFrom: e.listedFrom, techAi: !!e.techAi };
   }));
 }
 
@@ -348,7 +412,16 @@ export function validateHxrCriteria(c) {
   for (const k of ['PASS', 'FAIL', 'INSUFFICIENT_EVIDENCE']) if (typeof c.outcomes?.[k] !== 'string') errors.push(`outcomes.${k} is required`);
   const sel = c.selection || {};
   checkValue('selection.minRoundTrips', sel.minRoundTrips, int({ min: 0 }), errors);
-  checkValue('selection.stopUnlessAtLeastTimesHold', sel.stopUnlessAtLeastTimesHold, num({ gt: 0 }), errors);
+  if (sel.pickRule !== undefined) {
+    // hxr-prereg-3a: the owner's pick rule (ending_value or return_to_drawdown), pending until amendment 3b.
+    checkValue('selection.pickRule', sel.pickRule, oneOf(PICK_RULES), errors);
+    if (!Array.isArray(sel.benchmarks) || !sel.benchmarks.length) errors.push('selection.benchmarks must list the benchmarks');
+    checkValue('selection.pickRules.return_to_drawdown.mustReachTimesBenchmarks', sel.pickRules?.return_to_drawdown?.mustReachTimesBenchmarks, num({ gt: 0 }), errors);
+  } else checkValue('selection.stopUnlessAtLeastTimesHold', sel.stopUnlessAtLeastTimesHold, num({ gt: 0 }), errors);
+  if (c.validation !== undefined) {
+    checkValue('validation.V1.minRoundTrips', c.validation?.V1?.minRoundTrips, int({ min: 0 }), errors);
+    checkValue('validation.V2.minRatioToHold', c.validation?.V2?.minRatioToHold, num({ gt: 0 }), errors);
+  }
   for (const [list, fields] of [['criteria', CRITERIA_FIELDS], ['prospective', PROSPECTIVE_FIELDS]]) {
     if (!Array.isArray(c[list])) { errors.push(`${list} must be a list`); continue; }
     const ids = c[list].map((x) => x?.id);

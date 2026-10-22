@@ -33,8 +33,9 @@ const PERIODS = {
   dataFrom: '2024-01-02',
   warmupSessions: 20,
   periods: {
-    selection: { basket: 'A', warmupFrom: '2024-01-02', start: '2024-02-01', end: '2024-03-28' },
-    evaluation: { basket: 'A', warmupFrom: '2024-01-02', start: '2024-04-01', end: '2024-06-28' },
+    development: { basket: 'A', warmupFrom: '2024-01-02', start: '2024-02-01', end: '2024-03-28' },
+    validation: { basket: 'A', warmupFrom: '2024-01-02', start: '2024-04-01', end: '2024-06-28' },
+    final: { basket: 'A', warmupFrom: '2024-01-02', start: '2024-04-01', end: '2024-06-28' },
     fullList: { basket: 'B', warmupFrom: '2024-01-02', start: '2024-05-01', end: '2024-06-28' },
     prospective: { basket: 'prospective', start: 'the first session after the account is started' },
   },
@@ -308,8 +309,8 @@ test('readiness: a planted unexplained split and a planted missing session make 
   assert.ok(sym.SPX2.notes.some((n) => /Prospective account only/.test(n)));
   assert.deepEqual(sym.SPX2.dividends, { count: 0, ignoredBeforeListing: 1, withoutPayDate: 0 });
 
-  // Periods: selection is blocked by BBB's unexplained move, evaluation by BBB's missing session.
-  const { selection, evaluation, fullList } = r.periods;
+  // Periods: development is blocked by BBB's unexplained move, validation by BBB's missing session.
+  const { development: selection, validation: evaluation, fullList } = r.periods;
   assert.equal(selection.usable, false);
   assert.deepEqual(selection.members.map((m) => [m.symbol, m.ok]), [['AAA', true], ['BBB', false]]);
   assert.equal(selection.members[0].historyBeforeStart, 21);
@@ -323,10 +324,10 @@ test('readiness: a planted unexplained split and a planted missing session make 
   assert.equal(fullList.members[1].historyBeforeStart, 42);
   assert.equal(fullList.costsCalibrated, false, 'NB has no spread samples');
 
-  // The owner records the move as reviewed: selection becomes usable.
+  // The owner records the move as reviewed: development becomes usable.
   const reviewed = readiness(db, { universe: UNIVERSE, periods: PERIODS, today: '2024-07-01', reviewed: [{ symbol: 'BBB', date: '2024-02-20', reason: 'a real fall, not a split' }] });
-  assert.equal(reviewed.periods.selection.usable, true);
-  assert.equal(reviewed.periods.evaluation.usable, false);
+  assert.equal(reviewed.periods.development.usable, true);
+  assert.equal(reviewed.periods.validation.usable, false);
 
   // Warm-up needs count only sessions from the listing.
   const longer = readiness(db, { universe: UNIVERSE, periods: { ...PERIODS, warmupSessions: 60 }, today: '2024-07-01' });

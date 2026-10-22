@@ -201,6 +201,60 @@ const MIGRATIONS = [
   `,
 ];
 
+// 2: the validation gate (hxr-prereg-3a): 'validation' joins the run and
+// ledger kinds. A CHECK constraint cannot be altered, so both tables are
+// rebuilt; foreignKeysOff keeps the DROP from cascading into the child rows.
+MIGRATIONS.push({
+  foreignKeysOff: true,
+  sql: `
+  CREATE TABLE hxr_runs_v2 (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('selection', 'validation', 'evaluation', 'variant', 'prospective')),
+    label TEXT,
+    version TEXT NOT NULL,
+    config_hash TEXT NOT NULL,
+    config_json TEXT,
+    basket TEXT,
+    symbols_json TEXT,
+    period_json TEXT,
+    fill_model TEXT,
+    delay INTEGER,
+    data_hash TEXT,
+    calibration_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'running',
+    contaminated INTEGER NOT NULL DEFAULT 0,
+    reason TEXT,
+    metrics_json TEXT,
+    details_json TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    finished_at TEXT
+  );
+  INSERT INTO hxr_runs_v2 SELECT id, kind, label, version, config_hash, config_json, basket, symbols_json, period_json, fill_model, delay, data_hash,
+    calibration_hash, status, contaminated, reason, metrics_json, details_json, error, created_at, finished_at FROM hxr_runs;
+  DROP TABLE hxr_runs;
+  ALTER TABLE hxr_runs_v2 RENAME TO hxr_runs;
+  CREATE INDEX hxr_runs_kind ON hxr_runs(kind, id);
+
+  CREATE TABLE hxr_ledger_v2 (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('selection', 'validation', 'evaluation')),
+    prereg TEXT NOT NULL,
+    version TEXT NOT NULL,
+    config_hash TEXT NOT NULL,
+    run_ids_json TEXT,
+    contaminated INTEGER NOT NULL DEFAULT 0,
+    reason TEXT,
+    at TEXT NOT NULL
+  );
+  INSERT INTO hxr_ledger_v2 SELECT id, kind, prereg, version, config_hash, run_ids_json, contaminated, reason, at FROM hxr_ledger;
+  DROP TABLE hxr_ledger;
+  ALTER TABLE hxr_ledger_v2 RENAME TO hxr_ledger;
+  CREATE TRIGGER hxr_ledger_no_update BEFORE UPDATE ON hxr_ledger BEGIN SELECT RAISE(ABORT, 'hxr_ledger is append-only'); END;
+  CREATE TRIGGER hxr_ledger_no_delete BEFORE DELETE ON hxr_ledger BEGIN SELECT RAISE(ABORT, 'hxr_ledger is append-only'); END;
+  `,
+});
+
 export const MIGRATION_COUNT = MIGRATIONS.length;
 export const HXR_DB_NAME = 'hxr-sim.sqlite';
 
@@ -270,18 +324,30 @@ function migrate(db) {
   let v = row ? row.version : 0;
   if (!row) db.prepare('INSERT INTO hxr_schema_version (version) VALUES (0)').run();
   while (v < MIGRATIONS.length) {
+    const m = MIGRATIONS[v];
+    const sql = typeof m === 'string' ? m : m.sql;
+    // A table rebuild must not cascade through ON DELETE: the pragma only takes
+    // effect outside a transaction, so it is set before BEGIN and restored after.
+    const fkOff = typeof m === 'object' && m.foreignKeysOff;
+    if (fkOff) db.exec('PRAGMA foreign_keys = OFF');
     db.exec('BEGIN IMMEDIATE');
     try {
       v = db.prepare('SELECT version FROM hxr_schema_version').get().version;
       if (v < MIGRATIONS.length) {
-        db.exec(MIGRATIONS[v]);
+        db.exec(sql);
         v += 1;
         db.prepare('UPDATE hxr_schema_version SET version = ?').run(v);
       }
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
+      if (fkOff) db.exec('PRAGMA foreign_keys = ON');
       throw e;
+    }
+    if (fkOff) {
+      const bad = db.prepare('PRAGMA foreign_key_check').all();
+      db.exec('PRAGMA foreign_keys = ON');
+      if (bad.length) throw new Error(`HXR migration ${v} left ${bad.length} dangling foreign-key row(s)`);
     }
   }
 }

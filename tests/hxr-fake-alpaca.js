@@ -10,8 +10,10 @@ import { zonedToUtc, zonedParts, NY } from '../server/time.js';
 export const KEY_ID = 'PKHXRTESTKEY0123456789';
 export const SECRET_KEY = 'hxr-test-secret-abcdefghijklmnopqrstuvwxyz';
 export const MARKET_END = '2026-11-20';
-// The prospective crash: MU's close on this session is 35% below its open.
-export const CRASH = { symbol: 'MU', date: '2026-10-26', factor: 0.65 };
+// The prospective crash: AMZN's close on this session is 35% below its open.
+// AMZN comes first alphabetically, so the risk-sized account (hxr-prereg-3)
+// always sizes it first and holds it on day one.
+export const CRASH = { symbol: 'AMZN', date: '2026-10-26', factor: 0.65 };
 
 const r4 = (x) => Math.round(x * 10000) / 10000;
 const iso = (d) => d.toISOString();

@@ -16,12 +16,13 @@ import crypto from 'node:crypto';
 import * as store from './store.js';
 import {
   HXR_DIR, HXR_CONFIG_DIR, PREREG, loadHxrConfig, loadHxrUniverse, loadHxrPeriods, loadHxrCriteria, listHxrConfigs, validateHxrConfig,
-  hxrConfigHash, variantConfig, halfSpreadFor, basketSymbols, excludedDates, canonicalJson, configFileName, criterion,
+  hxrConfigHash, variantConfig, holdDayOneConfig, halfSpreadFor, basketSymbols, excludedDates, canonicalJson, configFileName, criterion,
 } from './config.js';
 import { createHxrSource, BAR_FINAL_AFTER_CLOSE_MIN } from './source.js';
 import { buildInputs, buildSpreadTable, halfSpreadFn, readiness as buildReadiness, sampledSpreadDays, spreadSampleFromQuotes, median, SPREAD_METHOD } from './data.js';
 import { createEngine, runBacktest, nextSession, firstSessionOnOrAfter, historyLength, ENGINE_VERSION } from './engine.js';
-import { computeRunMetrics, compareArms, fillComparison, evaluateCriteria, selectCandidate, PASS_MEANING } from './metrics.js';
+import { computeRunMetrics, compareArms, compareBenchmarks, fillComparison, evaluateCriteria, evaluateValidation, selectCandidate, PASS_MEANING } from './metrics.js';
+import { historyLengthFor } from './engine.js';
 import { isTradingDay, previousTradingDay, regularSessionBounds } from '../calendar.js';
 import { todayIn, addDays, NY } from '../time.js';
 import { redact } from '../config.js';
@@ -29,22 +30,27 @@ import { redact } from '../config.js';
 export const NOTICE = 'Simulated only. No order is sent to any broker or paper-trading platform.';
 export const REAL_ONLY = 'HXR runs on real market data in the real workspace only';
 export const FROZEN_VERSION = 'hxr-1.0.0';
-// The pre-registered arms of hxr-prereg-2 (PREREGISTRATION-2.md sections 3-4):
-// exactly these files. Only the candidates can be picked; X3 is the owner's
-// comparison, run and reported but never picked or frozen. C1-C3 belong to the
-// superseded hxr-prereg-1 and are never run.
+// The pre-registered arms of hxr-prereg-3a (PREREGISTRATION-3a.md sections 1-5):
+// exactly these files. Six candidates (X1 and X2 with fresh-entry policies A, B
+// and C) can be picked; X3A-C are the owner's comparison, run and reported but
+// never picked; the day-one hold benchmark is derived at run time. The earlier
+// pre-registrations' candidates are superseded and never run.
 export const HOLD_FILE = 'hxr-hold-0.1.0.json';
-export const CANDIDATE_FILES = ['hxr-x1-0.2.0.json', 'hxr-x2-0.2.0.json'];
-export const COMPARISON_FILES = ['hxr-x3-0.2.0.json'];
-export const SUPERSEDED_FILES = ['hxr-c1-0.1.0.json', 'hxr-c2-0.1.0.json', 'hxr-c3-0.1.0.json'];
-export const PREREG_FILES = ['PREREGISTRATION.md', 'PREREGISTRATION-2.md', 'ENGINE-SPEC.md', 'universe-hxr-v2.json', 'periods-hxr-v2.json', 'criteria-hxr-v2.json'];
-// PREREGISTRATION-2.md section 4: one setting changed at a time, reported only
-// (in-sample), never used for the pick.
+export const CANDIDATE_FILES = ['hxr-x1a-0.3.0.json', 'hxr-x1b-0.3.0.json', 'hxr-x1c-0.3.0.json', 'hxr-x2a-0.3.0.json', 'hxr-x2b-0.3.0.json', 'hxr-x2c-0.3.0.json'];
+export const COMPARISON_FILES = ['hxr-x3a-0.3.0.json', 'hxr-x3b-0.3.0.json', 'hxr-x3c-0.3.0.json'];
+export const SUPERSEDED_FILES = ['hxr-c1-0.1.0.json', 'hxr-c2-0.1.0.json', 'hxr-c3-0.1.0.json', 'hxr-x1-0.2.0.json', 'hxr-x2-0.2.0.json', 'hxr-x3-0.2.0.json'];
+const SUPERSEDED_PREREG = { 'hxr-c1-0.1.0.json': 'hxr-prereg-1', 'hxr-c2-0.1.0.json': 'hxr-prereg-1', 'hxr-c3-0.1.0.json': 'hxr-prereg-1', 'hxr-x1-0.2.0.json': 'hxr-prereg-2', 'hxr-x2-0.2.0.json': 'hxr-prereg-2', 'hxr-x3-0.2.0.json': 'hxr-prereg-2' };
+export const PREREG_FILES = ['PREREGISTRATION.md', 'PREREGISTRATION-2.md', 'PREREGISTRATION-3.md', 'PREREGISTRATION-3a.md', 'ENGINE-SPEC.md', 'universe-hxr-v3.json', 'periods-hxr-v3.json', 'criteria-hxr-v3a.json'];
+export const DAY_ONE_HOLD = 'hold-day-one';
+// PREREGISTRATION-3.md section 5.4 and PREREGISTRATION-3a.md section 1: one
+// setting changed at a time, for the winning candidate only, on the development
+// period only, reported only (dotted paths into the config).
 export const NEIGHBOURS = deepFreezeList({
-  'x1-0.2.0': [{ pivotSessions: 3 }, { pivotSessions: 8 }, { reboundMultiple: 0.5 }, { reboundMultiple: 1.5 }, { bufferMultiple: 0.25 }, { bufferMultiple: 1 }],
-  'x2-0.2.0': [{ multiple: 2.5 }, { multiple: 3.5 }, { pivotSessions: 3 }, { pivotSessions: 8 }, { reboundMultiple: 0.5 }, { reboundMultiple: 1.5 }],
+  x1: [{ 'rule.pivotSessions': 3 }, { 'rule.pivotSessions': 8 }, { 'rule.reboundMultiple': 0.5 }, { 'rule.reboundMultiple': 1.5 }, { 'rule.bufferMultiple': 0.25 }, { 'rule.bufferMultiple': 1 }, { 'initialLoss.multiple': 2 }, { 'initialLoss.multiple': 3 }, { 'risk.plannedLossPerTradeUsd': 100 }, { 'risk.plannedLossPerTradeUsd': 200 }],
+  x2: [{ 'rule.multiple': 2.5 }, { 'rule.multiple': 3.5 }, { 'rule.pivotSessions': 3 }, { 'rule.pivotSessions': 8 }, { 'rule.reboundMultiple': 0.5 }, { 'rule.reboundMultiple': 1.5 }, { 'initialLoss.multiple': 2 }, { 'initialLoss.multiple': 3 }, { 'risk.plannedLossPerTradeUsd': 100 }, { 'risk.plannedLossPerTradeUsd': 200 }],
 });
 function deepFreezeList(o) { return Object.freeze(Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Object.freeze(v.map((x) => Object.freeze({ ...x })))]))); }
+export const neighboursFor = (version) => NEIGHBOURS[String(version).slice(0, 2)] || [];
 // The role of a config file under the active pre-registration.
 export function configRole(file) {
   if (file === HOLD_FILE) return 'hold';
@@ -54,17 +60,20 @@ export function configRole(file) {
   return 'later';
 }
 
-// A neighbouring setting of a candidate (reported only): the rule with one
-// parameter changed. It records the base hash and the change, so its hash
-// differs from the base's.
+// A neighbouring setting of a candidate (reported only): one existing setting
+// changed, named by its dotted path. It records the base hash and the change,
+// so its hash differs from the base's.
 export function neighbourConfig(base, change) {
   const keys = Object.keys(change || {});
-  if (keys.length !== 1 || !(keys[0] in base.rule)) throw new Error(`A neighbour changes exactly one existing rule setting (got ${JSON.stringify(change)})`);
+  if (keys.length !== 1) throw new Error(`A neighbour changes exactly one setting (got ${JSON.stringify(change)})`);
+  const [section, key] = keys[0].split('.');
+  if (!key || !(section in base) || !(key in base[section])) throw new Error(`A neighbour changes an existing setting (${keys[0]} is not in ${base.version})`);
   const out = clone(base);
-  out.rule[keys[0]] = change[keys[0]];
+  const before = out[section][key];
+  out[section][key] = change[keys[0]];
   out.baseHash = hxrConfigHash(base);
   out.variant = { neighbour: { ...change } };
-  out.label = `${base.label ?? base.version} (neighbour: ${keys[0]} ${change[keys[0]]}, base ${base.rule[keys[0]]})`;
+  out.label = `${base.label ?? base.version} (neighbour: ${keys[0]} ${change[keys[0]]}, base ${before})`;
   const errors = validateHxrConfig(out);
   if (errors.length) throw new Error(`The neighbour makes the config invalid: ${errors.join('; ')}`);
   return out;
@@ -78,7 +87,7 @@ export const P4_STATEMENT = 'Prospective HXR vs hold, reported against the histo
 export const EXPERIMENT_LOG_FILE = 'EXPERIMENT-LOG.md';
 // PREREGISTRATION.md section 7, disclosure 1: decided by the owner before any HXR run.
 export const MU_CHOICES = ['keep', 'drop'];
-const RUN_KINDS = ['selection', 'evaluation', 'variant', 'prospective'];
+const RUN_KINDS = ['selection', 'validation', 'evaluation', 'variant', 'prospective'];
 const TICK_INTERVAL_MIN = 10;
 const ACTIONS_REFRESH_MIN = 360;
 const NEWS_OVERLAP_MIN = 10;
@@ -142,7 +151,7 @@ function headline(m) {
   return {
     endValue: m.endValue ?? null, totalReturnPct: m.totalReturnPct ?? null, annualisedReturnPct: m.annualisedReturnPct ?? null,
     maxDrawdownPct: m.maxDrawdownPct ?? null, returnToDrawdown: m.returnToDrawdown ?? null, roundTrips: m.roundTrips ?? null,
-    sessions: m.sessions ?? null, timeInCashPct: m.timeInCashPct ?? null,
+    sessions: m.sessions ?? null, timeInCashPct: m.timeInCashPct ?? null, freshEntries: m.freshEntries?.count ?? null, initialLossExits: m.initialLossExits ?? null,
   };
 }
 
@@ -171,7 +180,7 @@ export function preregManifest({ dir = HXR_DIR, configDir = HXR_CONFIG_DIR, vers
   const rel = (f) => path.relative(dir, f).split(path.sep).join('/');
   const files = fixed.map((f) => ({ file: rel(f), sha256: sha(fs.readFileSync(f)) }));
   // hxr-prereg-1's C1-C3: listed apart, never part of this set or its hash.
-  const superseded = SUPERSEDED_FILES.filter((f) => fs.existsSync(path.join(configDir, f))).map((f) => ({ file: rel(path.join(configDir, f)), sha256: sha(fs.readFileSync(path.join(configDir, f))), prereg: 'hxr-prereg-1' }));
+  const superseded = SUPERSEDED_FILES.filter((f) => fs.existsSync(path.join(configDir, f))).map((f) => ({ file: rel(path.join(configDir, f)), sha256: sha(fs.readFileSync(path.join(configDir, f))), prereg: SUPERSEDED_PREREG[f] }));
   const known = new Set([HOLD_FILE, ...CANDIDATE_FILES, ...COMPARISON_FILES, ...SUPERSEDED_FILES]);
   const later = fs.readdirSync(configDir).filter((f) => f.endsWith('.json') && !known.has(f)).sort().map((f) => {
     const full = path.join(configDir, f);
@@ -215,7 +224,7 @@ export function experimentLogFile(dir = HXR_DIR) {
 // ---------- the demo workspace ----------
 
 const METHODS = [
-  'overview', 'fetchData', 'fetchStatus', 'readiness', 'setSpcxConfirmed', 'setMuDecision', 'reviewMove', 'runSelection', 'runEvaluation', 'startProspective', 'prospectiveTick',
+  'overview', 'fetchData', 'fetchStatus', 'readiness', 'setSpcxConfirmed', 'setMuDecision', 'reviewMove', 'runSelection', 'runValidation', 'runEvaluation', 'startProspective', 'prospectiveTick',
   'pauseProspective', 'resumeProspective', 'prospectiveStatus', 'listRuns', 'getRun', 'experiments', 'ledger', 'news',
 ];
 
@@ -237,7 +246,7 @@ export function createHxr(ctx, opts = {}) {
   const clock = opts.clock || (() => new Date());
   const universe = loadHxrUniverse();
   const periods = loadHxrPeriods(undefined, { universe });
-  const criteria = loadHxrCriteria();
+  const criteria = loadHxrCriteria(opts.criteriaPath);
   const excluded = excludedDates(periods);
   const uSyms = new Map(universe.symbols.map((s) => [s.symbol, s]));
   const safe = (m) => redact(String(m ?? ''), cfg);
@@ -501,103 +510,166 @@ export function createHxr(ctx, opts = {}) {
   // ---------- selection (PREREGISTRATION.md section 8) ----------
 
   async function runSelection({ confirm, reason } = {}) {
-    if (confirm !== true) throw new HxrError(400, 'The selection run needs confirm: true. It uses the selection period once for this pre-registration.');
+    if (confirm !== true) throw new HxrError(400, 'The development pick (selection run) needs confirm: true. It uses the development period once for this pre-registration.');
     const why = cleanReason(reason);
     requireMuDecision();
+    if (criteria.selection?.pickRule === 'pending_owner_choice') {
+      throw new HxrError(409, "The development pick rule is pending the owner's choice (PREREGISTRATION-3a.md section 2): record amendment 3b (selection.pickRule = ending_value or return_to_drawdown in criteria-hxr-v3a.json, and an EXPERIMENT-LOG.md entry) before the development pick. Nothing was run.");
+    }
     const prior = store.listLedger(db, { kind: 'selection' }).filter((e) => e.prereg === PREREG);
     if (prior.length && !why) {
-      throw new HxrError(409, `A selection was already run for ${PREREG} (${prior.length} time(s), last ${prior.at(-1).at}). A repeat needs a written reason, is marked contaminated and can never freeze a version.`);
+      throw new HxrError(409, `The development pick was already run for ${PREREG} (${prior.length} time(s), last ${prior.at(-1).at}). A repeat needs a written reason, is marked contaminated and can never freeze a version.`);
     }
     const contaminated = prior.length > 0;
-    requireUsable(readinessNow({ fresh: true }), ['selection']);
+    requireUsable(readinessNow({ fresh: true }), ['development']);
     claim('selection');
     try {
-      const period = periods.periods.selection;
+      const period = periods.periods.development;
       const symbols = basketSymbols(universe, period.basket);
       const hold = holdConfig();
+      const cands = CANDIDATE_FILES.map(loadArm), comps = COMPARISON_FILES.map(loadArm);
+      // The day-one hold is the candidates' own initial allocation, held: identical for every candidate sharing the sizing settings.
+      const dayOne = holdDayOneConfig(cands[0]);
       const arms = [
         { name: hold.version, role: 'hold', config: hold },
-        ...CANDIDATE_FILES.map((f) => { const c = loadArm(f); return { name: c.version, role: 'candidate', config: c }; }),
-        ...COMPARISON_FILES.map((f) => { const c = loadArm(f); return { name: c.version, role: 'comparison', config: c }; }),
+        { name: DAY_ONE_HOLD, role: 'hold_day_one', config: dayOne },
+        ...cands.map((c) => ({ name: c.version, role: 'candidate', config: c })),
+        ...comps.map((c) => ({ name: c.version, role: 'comparison', config: c })),
       ];
       const tag = contaminated ? ' [repeat: contaminated]' : '';
       const plan = arms.map((a) => ({
-        ...a, kind: 'selection', period, symbols, basket: period.basket, contaminated, reason: why,
-        label: `Selection (in-sample, ${period.start} to ${period.end}): ${a.config.label}${tag}`,
+        ...a, arm: a.name, variantKey: 'main', kind: 'selection', period, symbols, basket: period.basket, contaminated, reason: why,
+        label: `Development pick (in-sample, ${period.start} to ${period.end}): ${a.config.label}${tag}`,
       }));
-      // Assumed vs realistically available fills for every run (PREREGISTRATION.md
-      // section 11): each arm again with first 15-minute VWAP fills. Reported
-      // only; the pick uses the base-cost runs above.
+      // Assumed vs realistically available fills for every arm (reported only; the pick uses the base-cost runs).
       const fillPlan = arms.map((a) => ({
         name: a.name, role: 'fills', arm: a.name, variantKey: 'vw15', config: variantConfig(a.config, { fillModel: 'vw15' }), kind: 'variant',
         period, symbols, basket: period.basket, contaminated, reason: why,
-        label: `Selection (in-sample, ${period.start} to ${period.end}): ${a.config.label}, first 15-minute VWAP fills (reported)${tag}`,
+        label: `Development pick (in-sample, ${period.start} to ${period.end}): ${a.config.label}, first 15-minute VWAP fills (reported)${tag}`,
       }));
-      // Neighbouring settings of each selectable candidate (reported only, in-sample).
-      const neighbourPlan = arms.filter((a) => a.role === 'candidate').flatMap((a) => (NEIGHBOURS[a.name] || []).map((change) => {
-        const config = neighbourConfig(a.config, change);
-        return { name: a.name, role: 'neighbour', arm: a.name, variantKey: `neighbour:${Object.entries(change).map(([k, x]) => `${k}=${x}`).join(',')}`, change, config, kind: 'variant', period, symbols, basket: period.basket, contaminated, reason: why, label: `Selection (in-sample, ${period.start} to ${period.end}): ${config.label} (reported only)${tag}` };
-      }));
-      // The robustness list R on the same dates (PREREGISTRATION-2.md section 5): reported only, run only when ready.
-      const robustPeriod = periods.periods.robustSelection;
-      const robustProblem = robustPeriod ? periodProblem(readinessNow(), 'robustSelection') : 'not defined';
-      const robustSymbols = robustPeriod ? basketSymbols(universe, robustPeriod.basket) : [];
-      const robustPlan = robustPeriod && !robustProblem ? arms.map((a) => ({
-        name: a.name, role: 'robust', arm: a.name, variantKey: 'robust', config: a.config, kind: 'variant', period: robustPeriod, symbols: robustSymbols, basket: robustPeriod.basket, contaminated, reason: why,
-        label: `Robustness list ${robustPeriod.basket} (${robustPeriod.start} to ${robustPeriod.end}, reported only): ${a.config.label}${tag}`,
-      })) : [];
       const setHash = sha(canonicalJson(arms.map((a) => [a.name, hxrConfigHash(a.config)])));
-      let choice = null, frozen = null, frozenNote = null, neighbours = null, robustness = null;
-      await executePlan([...plan, ...fillPlan, ...neighbourPlan, ...robustPlan], (at) => {
+      const byRole = (role) => plan.find((p) => p.role === role);
+      let choice = null, frozen = null, frozenNote = null, neighbours = null;
+      const nPlan = [];
+      await executePlan([...plan, ...fillPlan], (at) => {
         plan.forEach((p, i) => {
           p.fills = fillComparison(p.result, fillPlan[i].result);
           store.updateRun(db, p.id, { details: { ...store.getRun(db, p.id).details, fills: p.fills, fillsRunId: fillPlan[i].id } });
         });
-        const holdM = plan[0].metrics;
-        // Only the candidates can be picked (X3 is the owner's comparison).
-        choice = selectCandidate(criteria.selection, { hold: holdM, candidates: plan.filter((p) => p.role === 'candidate').map((p) => ({ name: p.name, metrics: p.metrics })) });
-        const beats = (m) => (choice.threshold != null && Number.isFinite(m?.returnToDrawdown) ? m.returnToDrawdown >= choice.threshold : null);
-        neighbours = plan.filter((p) => p.role === 'candidate').map((p) => ({
-          candidate: p.name, base: { runId: p.id, returnToDrawdown: p.metrics.returnToDrawdown, roundTrips: p.metrics.roundTrips, beatsHoldThreshold: beats(p.metrics) },
-          neighbours: neighbourPlan.filter((n) => n.arm === p.name).map((n) => ({
-            change: n.change, runId: n.id, returnToDrawdown: n.metrics.returnToDrawdown, roundTrips: n.metrics.roundTrips, vsHold: compareArms(n.metrics, holdM),
-            beatsHoldThreshold: beats(n.metrics), sameConclusion: beats(n.metrics) === beats(p.metrics),
-          })),
-        }));
-        robustness = robustPlan.length
-          ? { run: true, basket: robustPeriod.basket, period: { start: robustPeriod.start, end: robustPeriod.end }, note: 'Reported only: never used for the pick.', arms: robustPlan.map((r) => ({ name: r.name, runId: r.id, returnToDrawdown: r.metrics.returnToDrawdown, roundTrips: r.metrics.roundTrips, vsHold: r.name === hold.version ? null : compareArms(r.metrics, robustPlan[0].metrics) })) }
-          : { run: false, basket: robustPeriod?.basket ?? null, reason: robustProblem, note: 'Not run: the robustness list was not ready (reported only, never a gate).' };
-        for (const p of plan.filter((x) => x.role === 'candidate')) store.updateRun(db, p.id, { details: { ...store.getRun(db, p.id).details, neighbours: neighbours.find((n) => n.candidate === p.name) } });
-        store.updateRun(db, plan[0].id, { details: { ...store.getRun(db, plan[0].id).details, robustness } });
-        store.appendLedger(db, { kind: 'selection', prereg: PREREG, version: `selection:${arms.map((a) => a.name).join(',')}`, configHash: setHash, runIds: [...plan, ...fillPlan, ...neighbourPlan, ...robustPlan].map((p) => p.id), contaminated, reason: why || null, at });
+        const holdM = byRole('hold').metrics, dayOneM = byRole('hold_day_one').metrics;
+        // Only the six candidates can be picked; X3A-C are the owner's comparison.
+        choice = selectCandidate(criteria.selection, { hold: holdM, holdDayOne: dayOneM, candidates: plan.filter((p) => p.role === 'candidate').map((p) => ({ name: p.name, metrics: p.metrics })) });
+        store.appendLedger(db, { kind: 'selection', prereg: PREREG, version: `selection:${arms.map((a) => a.name).join(',')}`, configHash: setHash, runIds: [...plan, ...fillPlan].map((p) => p.id), contaminated, reason: why || null, at });
         store.appendExperiment(db, {
-          at, what: contaminated ? 'selection run (repeat, contaminated)' : 'selection run', version: arms.map((a) => a.name).join(', '),
-          dataTouched: `selection period ${period.start} to ${period.end} (warm-up from ${period.warmupFrom}), basket ${period.basket}: ${symbols.map((s) => s.symbol).join(', ')}; each arm also with first 15-minute VWAP fills (reported); ${neighbourPlan.length} neighbouring settings (reported); ${robustPlan.length ? `robustness list ${robustPeriod.basket}: ${robustSymbols.map((s) => s.symbol).join(', ')} (reported)` : 'robustness list not run (not ready)'}`,
-          resultsSeen: 'yes: in-sample selection results', note: `${choice.reason}${why ? ` Reason for the repeat: ${why}` : ''}`,
+          at, what: contaminated ? 'development pick (repeat, contaminated)' : 'development pick', version: arms.map((a) => a.name).join(', '),
+          dataTouched: `development period ${period.start} to ${period.end} (warm-up from ${period.warmupFrom}), basket ${period.basket}: ${symbols.map((s) => s.symbol).join(', ')}; the fully invested hold and the day-one hold; each arm also with first 15-minute VWAP fills (reported); pick rule ${criteria.selection.pickRule}`,
+          resultsSeen: 'yes: in-sample development results', note: `${choice.reason}${why ? ` Reason for the repeat: ${why}` : ''}`,
         });
-        if (!choice.chosen) { frozenNote = 'No candidate is frozen: HXR is reported as having no candidate worth evaluating, and the evaluation period is not used.'; return; }
+        if (!choice.chosen) { frozenNote = 'No candidate is frozen: HXR is reported as having no candidate worth validating, and the validation and final periods are not used.'; return; }
         const existing = store.getVersion(db, FROZEN_VERSION);
         if (existing) { frozen = existing; frozenNote = `${FROZEN_VERSION} was already frozen on ${existing.frozenAt} (from ${existing.basedOn}); it is unchanged.`; return; }
-        // The pre-registration allows one selection: a repeat never freezes a version.
-        if (contaminated) { frozenNote = `A repeated (contaminated) selection never freezes ${FROZEN_VERSION}.`; return; }
+        // The pre-registration allows one development pick: a repeat never freezes a version.
+        if (contaminated) { frozenNote = `A repeated (contaminated) development pick never freezes ${FROZEN_VERSION}.`; return; }
         const chosen = plan.find((p) => p.name === choice.chosen).config;
-        const config = { ...clone(chosen), version: FROZEN_VERSION, label: `HXR ${FROZEN_VERSION} (frozen from ${chosen.version}: ${chosen.label})`, createdAt: at.slice(0, 10), status: `frozen by the ${PREREG} selection run; the experimental assumptions are unchanged` };
+        const config = { ...clone(chosen), version: FROZEN_VERSION, label: `HXR ${FROZEN_VERSION} (frozen from ${chosen.version}: ${chosen.label})`, createdAt: at.slice(0, 10), status: `frozen by the ${PREREG} development pick; the experimental assumptions are unchanged` };
         const errors = validateHxrConfig(config);
         if (errors.length) throw new Error(`The frozen config is invalid: ${errors.join('; ')}`);
         frozen = store.saveVersion(db, { version: FROZEN_VERSION, config, configHash: hxrConfigHash(config), basedOn: chosen.version, prereg: PREREG, frozenAt: at });
         store.appendExperiment(db, {
-          at, what: `froze ${FROZEN_VERSION}`, version: FROZEN_VERSION, dataTouched: 'none beyond the selection run', resultsSeen: 'selection period only',
-          note: `based on ${chosen.version} (config hash ${frozen.configHash}); the evaluation period has not been used`,
+          at, what: `froze ${FROZEN_VERSION}`, version: FROZEN_VERSION, dataTouched: 'none beyond the development pick', resultsSeen: 'development period only',
+          note: `based on ${chosen.version} (config hash ${frozen.configHash}); the validation and final periods have not been used`,
         });
-        frozenNote = `${FROZEN_VERSION} frozen from ${chosen.version}. Before the evaluation run, record it as strategy/hxr/configs/${configFileName(FROZEN_VERSION)} (the frozen config JSON in this response, unchanged, so its hash ${frozen.configHash.slice(0, 12)} matches) and add an EXPERIMENT-LOG.md entry.`;
+        frozenNote = `${FROZEN_VERSION} frozen from ${chosen.version}. Before the validation run, record it as strategy/hxr/configs/${configFileName(FROZEN_VERSION)} (the frozen config JSON in this response, unchanged, so its hash ${frozen.configHash.slice(0, 12)} matches) and add an EXPERIMENT-LOG.md entry.`;
+      });
+      // Neighbouring settings of the winner only (PREREGISTRATION-3a.md section 1): development only, reported only.
+      if (choice?.chosen && !contaminated) {
+        const winner = plan.find((p) => p.name === choice.chosen);
+        for (const change of neighboursFor(winner.config.version)) {
+          const config = neighbourConfig(winner.config, change);
+          nPlan.push({ name: winner.name, role: 'neighbour', arm: winner.name, variantKey: `neighbour:${Object.entries(change).map(([k, x]) => `${k}=${x}`).join(',')}`, change, config, kind: 'variant', period, symbols, basket: period.basket, contaminated, reason: why, label: `Development (in-sample, ${period.start} to ${period.end}): ${config.label} (reported only)` });
+        }
+        if (nPlan.length) {
+          await executePlan(nPlan, (at) => {
+            const holdM = byRole('hold').metrics, dayOneM = byRole('hold_day_one').metrics;
+            const byEnd = criteria.selection.pickRule === 'ending_value';
+            const beats = (m) => (choice.threshold == null ? null : byEnd ? (m.endValue ?? -Infinity) > choice.threshold : (m.returnToDrawdown ?? -Infinity) >= choice.threshold);
+            neighbours = {
+              candidate: winner.name, pickRule: criteria.selection.pickRule, threshold: choice.threshold,
+              base: { runId: winner.id, endValue: winner.metrics.endValue, returnToDrawdown: winner.metrics.returnToDrawdown, roundTrips: winner.metrics.roundTrips, beatsBenchmarks: beats(winner.metrics) },
+              neighbours: nPlan.map((n) => ({
+                change: n.change, runId: n.id, endValue: n.metrics.endValue, returnToDrawdown: n.metrics.returnToDrawdown, roundTrips: n.metrics.roundTrips,
+                vsHold: compareArms(n.metrics, holdM), vsHoldDayOne: compareArms(n.metrics, dayOneM), beatsBenchmarks: beats(n.metrics), sameConclusion: beats(n.metrics) === beats(winner.metrics),
+              })),
+            };
+            store.updateRun(db, winner.id, { details: { ...store.getRun(db, winner.id).details, neighbours } });
+            store.appendExperiment(db, {
+              at, what: 'neighbouring settings of the pick (reported only)', version: winner.name,
+              dataTouched: `development period ${period.start} to ${period.end}, basket ${period.basket}: ${nPlan.length} runs, one setting changed at a time`,
+              resultsSeen: 'yes: in-sample development results (reported only; never used for the pick)', note: `${neighbours.neighbours.filter((n) => n.sameConclusion).length} of ${nPlan.length} neighbours reach the same conclusion against the benchmarks as the pick`,
+            });
+          });
+        }
+      }
+      const holdM = byRole('hold').metrics, dayOneM = byRole('hold_day_one').metrics;
+      return wrap({
+        kind: 'selection', prereg: PREREG, contaminated, reason: why || null, pickRule: criteria.selection.pickRule,
+        runs: [...plan, ...fillPlan, ...nPlan].map(runRef), choice,
+        benchmarks: { hold: headline(holdM), holdDayOne: headline(dayOneM) },
+        comparisons: plan.filter((p) => p.role === 'candidate' || p.role === 'comparison').map((p) => ({ name: p.name, role: p.role, vsHold: compareArms(p.metrics, holdM), vsHoldDayOne: compareArms(p.metrics, dayOneM) })),
+        fills: Object.fromEntries(plan.map((p) => [p.name, p.fills])),
+        neighbours,
+        frozen: frozen ? { version: frozen.version, configHash: frozen.configHash, basedOn: frozen.basedOn, frozenAt: frozen.frozenAt, file: `strategy/hxr/configs/${configFileName(frozen.version)}`, config: frozen.config } : null,
+        note: `Development results are in-sample. ${frozenNote}`,
+      });
+    } finally { busy = null; }
+  }
+
+  // ---------- the validation gate (PREREGISTRATION-3.md section 5, 3a section 5) ----------
+
+  const validationState = () => store.getSetting(db, 'validation', null);
+
+  async function runValidation({ confirm, reason } = {}) {
+    if (confirm !== true) throw new HxrError(400, 'The validation run needs confirm: true. It runs once for the frozen version; a repeat is marked contaminated and can never validate.');
+    const why = cleanReason(reason);
+    const v = frozenVersion();
+    if (!v) throw new HxrError(409, `No frozen version: ${FROZEN_VERSION} is frozen only when the development pick chooses a candidate. The validation period stays unused.`);
+    requireMuDecision();
+    const prior = store.countLedger(db, 'validation', PREREG, v.version, v.configHash);
+    if (prior && !why) throw new HxrError(409, `${v.version} was already validated (${prior} time(s)). A repeat needs a written reason and is marked contaminated; a contaminated validation can never validate.`);
+    const contaminated = prior > 0;
+    requireUsable(readinessNow({ fresh: true }), ['validation']);
+    claim('validation');
+    try {
+      const period = periods.periods.validation;
+      const symbols = basketSymbols(universe, period.basket);
+      const frozen = v.config, hold = holdConfig(), dayOne = holdDayOneConfig(frozen);
+      const tag = contaminated ? ' [repeat: contaminated]' : '';
+      const arms = [{ name: v.version, role: 'hxr', config: frozen }, { name: hold.version, role: 'hold', config: hold }, { name: DAY_ONE_HOLD, role: 'hold_day_one', config: dayOne }];
+      const plan = arms.map((a) => ({ ...a, arm: a.role, variantKey: 'main', kind: 'validation', period, symbols, basket: period.basket, contaminated, reason: why, label: `Validation ${period.start} to ${period.end}: ${a.config.label}${tag}` }));
+      const fillPlan = arms.map((a) => ({ name: a.name, role: 'fills', arm: a.role, variantKey: 'vw15', config: variantConfig(a.config, { fillModel: 'vw15' }), kind: 'variant', period, symbols, basket: period.basket, contaminated, reason: why, label: `Validation ${period.start} to ${period.end}: ${a.config.label}, first 15-minute VWAP fills (reported)${tag}` }));
+      let gate = null, reported = null;
+      await executePlan([...plan, ...fillPlan], (at) => {
+        const m = Object.fromEntries(plan.map((p) => [p.role, p.metrics]));
+        gate = evaluateValidation(criteria, { hxr: m.hxr, hold: m.hold, holdDayOne: m.hold_day_one }, { contaminated });
+        reported = {
+          comparisons: { main: compareBenchmarks(m.hxr, { hold: m.hold, holdDayOne: m.hold_day_one }) },
+          fills: Object.fromEntries(plan.map((p, i) => [p.role, fillComparison(p.result, fillPlan[i].result)])),
+          freshEntries: m.hxr.freshEntries ?? null, buyBacks: m.hxr.buyBacks ?? null, missedRebounds: m.hxr.missedRebounds, lossesAfterBuyBack: m.hxr.lossesAfterBuyBack,
+        };
+        const hx = plan[0];
+        store.updateRun(db, hx.id, { details: { ...store.getRun(db, hx.id).details, validation: gate, reported } });
+        store.appendLedger(db, { kind: 'validation', prereg: PREREG, version: v.version, configHash: v.configHash, runIds: [...plan, ...fillPlan].map((p) => p.id), contaminated, reason: why || null, at });
+        if (!contaminated) store.setSetting(db, 'validation', { version: v.version, configHash: v.configHash, outcome: gate.outcome, at, runIds: plan.map((p) => p.id) });
+        store.appendExperiment(db, {
+          at, what: contaminated ? 'validation run (repeat, contaminated)' : 'validation run', version: v.version,
+          dataTouched: `validation period ${period.start} to ${period.end} (warm-up from ${period.warmupFrom}), basket ${period.basket}: ${symbols.map((s) => s.symbol).join(', ')}; the fully invested hold and the day-one hold; each with first 15-minute VWAP fills (reported)`,
+          resultsSeen: 'yes: validation results', note: `outcome ${gate.outcome} (${gate.meaning})${why ? `. Reason for the repeat: ${why}` : ''}`,
+        });
       });
       return wrap({
-        kind: 'selection', prereg: PREREG, contaminated, reason: why || null, runs: [...plan, ...fillPlan, ...neighbourPlan, ...robustPlan].map(runRef), choice,
-        comparisons: plan.slice(1).map((p) => ({ name: p.name, role: p.role, vsHold: compareArms(p.metrics, plan[0].metrics) })),
-        neighbours, robustness,
-        fills: Object.fromEntries(plan.map((p) => [p.name, p.fills])),
-        frozen: frozen ? { version: frozen.version, configHash: frozen.configHash, basedOn: frozen.basedOn, frozenAt: frozen.frozenAt, file: `strategy/hxr/configs/${configFileName(frozen.version)}`, config: frozen.config } : null,
-        note: `Selection results are in-sample. ${frozenNote}`,
+        kind: 'validation', prereg: PREREG, version: v.version, configHash: v.configHash, basedOn: v.basedOn, contaminated, reason: why || null,
+        outcome: gate.outcome, meaning: gate.meaning, validation: gate, reported, runs: [...plan, ...fillPlan].map(runRef), caveat: HISTORICAL_CAVEAT,
+        note: gate.outcome === 'validated' ? 'Validated: the final period may be used once for this version.' : 'HXR stops here: the final period is never used for this or any other candidate.',
       });
     } finally { busy = null; }
   }
@@ -617,78 +689,77 @@ export function createHxr(ctx, opts = {}) {
   // is not ready the owner must say so explicitly (withoutFullList: true); the
   // check is then recorded as not run, with its readiness reasons.
   async function runEvaluation({ confirm, reason, withoutFullList = false } = {}) {
-    if (confirm !== true) throw new HxrError(400, 'The evaluation run needs confirm: true. It runs once per frozen version; a repeat is marked contaminated and can never pass.');
+    if (confirm !== true) throw new HxrError(400, 'The final run needs confirm: true. It runs once per frozen version; a repeat is marked contaminated and can never pass.');
     const why = cleanReason(reason);
     const v = frozenVersion();
-    if (!v) throw new HxrError(409, `No frozen version: ${FROZEN_VERSION} is frozen only when the selection run picks a candidate. The evaluation period stays unused.`);
+    if (!v) throw new HxrError(409, `No frozen version: ${FROZEN_VERSION} is frozen only when the development pick chooses a candidate. The final period stays unused.`);
     requireMuDecision();
+    const val = validationState();
+    if (!val || val.version !== v.version || val.configHash !== v.configHash) throw new HxrError(409, `${v.version} has not been validated: the final period is used only after the validation gate passes (PREREGISTRATION-3.md section 5). Run the validation first. Nothing was run.`);
+    if (val.outcome !== 'validated') throw new HxrError(409, `${v.version} did not validate (${val.outcome}): HXR stops, and the final period is never used for this or any other candidate (PREREGISTRATION-3a.md section 3). Nothing was run.`);
     const prior = store.countLedger(db, 'evaluation', PREREG, v.version, v.configHash);
-    if (prior && !why) throw new HxrError(409, `${v.version} was already evaluated (${prior} time(s)). A repeat needs a written reason and is marked contaminated; a contaminated evaluation can never pass.`);
+    if (prior && !why) throw new HxrError(409, `${v.version} was already run on the final period (${prior} time(s)). A repeat needs a written reason and is marked contaminated; a contaminated final run can never pass.`);
     const contaminated = prior > 0;
     const ready = readinessNow({ fresh: true });
-    requireUsable(ready, ['evaluation']);
+    requireUsable(ready, ['final']);
     const fullProblem = periodProblem(ready, 'fullList');
     if (fullProblem && withoutFullList !== true) {
-      throw new HxrError(409, `${fullProblem} The basket B full-list check is reported, not a gate: run the evaluation with withoutFullList: true to evaluate without it. It is then recorded as not run, and adding it later needs a repeat, which is marked contaminated. Nothing was run.`);
+      throw new HxrError(409, `${fullProblem} The basket B full-list check is reported, not a gate: run the final run with withoutFullList: true to run without it. It is then recorded as not run, and adding it later needs a repeat, which is marked contaminated. Nothing was run.`);
     }
     claim('evaluation');
     try {
-      const frozen = v.config, hold = holdConfig();
-      const ev = periods.periods.evaluation, full = periods.periods.fullList;
-      const A = basketSymbols(universe, ev.basket), B = basketSymbols(universe, full.basket);
+      const frozen = v.config, hold = holdConfig(), dayOne = holdDayOneConfig(frozen);
+      const fin = periods.periods.final, full = periods.periods.fullList;
+      const A = basketSymbols(universe, fin.basket), B = basketSymbols(universe, full.basket);
       const tag = contaminated ? ' [repeat: contaminated]' : '';
       const plan = [];
-      const pair = (variantKey, what, hx, hd, symbols, period, kind, extra = {}) => {
-        for (const [arm, config] of [['hxr', hx], ['hold', hd]]) {
-          plan.push({ variantKey, arm, role: arm, config, symbols, period, kind, basket: period.basket, contaminated, reason: why, label: `Evaluation ${period.start} to ${period.end}, ${what}: ${arm === 'hxr' ? v.version : hd.version}${tag}`, ...extra });
+      // Every variant runs HXR, the fully invested hold and the day-one hold (PREREGISTRATION-3a.md section 5).
+      const trio = (variantKey, what, hx, hd, d1, symbols, period, kind, extra = {}) => {
+        for (const [arm, config] of [['hxr', hx], ['hold', hd], ['hold_day_one', d1]]) {
+          plan.push({ variantKey, arm, role: arm, config, symbols, period, kind, basket: period.basket, contaminated, reason: why, label: `Final ${period.start} to ${period.end}, ${what}: ${arm === 'hxr' ? v.version : arm === 'hold' ? hd.version : DAY_ONE_HOLD}${tag}`, ...extra });
         }
       };
       const vr = (c, o) => variantConfig(c, o);
-      pair('main', 'base costs', frozen, hold, A, ev, 'evaluation');
-      pair('costs2x', 'spread and slippage doubled', vr(frozen, { spreadSlippageMultiplier: 2 }), vr(hold, { spreadSlippageMultiplier: 2 }), A, ev, 'variant');
-      pair('delay2', 'fills two sessions after the decision', vr(frozen, { delaySessions: 2 }), vr(hold, { delaySessions: 2 }), A, ev, 'variant');
-      pair('vw15', 'first 15-minute VWAP fills', vr(frozen, { fillModel: 'vw15' }), vr(hold, { fillModel: 'vw15' }), A, ev, 'variant');
-      pair('withholding0', '0% dividend withholding', vr(frozen, { withholdingPct: 0 }), vr(hold, { withholdingPct: 0 }), A, ev, 'variant');
-      for (const s of A) pair(`loo-${s.symbol}`, `without ${s.symbol} (equal sleeves of the other ${A.length - 1})`, frozen, hold, A.filter((x) => x.symbol !== s.symbol), ev, 'variant', { left: s.symbol });
-      const robustEv = periods.periods.robustEvaluation;
-      const robustProblem = robustEv ? periodProblem(ready, 'robustEvaluation') : 'not defined';
-      if (robustEv && !robustProblem) pair('robust', `robustness list ${robustEv.basket} (reported only, never a gate)`, frozen, hold, basketSymbols(universe, robustEv.basket), robustEv, 'variant');
+      trio('main', 'base costs', frozen, hold, dayOne, A, fin, 'evaluation');
+      trio('costs2x', 'spread and slippage doubled', vr(frozen, { spreadSlippageMultiplier: 2 }), vr(hold, { spreadSlippageMultiplier: 2 }), vr(dayOne, { spreadSlippageMultiplier: 2 }), A, fin, 'variant');
+      trio('delay2', 'fills two sessions after the decision', vr(frozen, { delaySessions: 2 }), vr(hold, { delaySessions: 2 }), vr(dayOne, { delaySessions: 2 }), A, fin, 'variant');
+      trio('vw15', 'first 15-minute VWAP fills', vr(frozen, { fillModel: 'vw15' }), vr(hold, { fillModel: 'vw15' }), vr(dayOne, { fillModel: 'vw15' }), A, fin, 'variant');
+      trio('withholding0', '0% dividend withholding', vr(frozen, { withholdingPct: 0 }), vr(hold, { withholdingPct: 0 }), vr(dayOne, { withholdingPct: 0 }), A, fin, 'variant');
+      for (const s of A) trio(`loo-${s.symbol}`, `without ${s.symbol} (the other ${A.length - 1})`, frozen, hold, dayOne, A.filter((x) => x.symbol !== s.symbol), fin, 'variant', { left: s.symbol });
       if (!fullProblem) {
-        pair('fullList', `basket ${full.basket} full-list check (reported, not a gate)`, frozen, hold, B, full, 'variant');
-        pair('fullList-vw15', `basket ${full.basket} full-list check, first 15-minute VWAP fills (reported)`, vr(frozen, { fillModel: 'vw15' }), vr(hold, { fillModel: 'vw15' }), B, full, 'variant');
+        trio('fullList', `basket ${full.basket} full-list check (reported, not a gate)`, frozen, hold, dayOne, B, full, 'variant');
+        trio('fullList-vw15', `basket ${full.basket} full-list check, first 15-minute VWAP fills (reported)`, vr(frozen, { fillModel: 'vw15' }), vr(hold, { fillModel: 'vw15' }), vr(dayOne, { fillModel: 'vw15' }), B, full, 'variant');
       }
       let evaluation = null, reported = null;
       await executePlan(plan, (at) => {
         const get = (key, arm) => plan.find((p) => p.variantKey === key && p.arm === arm);
-        const armsOf = (key) => ({ hxr: get(key, 'hxr').metrics, hold: get(key, 'hold').metrics });
+        const armsOf = (key) => ({ hxr: get(key, 'hxr').metrics, hold: get(key, 'hold').metrics, holdDayOne: get(key, 'hold_day_one').metrics });
         evaluation = evaluateCriteria(criteria, {
           main: armsOf('main'), costs2x: armsOf('costs2x'), delay2: armsOf('delay2'),
           leaveOneOut: A.map((s) => ({ left: s.symbol, ...armsOf(`loo-${s.symbol}`) })), contaminated,
         });
         const keys = [...new Set(plan.map((p) => p.variantKey))];
+        const fillsOf = (key, vwKey) => Object.fromEntries(['hxr', 'hold', 'hold_day_one'].map((arm) => [arm === 'hold_day_one' ? 'holdDayOne' : arm, fillComparison(get(key, arm).result, get(vwKey, arm).result)]));
+        const main = armsOf('main');
         reported = {
-          comparisons: Object.fromEntries(keys.map((k) => [k, compareArms(get(k, 'hxr').metrics, get(k, 'hold').metrics)])),
-          fills: { hxr: fillComparison(get('main', 'hxr').result, get('vw15', 'hxr').result), hold: fillComparison(get('main', 'hold').result, get('vw15', 'hold').result) },
-          perStock: { hxr: get('main', 'hxr').metrics.perStock, hold: get('main', 'hold').metrics.perStock },
-          missedRebounds: get('main', 'hxr').metrics.missedRebounds, lossesAfterBuyBack: get('main', 'hxr').metrics.lossesAfterBuyBack,
-          costs: armsOf('main').hxr.costs, dividends: armsOf('main').hxr.dividends,
-          robustness: robustEv && !robustProblem
-            ? { run: true, basket: robustEv.basket, period: { start: robustEv.start, end: robustEv.end }, runIds: { hxr: get('robust', 'hxr').id, hold: get('robust', 'hold').id }, note: 'Reported only, never a gate.' }
-            : { run: false, basket: robustEv?.basket ?? null, reason: robustProblem, note: 'Not run: the robustness list was not ready (reported only, never a gate).' },
+          benchmarks: ['hold', 'holdDayOne'],
+          comparisons: Object.fromEntries(keys.map((k) => { const m = armsOf(k); return [k, compareBenchmarks(m.hxr, { hold: m.hold, holdDayOne: m.holdDayOne })]; })),
+          fills: fillsOf('main', 'vw15'),
+          perStock: { hxr: main.hxr.perStock, hold: main.hold.perStock, holdDayOne: main.holdDayOne.perStock },
+          missedRebounds: main.hxr.missedRebounds, lossesAfterBuyBack: main.hxr.lossesAfterBuyBack,
+          freshEntries: main.hxr.freshEntries ?? null, buyBacks: main.hxr.buyBacks ?? null,
+          costs: main.hxr.costs, dividends: main.hxr.dividends,
           fullList: fullProblem
-            ? { run: false, basket: full.basket, period: { start: full.start, end: full.end }, reason: fullProblem, reasons: ready.periods.fullList.reasons, note: 'Not run: basket B was not ready and the owner chose to evaluate without it (reported, not a gate).' }
-            : {
-              run: true, basket: full.basket, period: { start: full.start, end: full.end }, runIds: { hxr: get('fullList', 'hxr').id, hold: get('fullList', 'hold').id },
-              fills: { hxr: fillComparison(get('fullList', 'hxr').result, get('fullList-vw15', 'hxr').result), hold: fillComparison(get('fullList', 'hold').result, get('fullList-vw15', 'hold').result) },
-            },
+            ? { run: false, basket: full.basket, period: { start: full.start, end: full.end }, reason: fullProblem, reasons: ready.periods.fullList.reasons, note: 'Not run: basket B was not ready and the owner chose to run the final run without it (reported, not a gate).' }
+            : { run: true, basket: full.basket, period: { start: full.start, end: full.end }, runIds: { hxr: get('fullList', 'hxr').id, hold: get('fullList', 'hold').id, holdDayOne: get('fullList', 'hold_day_one').id }, fills: fillsOf('fullList', 'fullList-vw15') },
         };
         const mainHxr = get('main', 'hxr');
         store.updateRun(db, mainHxr.id, { details: { ...store.getRun(db, mainHxr.id).details, evaluation, reported } });
         store.appendLedger(db, { kind: 'evaluation', prereg: PREREG, version: v.version, configHash: v.configHash, runIds: plan.map((p) => p.id), contaminated, reason: why || null, at });
         store.appendExperiment(db, {
-          at, what: contaminated ? 'evaluation run (repeat, contaminated)' : 'evaluation run', version: v.version,
-          dataTouched: `evaluation period ${ev.start} to ${ev.end} (warm-up from ${ev.warmupFrom}), basket ${ev.basket}; ${fullProblem ? `full-list check not run (basket ${full.basket} not ready; the owner chose to evaluate without it)` : `full-list check ${full.start} to ${full.end}, basket ${full.basket}`}`,
-          resultsSeen: 'yes: evaluation results', note: `outcome ${evaluation.outcome} (${evaluation.meaning})${why ? `. Reason for the repeat: ${why}` : ''}`,
+          at, what: contaminated ? 'final run (repeat, contaminated)' : 'final run', version: v.version,
+          dataTouched: `final period ${fin.start} to ${fin.end} (warm-up from ${fin.warmupFrom}), basket ${fin.basket}; both benchmarks; ${fullProblem ? `full-list check not run (basket ${full.basket} not ready; the owner chose to run without it)` : `full-list check ${full.start} to ${full.end}, basket ${full.basket}`}`,
+          resultsSeen: 'yes: final results', note: `outcome ${evaluation.outcome} (${evaluation.meaning})${why ? `. Reason for the repeat: ${why}` : ''}`,
         });
       });
       return wrap({
@@ -857,7 +928,7 @@ export function createHxr(ctx, opts = {}) {
     const withSpcx = spcxConfirmed();
     const symbols = basketSymbols(universe, 'prospective', { withPending: withSpcx }).map((s) => ({ ...s }));
     const hold = holdConfig();
-    const warmupFrom = sessionsBack(startDate, Math.max(periods.warmupSessions, historyLength(v.config.rule)), excluded);
+    const warmupFrom = sessionsBack(startDate, Math.max(periods.warmupSessions, historyLengthFor(v.config)), excluded);
     const period = { warmupFrom, start: startDate, end: null };
     const calibrated = halfSpreadFn(spreadTable(year(startDate)));
     const arms = {};
@@ -1210,12 +1281,12 @@ export function createHxr(ctx, opts = {}) {
         symbols: universe.symbols.map((s) => ({ symbol: s.symbol, name: s.name, exchange: s.exchange, listedFrom: s.listedFrom, kind: s.kind, baskets: s.baskets, identity: s.identity ?? 'confirmed', note: s.note ?? null })),
       },
       periods: { ...periods.periods, excludedSessions: periods.excludedSessions, warmupSessions: periods.warmupSessions, dataFrom: periods.dataFrom },
-      neighbours: NEIGHBOURS,
-      criteria: { outcomes: criteria.outcomes, selection: criteria.selection, criteria: criteria.criteria.map((c) => ({ id: c.id, name: c.name, rule: c.rule })), prospective: criteria.prospective.map((c) => ({ id: c.id, name: c.name, rule: c.rule })), passMeaning: PASS_MEANING },
+      neighbours: NEIGHBOURS, validation: validationState(), pickRule: criteria.selection?.pickRule ?? null, benchmarks: ['hold', 'holdDayOne'],
+      criteria: { outcomes: criteria.outcomes, selection: criteria.selection, validation: criteria.validation ?? null, criteria: criteria.criteria.map((c) => ({ id: c.id, name: c.name, rule: c.rule })), prospective: criteria.prospective.map((c) => ({ id: c.id, name: c.name, rule: c.rule })), passMeaning: PASS_MEANING },
       // The rule and its assumptions, so the page can state them before any result exists.
       configs: listHxrConfigs().map((c) => (c.error ? { file: c.file, role: configRole(c.file), error: c.error } : {
         file: c.file, role: configRole(c.file), version: c.version, label: c.label, ruleType: c.ruleType, hash: c.hash, status: c.config.status ?? null, rule: c.config.rule,
-        assumptions: { account: c.config.account, execution: c.config.execution, costs: c.config.costs, dividends: c.config.dividends, cash: c.config.cash },
+        assumptions: { account: c.config.account, execution: c.config.execution, costs: c.config.costs, dividends: c.config.dividends, cash: c.config.cash, risk: c.config.risk ?? null, initialLoss: c.config.initialLoss ?? null },
       })),
       settings: { spcx: spcx(), spcxIdentity: SPCX_IDENTITY, alpacaKeys: keysSet },
       data: dataStatus(), fetch: { job: store.getSetting(db, 'fetchJob'), running: fetching },
@@ -1261,11 +1332,12 @@ export function createHxr(ctx, opts = {}) {
     overview,
     fetchData,
     fetchStatus: () => wrap({ job: store.getSetting(db, 'fetchJob'), running: fetching }),
-    readiness: () => wrap({ ...readinessNow(), reviewedMoves: store.getSetting(db, 'reviewedMoves', []), gate: 'A selection or evaluation run is refused unless every basket member is complete for its period and spread calibration exists. The basket B full-list check is reported, not a gate: without it the evaluation runs only if you say so.' }),
+    readiness: () => wrap({ ...readinessNow(), reviewedMoves: store.getSetting(db, 'reviewedMoves', []), gate: 'The development pick, the validation run and the final run are refused unless every basket member is complete for the period and spread calibration exists. The basket B full-list check is reported, not a gate: without it the evaluation runs only if you say so.' }),
     setSpcxConfirmed,
     setMuDecision,
     reviewMove,
     runSelection,
+    runValidation,
     runEvaluation,
     startProspective,
     prospectiveTick,
@@ -1275,7 +1347,7 @@ export function createHxr(ctx, opts = {}) {
     listRuns,
     getRun,
     experiments: () => wrap({ experiments: store.listExperiments(db), note: 'Append-only; mirrored by hand in strategy/hxr/EXPERIMENT-LOG.md.' }),
-    ledger: () => wrap({ ledger: store.listLedger(db), note: 'Append-only: one row per selection or evaluation event. A repeat is marked contaminated and can never pass.' }),
+    ledger: () => wrap({ ledger: store.listLedger(db), note: 'Append-only: one row per development pick, validation run or final run. A repeat is marked contaminated and can never pass or validate.' }),
     news,
 
     // Scheduler hook: updates the active prospective account at most every few

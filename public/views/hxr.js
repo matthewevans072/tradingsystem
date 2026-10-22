@@ -19,7 +19,10 @@ const CRIT = { pass: ['Pass', 'ok'], fail: ['Fail', 'danger'], not_evaluable: ['
 const READY = { complete: 'ok', issues: 'danger', 'no data': 'muted' };
 const SPLIT = { pass: 'ok', fail: 'danger', 'no data': 'warn', future: 'muted' };
 const JOB = { running: 'info', paused: 'warn', failed: 'danger', done: 'ok', done_with_errors: 'warn', pending: 'muted', skipped: 'muted', error: 'danger' };
-const PERIODS = [['selection', 'Selection'], ['evaluation', 'Evaluation'], ['fullList', 'Full-list check'], ['prospective', 'Prospective']];
+const PERIODS = [['development', 'Development'], ['validation', 'Validation'], ['final', 'Final'], ['fullList', 'Full-list check'], ['prospective', 'Prospective']];
+const BENCH = { hold: 'Hold (fully invested)', holdDayOne: 'Hold the day-one positions' };
+const VOUT = { validated: ['Validated', 'ok'], did_not_validate: ['Did not validate', 'danger'], insufficient_evidence: ['Insufficient evidence', 'muted'], not_counted_contaminated: ['Not counted (contaminated)', 'danger'] };
+const POLICY = { stay_out: 'A: stay in cash for the rest of the period', fresh_entry_recovery_point: 'B: a fresh entry at the next recovery point, at any price', fresh_entry_after_sessions: 'C: a fresh entry at the next recovery point after the cooling-off period', pending_owner_choice: 'pending your choice' };
 const PERIOD_LABEL = Object.fromEntries(PERIODS);
 const VARIANT = {
   main: 'Base costs (the judged run)', costs2x: 'Spread and slippage doubled (G5)', delay2: 'Fills two sessions after the decision (G5)',
@@ -32,7 +35,8 @@ const VALUE_LABEL = {
   exitDrawdownPct: 'exit drop %', reentryRisePct: 'buy-back rise %',
   m: 'typical daily move', exitPrice: 'exit price', recoveryClose: 'recovery-point close', highestAfter: 'highest close after it',
   pivotSessions: 'recovery window', reboundMultiple: 'rebound (× move)', bufferMultiple: 'buffer (× move)', entryPrice: 'buy price',
-  givebackPct: 'give-back %',
+  givebackPct: 'give-back %', initialLossLevel: 'initial-loss level', ruleLevel: "rule's own level", previousExitPrice: 'previous sale price', sessionsOut: 'sessions out',
+  afterMissedRebound: 'after a missed rebound', policy: 'policy', peak: 'account peak', decline: 'decline from the peak', value: 'account value',
 };
 // Why each rule was chosen (PREREGISTRATION-2.md section 3; C1-C3 from the
 // superseded PREREGISTRATION.md section 6); the numbers come from the configs.
@@ -154,7 +158,17 @@ function ruleText(rule) {
 
 // The one buy-back rule of hxr-prereg-2 (PREREGISTRATION-2.md section 3.5).
 function buyBackText(rule) {
-  return `a recovery point (${rule.pivotSessions} closes either side, rebound ${rule.reboundMultiple} × the typical daily move) forms after the exit while the close is below the exit price; it fills at the next open only if the fill is below the exit price. If the price closes at or above the exit price first, the rebound is missed and the sleeve stays in cash for the rest of the period`;
+  const policy = rule.afterMissedRebound === 'fresh_entry_recovery_point' ? 'the stock is treated as never held: it may re-enter at the next recovery point at any price, sized by the risk budget'
+    : rule.afterMissedRebound === 'fresh_entry_after_sessions' ? `the stock may re-enter at the next recovery point at any price, but only after ${rule.freshEntryMinSessions} of its sessions out`
+      : rule.afterMissedRebound === 'pending_owner_choice' ? 'what happens next is pending your choice' : 'the stock stays in cash for the rest of the period';
+  return `a recovery point (${rule.pivotSessions} closes either side, rebound ${rule.reboundMultiple} × the typical daily move) forms after the exit while the close is below the exit price; it fills at the next open only if the fill is below the exit price. If the price closes at or above the exit price first, the rebound is missed and ${policy}${rule.entryWhenNeverHeld ? '. A stock never held, or whose buy lapsed for budget reasons, enters at the next recovery point at any price' : ''}`;
+}
+
+// The initial-loss rule and sizing of hxr-prereg-3 (from the config's own numbers).
+function riskText(a) {
+  if (!a?.risk || !a?.initialLoss) return null;
+  const r = a.risk, il = a.initialLoss;
+  return `Every holding has an initial-loss level ${il.multiple} × the typical daily move below its buy price; the exit level is the higher of that and the rule's own level. Positions are sized from pooled cash: planned loss ${usd(r.plannedLossPerTradeUsd)} per trade, at most ${usd(r.maxPositionUsd)} per position, ${usd(r.totalOpenRiskUsd)} of open risk in total and ${usd(r.maxTechAiExposureUsd)} in tech/AI stocks; new entries pause after a ${usd(r.pauseDeclineUsd)} decline from the account's peak and resume at ${usd(r.resumeDeclineUsd)}. Sale proceeds return to the pool and are never reinvested in full automatically. Experimental defaults, not your approved limits.`;
 }
 
 // ---------- building blocks ----------
@@ -294,9 +308,12 @@ function derive(ctx, o, ep, reload) {
   const selEntries = ledger.filter((e) => e.kind === 'selection');
   const frozen = (o.versions || []).find((v) => v.prereg === prereg) || null;
   const evalEntries = ledger.filter((e) => e.kind === 'evaluation');
+  const valEntries = ledger.filter((e) => e.kind === 'validation');
   const cleanEval = evalEntries.find((e) => !e.contaminated && frozen && e.version === frozen.version && e.configHash === frozen.configHash) || null;
+  const cleanVal = valEntries.find((e) => !e.contaminated && frozen && e.version === frozen.version && e.configHash === frozen.configHash) || null;
   return {
-    api: ctx.api, app: ctx.app, o, ep, reload, prereg, ledger, frozen, selEntries, evalEntries, cleanEval,
+    api: ctx.api, app: ctx.app, o, ep, reload, prereg, ledger, frozen, selEntries, evalEntries, cleanEval, valEntries, cleanVal,
+    validation: o.validation || null, pickRule: o.pickRule || null,
     cleanSel: selEntries.find((e) => !e.contaminated) || null, evalEntry: cleanEval || evalEntries[0] || null, evalRuns: null, evalError: null,
   };
 }
@@ -337,16 +354,20 @@ function statusSection(P) {
   const step = (state, label, detail) => h('div', { class: `setup-item hxr-step ${state}` },
     h('span', { class: 'tick', 'aria-hidden': 'true' }, state === 'done' ? '✓' : state === 'stop' ? '✕' : ''),
     h('div', { class: 'hxr-step-text' }, h('div', {}, label), detail ? h('div', { class: 'cell-sub' }, detail) : null));
-  const readyText = ['selection', 'evaluation', 'fullList'].map((k) => `${PERIOD_LABEL[k].toLowerCase()} ${per[k]?.usable ? (per[k].costsCalibrated ? 'ready' : 'no cost calibration') : 'not ready'}`).join(' · ');
+  const readyText = ['development', 'validation', 'final', 'fullList'].map((k) => `${PERIOD_LABEL[k].toLowerCase()} ${per[k]?.usable ? (per[k].costsCalibrated ? 'ready' : 'no cost calibration') : 'not ready'}`).join(' · ');
+  const val = P.validation;
+  const [vl, vk] = VOUT[val?.outcome] || [val?.outcome, 'muted'];
   const [ol, ok] = OUTCOME[ev?.outcome] || [ev?.outcome, 'muted'];
   const p = o.prospective;
   const steps = [
     step('done', `Pre-registration ${P.prereg || '—'}`, `${plural(o.prereg?.files?.length ?? 0, 'file')} fixed before any result · hash ${shortHash(o.prereg?.hash)}`),
     step(o.settings?.alpacaKeys ? 'done' : '', 'Market-data keys', o.settings?.alpacaKeys ? 'Alpaca keys set in .env (read-only market data)' : 'not set in .env'),
-    step(periodReady(o, ['selection', 'evaluation', 'fullList']) ? 'done' : '', 'Data ready', o.fetch?.running ? 'download running…' : readyText),
-    step(P.cleanSel ? 'done' : '', 'Selection run (once)', P.cleanSel ? `run ${when(P.cleanSel.at)}${sel.length > 1 ? ` · ${plural(sel.length - 1, 'contaminated repeat')}` : ''}` : 'not run'),
-    step(P.frozen ? 'done' : P.cleanSel ? 'stop' : '', 'Frozen version', P.frozen ? `${P.frozen.version} from ${P.frozen.basedOn} · ${when(P.frozen.frozenAt)}` : P.cleanSel ? 'none: no candidate worth evaluating (HXR stops)' : 'after the selection'),
-    step(P.cleanEval ? 'done' : '', 'Evaluation run (once)', P.evalEntry
+    step(periodReady(o, ['development', 'validation', 'final', 'fullList']) ? 'done' : '', 'Data ready', o.fetch?.running ? 'download running…' : readyText),
+    step(P.pickRule && P.pickRule !== 'pending_owner_choice' ? 'done' : '', 'Pick rule (amendment 3b)', P.pickRule === 'pending_owner_choice' ? 'pending your choice: most profit, or best return per unit of fall' : P.pickRule ? `${P.pickRule.replace(/_/g, ' ')}` : '—'),
+    step(P.cleanSel ? 'done' : '', 'Development pick (once)', P.cleanSel ? `run ${when(P.cleanSel.at)}${sel.length > 1 ? ` · ${plural(sel.length - 1, 'contaminated repeat')}` : ''}` : 'not run'),
+    step(P.frozen ? 'done' : P.cleanSel ? 'stop' : '', 'Frozen version', P.frozen ? `${P.frozen.version} from ${P.frozen.basedOn} · ${when(P.frozen.frozenAt)}` : P.cleanSel ? 'none: no candidate worth validating (HXR stops)' : 'after the development pick'),
+    step(val?.outcome === 'validated' ? 'done' : val ? 'stop' : '', 'Validation run (once)', val ? h('span', {}, badge(vl, vk), ` ${when(val.at)}`) : P.cleanVal ? 'outcome not recorded' : 'not run'),
+    step(P.cleanEval ? 'done' : '', 'Final run (once)', P.evalEntry
       ? h('span', {}, ev ? badge(ol, ok) : P.evalError ? 'outcome could not be loaded' : 'outcome not recorded', ` ${when(P.evalEntry.at)}${P.evalEntries.length > 1 ? ` · ${plural(P.evalEntries.length - (P.cleanEval ? 1 : 0), 'contaminated repeat')}` : ''}`,
         ev && o.historicalCaveat ? h('div', { class: 'hxr-caveat' }, o.historicalCaveat) : null)
       : 'not run'),
@@ -372,16 +393,22 @@ function nextAction(P) {
     if (!periodReady(o, ['selection'])) return ['Download or refresh the data, then check the readiness table: the selection period is not ready.', 'data'];
     const mu = o.decisions?.mu?.choice;
     if (mu === 'drop') return ['You chose to drop MU from the evaluation: the pre-registration has to be restated as a new version before any run (or record "keep MU" instead).', 'prereg'];
-    if (mu !== 'keep') return ['Decide whether MU stays in the evaluation (pre-registration disclosure 1). The choice is possible only before any HXR run; then run the selection (once).', 'prereg'];
-    return ['Read the pre-registration, then run the selection (once).', 'prereg'];
+    if (mu !== 'keep') return ['Decide whether MU stays in the final period (pre-registration disclosure 1). The choice is possible only before any HXR run; then run the development pick (once).', 'prereg'];
+    if (P.pickRule === 'pending_owner_choice') return ['Choose the development pick rule (amendment 3b): most profit, or best return per unit of fall. Record it in criteria-hxr-v3a.json and EXPERIMENT-LOG.md before any run.', 'prereg'];
+    return ['Read the pre-registration, then run the development pick (once).', 'prereg'];
   }
-  if (!P.frozen) return ['None: the selection found no candidate worth evaluating, so HXR stops here and the evaluation period stays unused. Any change to the rules would be a new pre-registered version.', 'results'];
+  if (!P.frozen) return ['None: the development pick found no candidate worth validating, so HXR stops here and the validation and final periods stay unused. Any change to the rules would be a new pre-registered version.', 'results'];
+  if (!P.validation) {
+    if (!recordedInRepo(P)) return [`Record ${P.frozen.version} as ${frozenFile(P.frozen)} (the frozen JSON under Actions, unchanged) and add an EXPERIMENT-LOG.md entry, then run the validation (once).`, 'actions'];
+    if (!periodReady(o, ['validation'])) return ['Refresh the data: the validation period is not ready yet.', 'data'];
+    return ['Run the validation (once).', 'actions'];
+  }
+  if (P.validation.outcome !== 'validated') return [`None: ${P.frozen.version} did not pass the validation gate (${P.validation.outcome.replace(/_/g, ' ')}), so HXR stops here and the final period is never used for this or any other candidate.`, 'results'];
   if (!P.cleanEval) {
-    if (!recordedInRepo(P)) return [`Record ${P.frozen.version} as ${frozenFile(P.frozen)} (the frozen JSON under Actions, unchanged) and add an EXPERIMENT-LOG.md entry, then run the evaluation (once).`, 'actions'];
-    if (!periodReady(o, ['evaluation'])) return ['Refresh the data: the evaluation period is not ready yet.', 'data'];
-    return ['Run the evaluation (once).', 'actions'];
+    if (!periodReady(o, ['final'])) return ['Refresh the data: the final period is not ready yet.', 'data'];
+    return ['Run the final run (once).', 'actions'];
   }
-  if (!o.prospective) return ['Review the evaluation result. The prospective account is the only clean evidence; start it if you want that forward record.', 'actions'];
+  if (!o.prospective) return ['Review the final result. The prospective account is the only clean evidence; start it if you want that forward record.', 'actions'];
   if (o.prospective.status === 'paused') return ['Resume the prospective account: it is paused, and sessions processed late count against P2.', 'prospective'];
   return ['Nothing required. After each close, "Process now" or the scheduler records the session. The prospective criteria P1–P4 are judged later, separately.', 'prospective'];
 }
@@ -397,7 +424,9 @@ function preregSection(P) {
     h('p', { class: 'small' }, 'These rules, periods and criteria were written down before any HXR backtest or result existed, and are shown here before any result. ',
       'Historical results test the price rules only; they are never evidence for a news-informed HXR. Every number marked experimental is a labelled research assumption, not your approved preference.'),
     statuses.map((s) => notice('warn', h('strong', {}, 'Config status: '), s)),
-    h('h4', { class: 'lab-h4' }, 'The candidates, the comparison and the hold'),
+    h('h4', { class: 'lab-h4' }, 'The six candidates, your comparison and the two benchmarks'),
+    h('p', { class: 'small' }, `Exit rules X1 and X2 are each combined with the three fresh-entry policies after a missed rebound (A stay in cash, B a fresh entry at the next recovery point above the sale price, C the same after a cooling-off period): six candidates. X3, your 10% give-back, is run with the same policies as a comparison and can never be picked. Benchmarks: ${BENCH.hold.toLowerCase()} (equal money in every stock, never sold) and ${BENCH.holdDayOne.toLowerCase()} (the exact positions the candidates open on day one, never sold); every pass/fail test must beat both.`),
+    riskText((o.configs || []).find((c) => !c.error && c.assumptions?.risk)?.assumptions) ? h('p', { class: 'small' }, h('strong', {}, 'Sizing and the initial-loss rule. '), riskText((o.configs || []).find((c) => !c.error && c.assumptions?.risk)?.assumptions)) : null,
     armsTable(P),
     assumptionsBlock(o),
     h('h4', { class: 'lab-h4' }, 'Periods'),
@@ -515,15 +544,27 @@ function selectionRule(o) {
   const s = o.criteria?.selection;
   if (!s) return h('div', { class: 'small muted' }, 'Not returned by the server.');
   return h('ol', { class: 'bullets small' },
-    h('li', {}, 'Run X1, X2, X3 and the hold on basket A over the selection period, at base costs. Only X1 and X2 can be picked; X3 (your 10% give-back) is shown as a comparison. Neighbouring settings and the robustness list are reported only.'),
-    h('li', {}, `A candidate qualifies if it completes at least ${s.minRoundTrips} exit-and-buy-back round trips across its sleeves.`),
-    h('li', {}, `Pick the qualifying candidate with the highest ${s.metric}; a tie goes to the ${s.tieBreak}.`),
-    h('li', {}, `If no candidate's ratio reaches ${s.stopUnlessAtLeastTimesHold} × the hold's, stop: HXR has no candidate worth evaluating, and the evaluation period is not used.`),
-    h('li', {}, 'The pick is frozen as a new version (with its config hash) and logged before the evaluation run. Selection results are in-sample.'));
+    h('li', {}, 'Run the six candidates, the three X3 comparisons and both benchmarks on basket A over the development period, at base costs (each also with first 15-minute VWAP fills, reported). Only the six candidates can be picked.'),
+    h('li', {}, `A candidate qualifies if it completes at least ${s.minRoundTrips} exit-and-buy-back round trips (fresh entries do not count).`),
+    h('li', {}, s.pickRule === 'ending_value' ? 'Pick rule (a), most profit: the qualifying candidate with the highest ending account value after costs wins, if it beats both benchmarks on ending value; its largest decline is reported next to it.'
+      : s.pickRule === 'return_to_drawdown' ? `Pick rule (b), best return per unit of fall: the qualifying candidate with the highest annualised return ÷ largest decline wins, if it reaches at least ${s.pickRules?.return_to_drawdown?.mustReachTimesBenchmarks ?? 1.1} × both benchmarks on that measure; its ending value is reported next to it.`
+        : h('span', {}, h('strong', {}, 'Pick rule: pending your choice (amendment 3b). '), 'Either (a) most profit: highest ending value after costs, beating both benchmarks; or (b) best return per unit of fall: highest annualised return ÷ largest decline, at least 1.10 × both benchmarks. Nothing runs until it is recorded.')),
+    h('li', {}, 'A tie goes to the smaller largest decline. If no candidate qualifies and beats both benchmarks, stop: HXR has no candidate worth validating, and the validation and final periods are never used.'),
+    h('li', {}, 'The pick is frozen as a new version (with its config hash) and logged. Only that one winner goes to validation, then to final; if it fails validation HXR stops, and no runner-up is ever tried. Neighbouring settings of the winner are reported only. Development results are in-sample.'));
 }
 
 function criteriaRules(o) {
   const c = o.criteria || {};
+  const v = c.validation;
+  if (v) {
+    return h('div', {},
+      h('div', { class: 'small' }, h('strong', {}, 'Validation gate (one run, both benchmarks): '), `V1 ${v.V1?.rule || ''}. V2 ${v.V2?.rule || ''}.`),
+      criteriaRulesList(c));
+  }
+  return criteriaRulesList(c);
+}
+
+function criteriaRulesList(c) {
   const outcomes = c.outcomes || {};
   return h('div', { class: 'stack', style: { gap: '8px' } },
     table(['', 'Criterion', 'Rule'], (c.criteria || []).map((x) => [h('span', { class: 'mono' }, x.id), h('strong', {}, x.name), h('span', { class: 'small' }, x.rule)]), { cls: 'hxr-rules' }),
@@ -801,7 +842,7 @@ function actionsSection(P) {
   const { o } = P;
   return sec('actions', 'Actions (simulated runs)',
     o.busy ? notice('info', h('span', { class: 'spinner lab-inline-spin' }), ` A ${o.busy.kind} run is in progress (started ${when(o.busy.startedAt)}). This page refreshes when it has finished.`) : null,
-    h('div', { class: 'hxr-actions' }, selectionCard(P), evaluationCard(P), prospectiveCard(P)),
+    h('div', { class: 'hxr-actions' }, selectionCard(P), validationCard(P), evaluationCard(P), prospectiveCard(P)),
     P.frozen && !recordedInRepo(P) ? frozenRecordBlock(P) : null,
     h('p', { class: 'small muted mt' }, 'Each run replays stored daily bars on simulated accounts. Nothing is ordered, routed or sent anywhere, and no notification is sent.'));
 }
@@ -822,31 +863,53 @@ function muBlockReason(o) {
   return mu === 'drop' ? 'You chose to drop MU from the evaluation: the pre-registration has to be restated as a new version first.' : 'Record the pending MU decision first (Pre-registration, disclosure 1).';
 }
 
+function pickRuleBlock(P) {
+  return P.pickRule === 'pending_owner_choice' ? 'The development pick rule is pending your choice (amendment 3b): record it in criteria-hxr-v3a.json and EXPERIMENT-LOG.md first.' : null;
+}
+
 function selectionCard(P) {
   const { o } = P;
-  const period = o.periods?.selection || {};
-  const block = commonBlock(o) || muBlockReason(o) || periodBlock(o, ['selection']);
+  const period = o.periods?.development || {};
+  const block = commonBlock(o) || muBlockReason(o) || pickRuleBlock(P) || periodBlock(o, ['development']);
   const first = P.selEntries[0];
   const reason = first ? `Already run for ${P.prereg} on ${when(first.at)}. It runs once; a repeat needs a written reason, is marked contaminated and never freezes a version.` : block;
-  return actionCard('Run selection (once)',
-    `X1, X2, X3 and the hold on basket ${period.basket || '—'} over ${day(period.start)} – ${day(period.end)}, at base costs. Picks at most one of X1 and X2 and freezes it (X3 is your comparison, never picked). In-sample.`,
+  return actionCard('Run development pick (once)',
+    `The six candidates, the three X3 comparisons and both benchmarks on basket ${period.basket || '—'} over ${day(period.start)} – ${day(period.end)}, at base costs. Picks at most one candidate by your pick rule and freezes it; then runs the winner's neighbouring settings (reported only). In-sample.`,
     reason,
-    actionButton('Run selection (once)', reason, () => selectionDialog(P, false)),
+    actionButton('Run development pick (once)', reason, () => selectionDialog(P, false)),
     first ? actionButton('Repeat (contaminated)…', block, () => selectionDialog(P, true), 'danger') : null);
+}
+
+function validationCard(P) {
+  const { o } = P;
+  const period = o.periods?.validation || {};
+  const prior = P.frozen ? P.valEntries.filter((e) => e.version === P.frozen.version && e.configHash === P.frozen.configHash) : [];
+  const block = commonBlock(o) || (!P.frozen
+    ? (P.cleanSel ? 'No frozen version: the development pick found no candidate worth validating, so the validation period stays unused.' : 'Needs the frozen version from the development pick first.')
+    : muBlockReason(o) || periodBlock(o, ['validation']));
+  const reason = prior.length ? `Already run for ${P.frozen.version} on ${when(prior[0].at)}. It runs once per frozen version; a repeat needs a written reason, is marked contaminated and can never validate.` : block;
+  return actionCard('Run validation (once)',
+    `${P.frozen ? P.frozen.version : 'The frozen version'} against both benchmarks on basket ${period.basket || '—'} over ${day(period.start)} – ${day(period.end)}. Gate V1–V2: enough round trips, and at least 1.10 × both benchmarks' return per unit of decline. A failure stops HXR; no runner-up is ever tried.`,
+    reason,
+    actionButton('Run validation (once)', reason, () => validationDialog(P, false)),
+    prior.length ? actionButton('Repeat (contaminated)…', block, () => validationDialog(P, true), 'danger') : null);
 }
 
 function evaluationCard(P) {
   const { o } = P;
-  const period = o.periods?.evaluation || {};
+  const period = o.periods?.final || {};
   const prior = P.frozen ? P.evalEntries.filter((e) => e.version === P.frozen.version && e.configHash === P.frozen.configHash) : [];
+  const val = P.validation;
   const block = commonBlock(o) || (!P.frozen
-    ? (P.cleanSel ? 'No frozen version: the selection found no candidate worth evaluating, so the evaluation period stays unused.' : 'Needs the frozen version from the selection run first.')
-    : muBlockReason(o) || periodBlock(o, ['evaluation']));
+    ? (P.cleanSel ? 'No frozen version: the development pick found no candidate worth validating, so the final period stays unused.' : 'Needs the frozen version from the development pick first.')
+    : !val ? 'Needs the validation run first: the final period is used only after the validation gate passes.'
+      : val.outcome !== 'validated' ? `${P.frozen.version} did not pass the validation gate (${val.outcome.replace(/_/g, ' ')}): HXR stops and the final period is never used.`
+        : muBlockReason(o) || periodBlock(o, ['final']));
   const reason = prior.length ? `Already run for ${P.frozen.version} on ${when(prior[0].at)}. It runs once per frozen version; a repeat needs a written reason, is marked contaminated and can never pass.` : block;
-  return actionCard('Run evaluation (once)',
-    `${P.frozen ? P.frozen.version : 'The frozen version'} against the hold on basket ${period.basket || '—'} over ${day(period.start)} – ${day(period.end)}, with the stress versions, the leave-one-stock-out runs and the full-list check. Judged by G1–G6.`,
+  return actionCard('Run final (once)',
+    `${P.frozen ? P.frozen.version : 'The frozen version'} against both benchmarks on basket ${period.basket || '—'} over ${day(period.start)} – ${day(period.end)}, with the stress versions, the leave-one-stock-out runs and the full-list check. Judged by G1–G6 against both benchmarks.`,
     reason,
-    actionButton('Run evaluation (once)', reason, () => evaluationDialog(P, false)),
+    actionButton('Run final (once)', reason, () => evaluationDialog(P, false)),
     prior.length ? actionButton('Repeat (contaminated)…', block, () => evaluationDialog(P, true), 'danger') : null);
 }
 
@@ -855,7 +918,7 @@ function prospectiveCard(P) {
   const reason = !P.frozen ? 'Needs the frozen version from the selection run.'
     : o.prospective ? `Started ${when(o.prospective.startedAt)}. There is only one account; it is never restarted.` : null;
   return actionCard('Start prospective account',
-    `${P.frozen ? P.frozen.version : 'The frozen version'} and the hold side by side on basket B${o.settings?.spcx?.confirmed ? ' plus SPCX' : ''}, from the first session after you start it. The only data nobody has seen.`,
+    `${P.frozen ? P.frozen.version : 'The frozen version'} and the fully invested hold side by side on basket B${o.settings?.spcx?.confirmed ? ' plus SPCX' : ''}, from the first session after you start it. The only data nobody has seen. (The day-one hold is a backtest benchmark only.)`,
     reason,
     actionButton('Start prospective account', reason, () => prospectiveDialog(P)));
 }
@@ -902,9 +965,45 @@ function selectionDialog(P, repeat) {
   });
 }
 
+function validationDialog(P, repeat) {
+  const { o } = P;
+  const period = o.periods?.validation || {};
+  const f = P.frozen;
+  const base = (o.configs || []).find((c) => !c.error && c.version === f.basedOn);
+  const hold = (o.configs || []).find((c) => !c.error && c.rule?.type === 'hold');
+  const prior = P.valEntries.filter((e) => e.version === f.version && e.configHash === f.configHash);
+  const reason = h('textarea', { name: 'reason', maxlength: 2000, rows: 3, placeholder: 'Why the validation must be run again (required)' });
+  const a = ack(repeat ? 'I understand this repeat is marked contaminated and can never validate.' : 'I understand the validation runs once per frozen version; a failure stops HXR and no runner-up is ever tried.');
+  const v = o.criteria?.validation || {};
+  const body = h('div', { class: 'stack', style: { gap: '10px' } },
+    repeat
+      ? notice('danger', `${f.version} was already validated ${plural(prior.length, 'time')} (first ${when(prior[0]?.at)}). Another run needs a written reason, is recorded as contaminated and can never validate.`)
+      : notice('warn', `The validation is the one gate between the development pick and the final period. Only ${f.version} is ever validated; a failure closes HXR.`),
+    h('div', {}, h('strong', {}, 'What runs. '), `${f.version} (frozen ${when(f.frozenAt)} from ${f.basedOn}, config ${shortHash(f.configHash)}), the fully invested hold and the day-one hold on basket ${period.basket} (${basketList(o, period.basket).join(', ')}) from ${day(period.start)} to ${day(period.end)}, each from a fresh simulated ${usd(startingCash(o))}; each also with first 15-minute VWAP fills (reported).`),
+    armsList([base ? { ...base, label: `${f.version} (= ${base.label})` } : { version: f.version, label: f.version, rule: f.config?.rule }, hold].filter(Boolean)),
+    period.use ? h('div', { class: 'small' }, h('strong', {}, 'Disclosed: '), period.use) : null,
+    h('div', {}, h('strong', {}, 'Gate. '), h('ul', { class: 'bullets small' }, h('li', {}, h('strong', {}, 'V1: '), v.V1?.rule || '—'), h('li', {}, h('strong', {}, 'V2: '), v.V2?.rule || '—'))),
+    repeat ? field('Reason for the repeat', reason, 'Up to 2,000 characters. Stored with the runs and in the ledger.') : null,
+    a.el,
+    h('div', { class: 'small muted' }, 'Simulation only: stored daily bars replayed on simulated accounts. Nothing is ordered or sent anywhere.'));
+  confirmDialog(repeat ? 'Repeat the validation (contaminated)?' : 'Run the validation?', body, {
+    confirmLabel: repeat ? 'Run again (contaminated)' : 'Run the validation', danger: repeat,
+    runningText: 'Running the simulated validation backtests… keep this page open.',
+    ready: () => (!a.box.checked ? 'Tick the box to confirm.' : repeat && !reason.value.trim() ? 'A repeat needs a written reason.' : true),
+    onConfirm: async () => {
+      const r = await P.api('POST', '/api/hxr/validation', { confirm: true, ...(repeat ? { reason: reason.value.trim() } : {}) });
+      const [vl] = VOUT[r.outcome] || [r.outcome];
+      toast(`Validation finished (simulated): ${vl}. ${r.meaning || ''}`);
+      S.val = null;
+      S.run = null;
+      P.reload();
+    },
+  });
+}
+
 function evaluationDialog(P, repeat) {
   const { o } = P;
-  const ev = o.periods?.evaluation || {}, full = o.periods?.fullList || {};
+  const ev = o.periods?.final || {}, full = o.periods?.fullList || {};
   const f = P.frozen;
   const base = (o.configs || []).find((c) => !c.error && c.version === f.basedOn);
   const hold = (o.configs || []).find((c) => !c.error && c.rule?.type === 'hold');
@@ -918,8 +1017,8 @@ function evaluationDialog(P, repeat) {
   const body = h('div', { class: 'stack', style: { gap: '10px' } },
     repeat
       ? notice('danger', `${f.version} was already evaluated ${plural(prior.length, 'time')} (first ${when(prior[0]?.at)}). Another run needs a written reason, is recorded as contaminated and can never pass.`)
-      : notice('warn', `The evaluation is the one judged run of ${f.version}. Looking at it and then changing the rules turns it into one more backtest.`),
-    h('div', {}, h('strong', {}, 'What runs. '), `${f.version} (frozen ${when(f.frozenAt)} from ${f.basedOn}, config ${shortHash(f.configHash)}) and the hold on basket ${ev.basket} (${basketList(o, ev.basket).join(', ')}) from ${day(ev.start)} to ${day(ev.end)}, each from a fresh simulated ${usd(startingCash(o))}. Also: spread and slippage doubled; fills two sessions after the decision; first 15-minute VWAP fills; 0% withholding; one run leaving out each stock; ${fullBlock ? `but not the basket ${full.basket} full-list check, which is not ready` : `and the basket ${full.basket} full-list check with its VWAP fills (${day(full.start)} to ${day(full.end)}, reported, not a gate)`}.`),
+      : notice('warn', `The final run is the one judged run of ${f.version}. Looking at it and then changing the rules turns it into one more backtest.`),
+    h('div', {}, h('strong', {}, 'What runs. '), `${f.version} (frozen ${when(f.frozenAt)} from ${f.basedOn}, config ${shortHash(f.configHash)}), the fully invested hold and the day-one hold on basket ${ev.basket} (${basketList(o, ev.basket).join(', ')}) from ${day(ev.start)} to ${day(ev.end)}, each from a fresh simulated ${usd(startingCash(o))}. Also: spread and slippage doubled; fills two sessions after the decision; first 15-minute VWAP fills; 0% withholding; one run leaving out each stock; ${fullBlock ? `but not the basket ${full.basket} full-list check, which is not ready` : `and the basket ${full.basket} full-list check with its VWAP fills (${day(full.start)} to ${day(full.end)}, reported, not a gate)`}.`),
     fullBlock ? notice('warn', h('strong', {}, 'The full-list check is not ready. '), `${fullBlock} It is reported, not a gate, so the evaluation can run without it if you say so below.`) : null,
     armsList([base ? { ...base, label: `${f.version} (= ${base.label})` } : { version: f.version, label: f.version, rule: f.config?.rule }, hold].filter(Boolean)),
     recorded ? null : notice('warn', `${f.version} is not yet recorded as a config file in strategy/hxr/configs with the same hash. The pre-registration asks for it (and an EXPERIMENT-LOG.md entry) before the evaluation run.`),
@@ -930,14 +1029,14 @@ function evaluationDialog(P, repeat) {
     a.el,
     without?.el,
     h('div', { class: 'small muted' }, 'Simulation only: stored daily bars replayed on simulated accounts. Nothing is ordered or sent anywhere.'));
-  confirmDialog(repeat ? 'Repeat the evaluation (contaminated)?' : 'Run the evaluation?', body, {
-    confirmLabel: repeat ? 'Run again (contaminated)' : 'Run the evaluation', danger: repeat,
-    runningText: 'Running the simulated evaluation backtests (base, stress versions, leave-one-out and the full-list check)… keep this page open.',
+  confirmDialog(repeat ? 'Repeat the final run (contaminated)?' : 'Run the final run?', body, {
+    confirmLabel: repeat ? 'Run again (contaminated)' : 'Run the final run', danger: repeat,
+    runningText: 'Running the simulated final backtests (base, stress versions, leave-one-out and the full-list check, each with both benchmarks)… keep this page open.',
     ready: () => (!a.box.checked ? 'Tick the box to confirm.' : without && !without.box.checked ? 'Tick the box to evaluate without the full-list check, or refresh the data first.' : repeat && !reason.value.trim() ? 'A repeat needs a written reason.' : true),
     onConfirm: async () => {
       const r = await P.api('POST', '/api/hxr/evaluation', { confirm: true, ...(without ? { withoutFullList: true } : {}), ...(repeat ? { reason: reason.value.trim() } : {}) });
       const [ol] = OUTCOME[r.outcome] || [r.outcome];
-      toast(`Evaluation finished (simulated): ${ol}. ${r.meaning || ''} ${r.caveat || ''}`);
+      toast(`Final run finished (simulated): ${ol}. ${r.meaning || ''} ${r.caveat || ''}`);
       S.ev = null;
       S.run = null;
       P.reload();
@@ -976,20 +1075,38 @@ function prospectiveDialog(P) {
 
 // ---------- 6. results ----------
 
-async function evaluationRuns(P, entry) {
-  // The judged pair are the entry's runs of kind "evaluation"; the HXR arm carries the frozen version.
-  const { runs } = await P.api('GET', '/api/hxr/runs?kind=evaluation&limit=1000');
+// The judged runs of a ledger entry: the HXR arm carries the frozen version, the day-one hold's version ends in ":hold-day-one".
+async function judgedRuns(P, entry, kind) {
+  const { runs } = await P.api('GET', `/api/hxr/runs?kind=${kind}&limit=1000`);
   const ids = new Set(entry.runIds);
-  const pair = runs.filter((r) => ids.has(r.id));
-  const hx = pair.find((r) => r.version === entry.version), hd = pair.find((r) => r.version !== entry.version);
-  const [a, b] = await Promise.all([hx ? getRun(P, hx.id) : null, hd ? getRun(P, hd.id) : null]);
-  return { hxr: a, hold: b };
+  const set = runs.filter((r) => ids.has(r.id));
+  const isDayOne = (r) => /:hold-day-one$/.test(r.version);
+  const hx = set.find((r) => r.version === entry.version), d1 = set.find(isDayOne), hd = set.find((r) => r.version !== entry.version && !isDayOne(r));
+  const [a, b, c] = await Promise.all([hx ? getRun(P, hx.id) : null, hd ? getRun(P, hd.id) : null, d1 ? getRun(P, d1.id) : null]);
+  return { hxr: a, hold: b, holdDayOne: c };
 }
+const evaluationRuns = (P, entry) => judgedRuns(P, entry, 'evaluation');
 
 function resultsSection(P) {
   return sec('results', 'Results (simulated)',
-    P.selEntries.length ? ledgerResults(P, 'sel', P.selEntries, 'Selection', badge('IN-SAMPLE', 'warn'), selectionView) : null,
-    P.evalEntries.length ? ledgerResults(P, 'ev', P.evalEntries, 'Evaluation', null, evaluationView) : null);
+    P.selEntries.length ? ledgerResults(P, 'sel', P.selEntries, 'Development pick', badge('IN-SAMPLE', 'warn'), selectionView) : null,
+    P.valEntries.length ? ledgerResults(P, 'val', P.valEntries, 'Validation', null, validationView) : null,
+    P.evalEntries.length ? ledgerResults(P, 'ev', P.evalEntries, 'Final', null, evaluationView) : null);
+}
+
+// HXR against one benchmark at a time (tabs), with the per-stock table.
+function benchmarkComparison(hx, benches, opts) {
+  const keys = Object.keys(benches).filter((k) => benches[k]);
+  if (!keys.length) return notice('warn', 'No benchmark run was found for this entry.');
+  if (!S.bench || !keys.includes(S.bench)) S.bench = keys[0];
+  const tabs = h('div', { class: 'tabs lab-filter', role: 'tablist', 'aria-label': 'Benchmark' });
+  const host = h('div', {});
+  const draw = () => {
+    mount(tabs, keys.map((k) => h('button', { class: `tab ${k === S.bench ? 'active' : ''}`, type: 'button', role: 'tab', 'aria-selected': String(k === S.bench), onclick: () => { S.bench = k; draw(); } }, BENCH[k] || k)));
+    mount(host, armComparison(hx, benches[S.bench], { ...opts, benchLabel: BENCH[S.bench] || S.bench, cmp: opts.cmpBy?.[S.bench] ?? opts.cmp, fills: opts.fillsBy ? { hxr: opts.fillsBy.hxr, hold: opts.fillsBy[S.bench] } : opts.fills }));
+  };
+  draw();
+  return h('div', { class: 'stack' }, h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Compare with:'), tabs), host);
 }
 
 // One block per ledger kind; repeats (contaminated) can be picked, the clean run is the default.
@@ -1010,10 +1127,11 @@ async function selectionView(P, entry) {
   const { o } = P;
   const runs = await Promise.all(entry.runIds.map((id) => getRun(P, id)));
   const hold = runs.find((r) => r.run.details?.role === 'hold');
-  const cands = runs.filter((r) => r.run.details?.role === 'candidate');
-  if (!hold || !cands.length) return notice('danger', 'The runs of this selection entry were not found or are incomplete.');
+  const dayOne = runs.find((r) => r.run.details?.role === 'hold_day_one');
+  const cands = runs.filter((r) => ['candidate', 'comparison'].includes(r.run.details?.role));
+  if (!hold || !cands.length) return notice('danger', 'The runs of this development-pick entry were not found or are incomplete.');
   const period = hold.run.period || {};
-  const exp = (o.experiments || []).find((x) => x.at === entry.at && /^selection run/.test(x.what));
+  const exp = (o.experiments || []).find((x) => x.at === entry.at && /^development pick|^selection run/.test(x.what));
   const frozen = P.frozen && P.cleanSel === entry ? P.frozen : null;
   if (!S.cand || !cands.some((c) => c.run.version === S.cand)) S.cand = frozen && cands.some((c) => c.run.version === frozen.basedOn) ? frozen.basedOn : cands[0].run.version;
   const tabs = h('div', { class: 'tabs lab-filter', role: 'tablist', 'aria-label': 'Candidate' });
@@ -1022,31 +1140,52 @@ async function selectionView(P, entry) {
     mount(tabs, cands.map((c) => h('button', {
       class: `tab ${c.run.version === S.cand ? 'active' : ''}`, type: 'button', role: 'tab', 'aria-selected': String(c.run.version === S.cand),
       onclick: () => { S.cand = c.run.version; draw(); },
-    }, c.run.config?.label || c.run.version)));
+    }, c.run.version)));
     const c = cands.find((x) => x.run.version === S.cand);
-    const fills = c.run.details?.fills && hold.run.details?.fills ? { hxr: c.run.details.fills, hold: hold.run.details.fills } : null;
-    mount(host, armComparison(c, hold, { hxLabel: c.run.version, fills }));
+    mount(host, benchmarkComparison(c, { hold, holdDayOne: dayOne }, { hxLabel: c.run.version, fillsBy: { hxr: c.run.details?.fills, hold: hold.run.details?.fills, holdDayOne: dayOne?.run.details?.fills } }));
   };
   draw();
   const sel = o.criteria?.selection || {};
+  const nb = (frozen && cands.find((c) => c.run.version === frozen.basedOn)?.run.details?.neighbours) || null;
+  const row = (r, tag) => {
+    const m = r.run.metrics || {};
+    return [h('div', {}, h('strong', {}, r.run.config?.label || r.run.version), tag), int(m.roundTrips), pct(m.annualisedReturnPct), pctPlain(m.maxDrawdownPct), ratio(m.returnToDrawdown), money(m.endValue), int(m.freshEntries?.count), h('span', { class: 'small muted' }, `#${r.run.id}`)];
+  };
   return h('div', { class: 'stack' },
     notice('warn', h('strong', {}, 'In-sample. '), `These results come from the period the pick is made on (${day(period.start)} to ${day(period.end)}). They show how the rules behaved there; they are not evidence that HXR works.`),
     entry.contaminated ? notice('danger', `Repeat run (contaminated). Reason given: ${entry.reason || '—'}. A repeat never freezes a version.`) : null,
-    h('div', { class: 'small' }, h('strong', {}, 'Selection result: '), exp?.note || 'not recorded in the experiment log',
+    h('div', { class: 'small' }, h('strong', {}, 'Pick: '), exp?.note || 'not recorded in the experiment log',
       frozen ? ` Frozen as ${frozen.version} (config ${shortHash(frozen.configHash)}) ${when(frozen.frozenAt)}.` : P.cleanSel === entry ? ' Nothing was frozen.' : ''),
-    table(['Arm', `Round trips (needs ${sel.minRoundTrips ?? '—'})`, 'Annualised return', 'Largest decline', 'Return ÷ decline', 'End value (simulated)', 'Run'],
-      [hold, ...cands].map((r) => {
-        const m = r.run.metrics || {};
-        return [h('div', {}, h('strong', {}, r.run.config?.label || r.run.version), frozen?.basedOn === r.run.version ? badge('picked', 'info') : null),
-          int(m.roundTrips), pct(m.annualisedReturnPct), pctPlain(m.maxDrawdownPct), ratio(m.returnToDrawdown), money(m.endValue), h('span', { class: 'small muted' }, `#${r.run.id}`)];
-      }), { numeric: [1, 2, 3, 4, 5] }),
-    h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Compare with the hold:'), tabs),
+    table(['Arm', `Round trips (needs ${sel.minRoundTrips ?? '—'})`, 'Annualised return', 'Largest decline', 'Return ÷ decline', 'End value (simulated)', 'Fresh entries', 'Run'],
+      [row(hold, badge('benchmark', 'muted')), ...(dayOne ? [row(dayOne, badge('benchmark', 'muted'))] : []),
+        ...cands.map((r) => row(r, frozen?.basedOn === r.run.version ? badge('picked', 'info') : r.run.details?.role === 'comparison' ? badge('comparison: never picked', 'muted') : null))],
+      { numeric: [1, 2, 3, 4, 5, 6] }),
+    nb ? h('details', { class: 'more' }, h('summary', {}, `Neighbouring settings of the pick (${nb.neighbours.length}, reported only)`),
+      table(['Change', 'Round trips', 'Return ÷ decline', 'End value', 'Same conclusion as the pick'], nb.neighbours.map((n) => [Object.entries(n.change).map(([k, v]) => `${k} = ${v}`).join(', '), int(n.roundTrips), ratio(n.returnToDrawdown), money(n.endValue), n.sameConclusion ? 'yes' : 'no']), { numeric: [1, 2, 3] }),
+      h('div', { class: 'small muted' }, 'One setting changed at a time on the development period; never used for the pick.')) : null,
+    h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Candidate:'), tabs),
     host);
 }
 
+async function validationView(P, entry) {
+  const { hxr: hx, hold: hd, holdDayOne: d1 } = await judgedRuns(P, entry, 'validation');
+  if (!hx) return notice('danger', 'The judged runs of this validation entry were not found.');
+  const g = hx.run.details?.validation, rep = hx.run.details?.reported;
+  const [vl, vk] = VOUT[g?.outcome] || [g?.outcome || 'not recorded', 'muted'];
+  const period = hx.run.period || {};
+  return h('div', { class: 'stack' },
+    h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Outcome'), badge(vl, vk), entry.contaminated ? badge('contaminated repeat', 'danger') : null,
+      h('span', { class: 'small muted' }, `${entry.version} · config ${shortHash(entry.configHash)} · ${day(period.start)} to ${day(period.end)}`)),
+    g ? h('div', { class: 'small' }, g.meaning) : null,
+    P.o.historicalCaveat ? notice('warn', P.o.historicalCaveat) : null,
+    entry.contaminated ? notice('danger', `Repeat run (contaminated). Reason given: ${entry.reason || '—'}. A contaminated validation can never validate.`) : null,
+    g ? table(['', 'Gate', 'Status', 'Result'], g.criteria.map((c) => { const [l, k] = CRIT[c.status] || [c.status, '']; return [h('span', { class: 'mono' }, c.id), c.name, badge(l, k), h('div', { class: 'small' }, c.note || '')]; }), { cls: 'lab-crit hxr-crit' }) : null,
+    benchmarkComparison(hx, { hold: hd, holdDayOne: d1 }, { hxLabel: entry.version, cmpBy: rep?.comparisons?.main, fillsBy: rep?.fills ? { hxr: rep.fills.hxr, hold: rep.fills.hold, holdDayOne: rep.fills.hold_day_one } : null }));
+}
+
 async function evaluationView(P, entry) {
-  const { hxr: hx, hold: hd } = entry === P.evalEntry && P.evalRuns ? P.evalRuns : await evaluationRuns(P, entry);
-  if (!hx || !hd) return notice('danger', 'The judged runs of this evaluation entry were not found.');
+  const { hxr: hx, hold: hd, holdDayOne: d1 } = entry === P.evalEntry && P.evalRuns ? P.evalRuns : await evaluationRuns(P, entry);
+  if (!hx || !hd) return notice('danger', 'The judged runs of this final-run entry were not found.');
   const ev = hx.run.details?.evaluation, rep = hx.run.details?.reported;
   const [ol, ok] = OUTCOME[ev?.outcome] || [ev?.outcome || 'not recorded', 'muted'];
   const period = hx.run.period || {};
@@ -1054,8 +1193,8 @@ async function evaluationView(P, entry) {
     h('div', { class: 'row' }, h('span', { class: 'small muted' }, 'Outcome'), badge(ol, ok), entry.contaminated ? badge('contaminated repeat', 'danger') : null,
       h('span', { class: 'small muted' }, `${entry.version} · config ${shortHash(entry.configHash)} · ${day(period.start)} to ${day(period.end)} · out of sample for the rule choice`)),
     P.o.historicalCaveat ? notice('warn', P.o.historicalCaveat) : null,
-    entry.contaminated ? notice('danger', `Repeat run (contaminated). Reason given: ${entry.reason || '—'}. A contaminated evaluation can never pass.`) : null,
-    armComparison(hx, hd, { hxLabel: entry.version, fills: rep?.fills, cmp: rep?.comparisons?.main }),
+    entry.contaminated ? notice('danger', `Repeat run (contaminated). Reason given: ${entry.reason || '—'}. A contaminated final run can never pass.`) : null,
+    benchmarkComparison(hx, { hold: hd, holdDayOne: d1 }, { hxLabel: entry.version, cmpBy: rep?.comparisons?.main, fillsBy: rep?.fills ? { hxr: rep.fills.hxr, hold: rep.fills.hold, holdDayOne: rep.fills.holdDayOne } : null }),
     criteriaTable(P, ev),
     variantsTable(rep),
     fullListBlock(P, rep));
@@ -1072,15 +1211,15 @@ function fullListBlock(P, rep) {
   }
   return h('div', {}, h('h4', { class: 'lab-h4' }, title),
     lazy(P.ep, async () => {
-      const [hx, hd] = await Promise.all([getRun(P, f.runIds.hxr), getRun(P, f.runIds.hold)]);
-      return armComparison(hx, hd, { hxLabel: hx.run.version, fills: f.fills, cmp: rep.comparisons?.fullList });
+      const [hx, hd, d1] = await Promise.all([getRun(P, f.runIds.hxr), getRun(P, f.runIds.hold), f.runIds.holdDayOne ? getRun(P, f.runIds.holdDayOne) : null]);
+      return benchmarkComparison(hx, { hold: hd, holdDayOne: d1 }, { hxLabel: hx.run.version, cmpBy: rep.comparisons?.fullList, fillsBy: f.fills ? { hxr: f.fills.hxr, hold: f.fills.hold, holdDayOne: f.fills.holdDayOne } : null });
     }));
 }
 
 function armComparison(hx, hd, opts) {
-  const m = hx.run.metrics || {}, n = hd.run.metrics || {};
+  const m = hx.run.metrics || {}, n = hd?.run?.metrics || {};
   return h('div', { class: 'stack' },
-    equityChart(hx, hd, opts.hxLabel),
+    hd ? equityChart(hx, hd, opts.hxLabel) : null,
     metricsTable(m, n, opts),
     perStockTable(m, n, opts.hxLabel));
 }
@@ -1113,8 +1252,9 @@ function riseText(r) {
 const toned = (v, text, invert = false) => h('span', { class: tone(invert && fin(v) ? -v : v) }, text);
 
 // Every item the owner asked for, HXR and hold side by side (PREREGISTRATION.md section 11).
-function metricsTable(m, n, { hxLabel = 'HXR', fills = null, cmp = null } = {}) {
+function metricsTable(m, n, { hxLabel = 'HXR', fills = null, cmp = null, benchLabel = 'Hold' } = {}) {
   const em = m.episodes || {}, en = n.episodes || {};
+  const fe = m.freshEntries, bb = m.buyBacks, sz = m.sizing, ex = m.exposure, pa = m.pauses;
   const rm = m.missedRebounds || {}, rn = n.missedRebounds || {};
   const lm = m.lossesAfterBuyBack || {}, ln = n.lossesAfterBuyBack || {};
   const cm = m.costs || {}, cn = n.costs || {};
@@ -1164,12 +1304,33 @@ function metricsTable(m, n, { hxLabel = 'HXR', fills = null, cmp = null } = {}) 
       ['Their net P/L (after costs and dividends)', sMoney(lm.dollars), sMoney(ln.dollars)],
       ['Their price loss only', sMoney(lm.priceLoss), sMoney(ln.priceLoss)],
     ]],
-    ['Performance against holding', [
-      [`End value, ${hxLabel} − hold`, toned(d('endValue'), sMoney(d('endValue')))],
-      [`Annualised return, ${hxLabel} − hold`, toned(d('annualisedReturnPct'), pts(d('annualisedReturnPct')))],
+    ...(m.pooled ? [
+      ['Buy-backs below the sale price, apart from fresh entries at or above it', [
+        ['Buy-backs (below the previous sale price): holdings · net P/L', `${int(bb?.count)} · ${sMoney(bb?.pnl)}`],
+        ['Fresh entries (at or above the previous sale price, or never held): holdings · net P/L', `${int(fe?.holdings)} · ${sMoney(fe?.pnl)}`],
+        ['Fresh entries after a missed rebound · never held or lapsed', `${int(fe?.afterMissedRebound)} · ${int(fe?.neverHeldOrLapsed)}`],
+        ['Average premium of a fresh entry over the previous sale price', fe?.withPreviousExit ? pct(fe.avgPremiumPct) : '—'],
+        ['Average sessions from a missed rebound to the fresh entry', fe?.avgSessionsToFreshEntry != null ? ratio(fe.avgSessionsToFreshEntry, 0) : '—'],
+        ['Missed rebounds (price back at or above the sale price before any buy-back) · stocks retired by policy A', `${int(m.reboundsMissedEvents?.count)} · ${int(m.reboundsMissedEvents?.retired)}`],
+        ['Exits at the initial-loss level · exits by the rule', `${int(m.initialLossExits)} · ${int(m.ruleExits)}`],
+      ], true],
+      ['Position sizing, budgets and the pause', [
+        ['Buys: average position · average planned loss', `${money(sz?.avgPositionUsd)} · ${money(sz?.avgPlannedLossUsd)}`],
+        ['Which cap bound the size (counts)', sz?.bindingCaps ? Object.entries(sz.bindingCaps).map(([k, v]) => `${k} ${v}`).join(', ') || '—' : '—'],
+        ['Signals that lapsed (by reason)', sz?.lapsedSignals ? Object.entries(sz.lapsedSignals).map(([k, v]) => `${k} ${v}`).join(', ') || 'none' : '—'],
+        ['Stocks never entered', (m.neverEntered || []).join(', ') || 'none'],
+        ['Open risk: average · maximum', `${money(ex?.avgOpenRiskUsd)} · ${money(ex?.maxOpenRiskUsd)}`],
+        ['Tech/AI exposure: average · maximum', `${money(ex?.avgTechAiUsd)} · ${money(ex?.maxTechAiUsd)}`],
+        ['Invested fraction (average) · return on average invested capital', `${pctPlain(ex?.investedFractionPct, 1)} · ${pct(ex?.returnOnAvgInvestedPct)}`],
+        ['Pauses of new entries: episodes · sessions paused', `${int(pa?.count)} · ${int(pa?.sessions)}`],
+      ], true],
+    ] : []),
+    [`Performance against the benchmark (${benchLabel})`, [
+      [`End value, ${hxLabel} − benchmark`, toned(d('endValue'), sMoney(d('endValue')))],
+      [`Annualised return, ${hxLabel} − benchmark`, toned(d('annualisedReturnPct'), pts(d('annualisedReturnPct')))],
       ...(cmp?.ratios ? [
-        [`Largest decline, ${hxLabel} ÷ hold`, ratio(cmp.ratios.maxDrawdown)],
-        [`Return ÷ decline, ${hxLabel} ÷ hold`, ratio(cmp.ratios.returnToDrawdown)],
+        [`Largest decline, ${hxLabel} ÷ benchmark`, ratio(cmp.ratios.maxDrawdown)],
+        [`Return ÷ decline, ${hxLabel} ÷ benchmark`, ratio(cmp.ratios.returnToDrawdown)],
       ] : []),
     ], true],
     ['Assumed vs realistically available fills', fills ? [
@@ -1210,13 +1371,13 @@ function metricsTable(m, n, { hxLabel = 'HXR', fills = null, cmp = null } = {}) 
   }
   return h('div', {},
     h('div', { class: 'table-wrap' }, h('table', { class: 'lab-table hxr-table hxr-metrics' },
-      h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', { class: 'num' }, `${hxLabel} (simulated)`), h('th', { class: 'num' }, 'Hold (simulated)'), h('th', { class: 'num' }, `${hxLabel} − hold`))),
+      h('thead', {}, h('tr', {}, h('th', {}, ''), h('th', { class: 'num' }, `${hxLabel} (simulated)`), h('th', { class: 'num' }, `${benchLabel} (simulated)`), h('th', { class: 'num' }, `${hxLabel} − benchmark`))),
       tbody)),
-    h('div', { class: 'small muted' }, 'US dollars, simulated, after costs. Differences are HXR minus hold; "pts" are percentage points. The hold never exits, so its trade and rebound rows are zero.'));
+    h('div', { class: 'small muted' }, 'US dollars, simulated, after costs. Differences are HXR minus the benchmark; "pts" are percentage points. A hold never exits, so its trade and rebound rows are zero.'));
 }
 
 function perStockTable(m, n, label) {
-  const hold = new Map((n.perStock || []).map((s) => [s.symbol, s]));
+  const hold = new Map((n?.perStock || []).map((s) => [s.symbol, s]));
   const rows = (m.perStock || []).map((s) => {
     const x = hold.get(s.symbol) || {};
     const dd = diff(s.pnl, x.pnl);
@@ -1224,8 +1385,8 @@ function perStockTable(m, n, label) {
       int(s.roundTrips), pctPlain(s.timeOutPct, 1), money(s.costs?.total), money(s.dividendsNet), fin(s.largestRiseWhileOutPct) ? pct(s.largestRiseWhileOutPct) : '—'];
   });
   return h('details', { class: 'more' }, h('summary', {}, `Per stock (${rows.length}, simulated)`),
-    table(['Stock', `${label} end value (simulated)`, `${label} P/L (simulated)`, 'Hold P/L (simulated)', 'Difference', 'Round trips', 'Time out', 'Costs (simulated)', 'Dividends, net (simulated)', 'Largest rise while out'], rows, { numeric: [1, 2, 3, 4, 5, 6, 7, 8, 9] }),
-    h('div', { class: 'small muted' }, 'US dollars, simulated.'));
+    table(['Stock', `${label} end value (simulated)`, `${label} P/L (simulated)`, 'Benchmark P/L (simulated)', 'Difference', 'Round trips', 'Time out', 'Costs (simulated)', 'Dividends, net (simulated)', 'Largest rise while out'], rows, { numeric: [1, 2, 3, 4, 5, 6, 7, 8, 9] }),
+    h('div', { class: 'small muted' }, 'US dollars, simulated. With pooled cash a stock\'s P/L is the P/L of its holdings; its end value is its holding at the last close.'));
 }
 
 function criteriaTable(P, ev) {
@@ -1250,17 +1411,19 @@ function variantsTable(rep) {
   const c = rep?.comparisons;
   if (!c) return null;
   const label = (k) => VARIANT[k] || (k.startsWith('loo-') ? `Without ${k.slice(4)} (G6)` : k);
+  // Each entry is HXR against both benchmarks ({ hold, holdDayOne }); older entries are a single comparison.
+  const pick = (x) => (x?.hold || x?.holdDayOne ? x : { hold: x });
+  const tri = (x, f) => { const p = pick(x); return `${f(p.hold?.[0]?.hxr ?? p.hold?.endValue?.hxr)}`; };
+  const cell = (x, key, f) => { const p = pick(x); return `${f(p.hold?.[key]?.hxr ?? p.holdDayOne?.[key]?.hxr)} / ${f(p.hold?.[key]?.hold)} / ${f(p.holdDayOne?.[key]?.hold)}`; };
+  void tri;
   return h('div', {},
     h('h4', { class: 'lab-h4 first' }, 'Stress versions, leave-one-out and the full-list check'),
-    table(['Run', 'End value HXR / hold (simulated)', 'Annualised HXR / hold', 'Largest decline HXR / hold', 'Return ÷ decline HXR / hold', 'Round trips'], Object.entries(c).map(([k, x]) => [
+    table(['Run', 'End value HXR / hold / day-one hold', 'Annualised', 'Largest decline', 'Return ÷ decline', 'Round trips'], Object.entries(c).map(([k, x]) => [
       h('span', { class: 'small' }, label(k)),
-      `${money(x.endValue?.hxr)} / ${money(x.endValue?.hold)}`,
-      `${pct(x.annualisedReturnPct?.hxr)} / ${pct(x.annualisedReturnPct?.hold)}`,
-      `${pctPlain(x.maxDrawdownPct?.hxr)} / ${pctPlain(x.maxDrawdownPct?.hold)}`,
-      `${ratio(x.returnToDrawdown?.hxr)} / ${ratio(x.returnToDrawdown?.hold)}`,
-      int(x.roundTrips?.hxr),
+      cell(x, 'endValue', money), cell(x, 'annualisedReturnPct', pct), cell(x, 'maxDrawdownPct', pctPlain), cell(x, 'returnToDrawdown', ratio),
+      int(pick(x).hold?.roundTrips?.hxr),
     ]), { numeric: [1, 2, 3, 4, 5] }),
-    h('div', { class: 'small muted' }, 'US dollars, simulated. G5 uses the doubled-cost and two-session-delay runs; G6 the leave-one-out runs. The VWAP-fill, 0%-withholding and full-list runs are reported, not judged. Any run\'s full report against its hold is under Trades and decisions.'));
+    h('div', { class: 'small muted' }, 'US dollars, simulated. G5 uses the doubled-cost and two-session-delay runs; G6 the leave-one-out runs; each against both benchmarks. The VWAP-fill, 0%-withholding and full-list runs are reported, not judged. Any run\'s full report is under Trades and decisions.'));
 }
 
 // ---------- 7. trades and decisions ----------
