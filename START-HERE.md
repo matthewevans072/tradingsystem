@@ -40,6 +40,7 @@ Overview shows a **Getting started** checklist. In order:
 | Official filings (8-K, 10-Q…) | SEC EDGAR | `SEC_CONTACT_EMAIL` | Free; the SEC requires a contact email in requests. Canadian-only issuers aren't on EDGAR. |
 | USD/CAD | Bank of Canada | none | Official daily rate, labelled with its date. |
 | News interpretation & briefing summaries (optional) | Anthropic Claude | `ANTHROPIC_API_KEY` | Explains data the app already holds; it never changes the action labels. |
+| Strategy Lab history (optional) | Alpaca market data (free account) | `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET_KEY` | Consolidated (SIP), split-adjusted 15-minute bars for backtests only; no trading API is called. Free data is 15 minutes old, so it cannot drive the forward test. Personal, non-commercial use. See `strategy/DATA-READINESS.md`. |
 
 After editing `.env`, restart Signal Desk. In **Settings → Data providers → Plan limits & timeliness**, set the delay to match your plan (0 = real-time). Until you do, quotes are labelled **delayed**, never overstated.
 
@@ -93,6 +94,16 @@ Press **Ask** (bottom-right on every page) to ask questions such as "Why is my p
 - Personalised sizing waits until your risk answers (Settings) are complete; thresholds are described as app defaults unless you set them.
 - An answer given without fetching any records (for example a follow-up answered from the conversation) is marked partial with a note saying so.
 
+**Trade status**
+- Every trade or order in an answer comes from a record, and its badge says which kind:
+  - **Proposed** (amber): a change proposed in this chat. Nothing is saved until you press Confirm. The badge shows whether it is pending, confirmed, rejected or expired.
+  - **Simulated** (purple): a hypothetical scenario from the trade calculator, or a Strategy Lab trade, order or position. Never real money.
+  - **User-reported** (blue): a transaction in your records, entered in the app, imported from a CSV, or saved when you confirmed a chat proposal. It is your own entry; nothing has checked it against your broker.
+  - **Broker-confirmed** exists only as a reserved status and is never shown. Signal Desk has no broker connection, so no record can be broker-confirmed.
+- Badges come from the records a point cites, never from the model's wording. When an answer involves trade records, a one-line legend appears under **Data used**. A proposal card that you confirmed says which record it was saved as.
+- Telling the chat "I sold 10 VRT" does not make it a record. If you ask it to record the trade, it shows a proposal, and the trade becomes User-reported only after you press Confirm. Until then the answer says "you said you sold…".
+- Some points are removed and replaced by "A statement about a trade was removed because no record backs it". This happens when a point describes a specific trade without citing a record of the status it states: for example "you sold 10 VRT" with no recorded sale, "proposed" with no proposal in this answer, or "hypothetical" with no scenario. Any wording that a broker confirmed or filled a trade is always removed. The model gets one chance to rephrase first. This check is a fixed set of rules for statements that name a ticker or a quantity. It is a backstop, not a guarantee.
+
 **What it can't do**
 - It cannot trade, and it cannot change your records by itself. "Sell 10 NBIS for me" gets an explanation, not an order. If you ask it to **record** something you did (a trade, a cash balance, a strategy, an alert), it shows the **exact proposed change**: every field, the position before and after, and a warning if the same trade is already recorded. Nothing is saved until you press **Confirm**.
 - A proposal uses only values from your own latest message: the request must start with the instruction ("Record…", "Log…", "Set…", "Add an alert…"), and the type (sold vs bought), currency, amounts, direction and any thesis text must match what you wrote. Questions (even polite ones containing "set" or "update"), "what if" / "simulate" / "scenario" framings, future plans, other people's trades and anything you pasted in quotes or attributed to an article never create one. If any part of a message asks Signal Desk to trade ("go ahead and sell…"), nothing is proposed. A backdated trade is valued at its date, with later trades replayed after it, and refused if it would exceed the shares held that day. When you press Confirm, Signal Desk checks the records again; if the position, cash or alert changed in the meantime, nothing is saved and you are asked to request a fresh proposal. Proposals expire after 24 hours.
@@ -139,5 +150,15 @@ Signal Desk binds to `127.0.0.1` and refuses to start on any other address unles
 | Briefing shows "missed" | The computer was asleep, off or offline at that time. Expected for a local app. |
 | Ask Signal Desk says it is not available | Add `ANTHROPIC_API_KEY` to `.env` and restart. If it says the daily cap is reached, raise `CHAT_DAILY_BUDGET_USD`. |
 | Anything else | Settings → Show recent log (secrets are scrubbed), or `data\logs\signal-desk.log`. |
+
+## 12. Strategy Lab (simulation only)
+
+The **Lab** page tests one consolidation-breakout strategy in a hypothetical account that is separate from your portfolio. It places no orders anywhere, and simulated profits are not real money or buying power. The rules, the data splits and the pass/fail criteria were fixed before any results (`strategy/RULES.md`, `strategy/VALIDATION-PLAN.md`); a change is a new version, logged in `strategy/PARAMETER-LOG.md`.
+
+- **Data first.** Lab → Data shows a readiness checklist for each of the 17 symbols and each test period (coverage, session boundaries, missing bars, splits, source terms). Development and validation runs use only symbols marked READY. Nothing is shortened or swapped silently. To get history, add the Alpaca keys above to `.env`, restart, then use **Download history** (source Alpaca, 2021-07-01 to 2026-06-30).
+- **The holdout period** (2025-01-01 to 2026-06-30) runs once per frozen version. A second run must give a reason and is marked contaminated.
+- **The forward test** is reported apart from backtests, with missed, late and expired signals and costs. It needs real-time consolidated data, which no free plan provides.
+- **Results** say how many trades they rest on and the pre-registered outcome: not eligible, inconclusive or eligible for review. "Eligible for review" is not permission to trade.
+- The Pine Script version and TradingView steps are in `strategy/TRADINGVIEW-SETUP.md`. The Questrade assessment, and why nothing connects to a broker, is in `strategy/QUESTRADE-ASSESSMENT.md`.
 
 Run the automated tests with `npm test`.

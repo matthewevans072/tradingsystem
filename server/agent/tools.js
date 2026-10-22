@@ -14,7 +14,7 @@ import { sessionAt, exchangeGroup, previousTradingDay, isTradingDay, dayInfo } f
 import { todayIn, addDays, zonedToUtc, formatNy, weekdayOf, zonedParts, NY } from '../time.js';
 import { getSetting } from '../db.js';
 import { alertSettings } from '../alerts.js';
-import { untrusted } from './ledger.js';
+import { untrusted, TRADE_STATUS } from './ledger.js';
 import { simulateTrade, simulateTrades, priceMoveImpact, riskOverlap, dailyAttribution, sessionMixNote } from './calc.js';
 import { createProposal, PROPOSAL_TYPES } from './proposals.js';
 import { CATEGORIES } from '../catalog.js';
@@ -475,7 +475,10 @@ export function createToolbox(ctx, { ledger, turn }) {
         },
         fx: p.fx ? { usdcad: p.fx.rate, asOf: p.fx.as_of, source: p.fx.source } : null,
         workspace: ctx.mode === 'demo' ? "DEMO workspace — synthetic data, not the user's portfolio" : 'real',
-        appCapabilities: { ref: statusRef(L, 'Signal Desk is read-only: no brokerage connection; record changes need your confirmation', 'get_data_status'), canTrade: false, brokerageConnection: false, recordChanges: 'Only as proposals the owner confirms in the app.' },
+        appCapabilities: {
+          ref: statusRef(L, 'Signal Desk is read-only: no brokerage connection; record changes need your confirmation', 'get_data_status'), canTrade: false, brokerageConnection: false, recordChanges: 'Only as proposals the owner confirms in the app.',
+          tradeRecordStatuses: TRADE_STATUS_MEANING,
+        },
       };
     },
 
@@ -524,8 +527,9 @@ export function createToolbox(ctx, { ledger, turn }) {
       const ref = several
         ? L.add({ key: `position:${pos.symbol}:all:${p.asOf}`, kind: 'portfolio_record', label: `${pos.symbol} records in ${matches.map((x) => x.account).join(', ')}`, source: 'Signal Desk ledger', asOf: p.asOf, symbol: pos.symbol, tool: 'get_position' })
         : L.add({ key: `position:${pos.key}:${p.asOf}`, kind: 'portfolio_record', label: `${pos.symbol} position record`, source: 'Signal Desk ledger', asOf: p.asOf, symbol: pos.symbol, tool: 'get_position' });
-      const tx = db.prepare(`SELECT t.trade_date, t.type, t.quantity, t.price, t.fees, t.currency, t.source, t.note, t.unconfirmed_fields, t.created_at, a.name AS account
+      const tx = db.prepare(`SELECT t.id, t.trade_date, t.type, t.quantity, t.price, t.fees, t.amount, t.currency, t.source, t.note, t.unconfirmed_fields, t.created_at, a.name AS account
                              FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.instrument_id = ? AND t.voided_at IS NULL ORDER BY t.trade_date DESC, t.id DESC LIMIT 40`).all(pos.instrument_id);
+      const chatPos = chatConfirmed(db, tx.map((t) => t.id));
       const rows = db.prepare('SELECT payload_json FROM assessments WHERE instrument_id = ? ORDER BY id DESC LIMIT 20').all(pos.instrument_id).map((r) => JSON.parse(r.payload_json));
       const assessments = distinctAssessments(rows).slice(0, 3);
       const d = ctx.catalog.describeInstrument({ symbol: pos.symbol, exchange: pos.exchange, currency: pos.currency, identity_status: pos.identityStatus });
@@ -591,7 +595,8 @@ export function createToolbox(ctx, { ledger, turn }) {
         quote: pos.identityStatus !== 'confirmed' ? { available: false, reason: 'Instrument identity not confirmed by the user, so it is not priced.' } : qm(pos.quote),
         quoteRef: qref(pos.symbol, pos.quote, 'get_position'),
         description: d?.oneLiner || null,
-        transactions: tx.map((t) => ({ ...t, note: t.note ? ownerNote(t.note, 200) : null, unconfirmed_fields: t.unconfirmed_fields ? JSON.parse(t.unconfirmed_fields) : null })),
+        transactions: tx.map((t) => ({ ...txRecord(L, { ...t, symbol: pos.symbol }, 'get_position', chatPos), ...t, note: t.note ? ownerNote(t.note, 200) : null, unconfirmed_fields: t.unconfirmed_fields ? JSON.parse(t.unconfirmed_fields) : null })),
+        transactionsNote: TX_NOTE,
         assessments: assessments.map((a) => fmtAssessment(L, a, 'get_position')),
         assessmentsNote: REPEATS_NOTE,
         ...(several ? {} : { otherAccountsSameTicker: [] }),
@@ -608,7 +613,8 @@ export function createToolbox(ctx, { ledger, turn }) {
                                FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN instruments i ON i.id = t.instrument_id
                                WHERE ${where.join(' AND ')} ORDER BY t.trade_date DESC, t.id DESC LIMIT ?`).all(...args, Math.min(v(limit) || 50, 200));
       const ref = L.add({ key: `tx:${symbol}:${since}:${rows[0]?.id}`, kind: 'portfolio_record', label: `Transaction history${symbol ? ' for ' + String(symbol).toUpperCase() : ''}`, source: 'Signal Desk ledger', asOf: rows[0]?.entered_at || null, tool: 'get_transactions' });
-      return { ref, count: rows.length, transactions: rows.map((t) => ({ ...t, note: t.note ? ownerNote(t.note, 200) : null, unconfirmed_fields: t.unconfirmed_fields ? JSON.parse(t.unconfirmed_fields) : null })) };
+      const chat = chatConfirmed(db, rows.map((t) => t.id));
+      return { ref, count: rows.length, note: TX_NOTE, transactions: rows.map((t) => ({ ...txRecord(L, t, 'get_transactions', chat), ...t, note: t.note ? ownerNote(t.note, 200) : null, unconfirmed_fields: t.unconfirmed_fields ? JSON.parse(t.unconfirmed_fields) : null })) };
     },
 
     async get_preferences() {
@@ -998,10 +1004,13 @@ export function createToolbox(ctx, { ledger, turn }) {
       const recent = db.prepare("SELECT * FROM events WHERE details_json IS NOT NULL AND date >= ? ORDER BY date").all(sinceDate).filter(mine);
       out.rescheduledEvents = recent.filter((e) => { const d = JSON.parse(e.details_json); return d.previousDate && d.dateChangedAt >= sinceIso; }).map(evOut);
       out.changedEvents = recent.filter((e) => (JSON.parse(e.details_json).changes || []).some((c) => c.at >= sinceIso)).map(evOut);
-      const txRows = db.prepare(`SELECT t.trade_date, t.type, i.symbol, t.quantity, t.price, t.created_at FROM transactions t LEFT JOIN instruments i ON i.id = t.instrument_id
+      const txRows = db.prepare(`SELECT t.id, t.trade_date, t.type, i.symbol, t.quantity, t.price, t.amount, t.currency, t.source, t.created_at FROM transactions t LEFT JOIN instruments i ON i.id = t.instrument_id
                                  WHERE t.voided_at IS NULL AND (t.trade_date > ? OR t.created_at >= ?) ${sym ? 'AND i.symbol = ?' : ''} ORDER BY t.id`).all(...[sinceDate, sinceIso, ...(sym ? [sym] : [])]);
-      out.tradesDatedSince = txRows.filter((t) => t.trade_date > sinceDate || (since === 'today' && t.trade_date === today));
-      out.recordsEnteredSince = txRows.filter((t) => !out.tradesDatedSince.includes(t)).map((t) => ({ ...t, note: `Trade dated ${t.trade_date}, entered into Signal Desk after ${out.sinceLabel}: a record added since then, not a trade made since then.` }));
+      const dated = txRows.filter((t) => t.trade_date > sinceDate || (since === 'today' && t.trade_date === today));
+      const chat = chatConfirmed(db, txRows.map((t) => t.id));
+      out.tradesDatedSince = dated.map((t) => ({ ...txRecord(L, t, 'what_changed', chat), ...t }));
+      out.recordsEnteredSince = txRows.filter((t) => !dated.includes(t)).map((t) => ({ ...txRecord(L, t, 'what_changed', chat), ...t, note: `Trade dated ${t.trade_date}, entered into Signal Desk after ${out.sinceLabel}: a record added since then, not a trade made since then.` }));
+      if (txRows.length) out.transactionsNote = TX_NOTE;
       if (out.recordsEnteredSince.length && assess.some((a) => a.changed != null)) out.assessmentNote = 'Records were added after the cutoff, so the earlier assessment was made on different holdings; a change in it can reflect the records as well as prices.';
       if (txRows.length) out.transactionsRef = L.add({ key: `txsince:${sinceIso}:${sym}`, kind: 'portfolio_record', label: 'Transactions dated or entered since then', source: 'Signal Desk ledger', asOf: now().toISOString(), tool: 'what_changed' });
       out.newsSourcesConfigured = !!(ctx.providers.finnhub || ctx.providers.sec);
@@ -1116,8 +1125,9 @@ export function createToolbox(ctx, { ledger, turn }) {
         return { currency: own?.currency ?? cat?.currency, exchange: own?.exchange ?? cat?.exchange ?? leg.exchange, identityStatus: own?.identity_status, typicalFee: acct ? typicalFee(db, acct) : null, quote: quote || null };
       });
       const id = `S${turn.scenarios.length + turn.priorScenarioCount + 1}`;
-      const ref = L.add({ key: `scenario:${id}`, kind: 'calculation', label: `Hypothetical multi-leg scenario ${id} (${result.legs.length} legs)`, source: 'Signal Desk trade calculator', asOf: now().toISOString(), tool: 'simulate_trades', note: 'hypothetical — not saved' });
-      const full = { id, ref, portfolioRef: portfolioRef(L, p, 'simulate_trades'), multiLeg: true, ...result, inputs: { legs: clean } };
+      const ref = L.add({ key: `scenario:${id}`, kind: 'calculation', label: `Hypothetical multi-leg scenario ${id} (${result.legs.length} legs)`, source: 'Signal Desk trade calculator', asOf: now().toISOString(), tool: 'simulate_trades', note: 'hypothetical — not saved',
+        tradeStatus: TRADE_STATUS.SIMULATED, recordId: `scenario:${id}`, subState: 'scenario', symbols: result.legs.map((l) => l.symbol) });
+      const full = { id, ref, tradeStatus: TRADE_STATUS.SIMULATED, portfolioRef: portfolioRef(L, p, 'simulate_trades'), multiLeg: true, ...result, inputs: { legs: clean } };
       turn.scenarios.push(full);
       return full;
     },
@@ -1135,10 +1145,12 @@ export function createToolbox(ctx, { ledger, turn }) {
         latestUserMessage: turn.userText, proposalsThisTurn: turn.proposals.length,
       });
       turn.proposals.push(proposal.id);
-      const ref = L.add({ key: `proposal:${proposal.id}`, kind: 'portfolio_record', label: `Proposed change #${proposal.id}: ${proposal.diff.summary} (pending your confirmation)`, source: 'Ask Signal Desk proposal', asOf: now().toISOString(), tool: 'propose_record_change', note: 'pending — not saved' });
+      const pl = proposal.payload || {};
+      const ref = L.add({ key: `proposal:${proposal.id}`, kind: 'portfolio_record', label: `Proposed change #${proposal.id}: ${proposal.diff.summary} (pending your confirmation)`, source: 'Ask Signal Desk proposal', asOf: now().toISOString(), tool: 'propose_record_change', note: 'pending — not saved',
+        tradeStatus: TRADE_STATUS.PROPOSED, recordId: `proposal:${proposal.id}`, subState: 'pending', symbol: pl.symbol || null, side: change_type === 'add_transaction' ? pl.type || null : null });
       return {
-        ref, proposalId: proposal.id, status: 'pending_user_confirmation', change: proposal.diff, supersededProposals: proposal.superseded,
-        note: 'Nothing has been saved. The user must press Confirm in the app. Tell them what was proposed; do not say it was done.',
+        ref, proposalId: proposal.id, status: 'pending_user_confirmation', tradeStatus: TRADE_STATUS.PROPOSED, subState: 'pending', change: proposal.diff, supersededProposals: proposal.superseded,
+        note: 'Nothing has been saved. The user must press Confirm in the app. Tell them what was proposed (cite this ref and call it proposed); do not say it was done or that the trade is recorded.',
       };
     },
 
@@ -1174,18 +1186,18 @@ export function createToolbox(ctx, { ledger, turn }) {
           ...labAccount(o.account || {}, cfg),
         },
         positions: (o.positions || []).map((p) => ({
-          ref: labRef(tool, { key: `pos:${mode}:${p.tradeId}:${p.lastBarAt}`, label: `Simulated ${mode} position: ${p.shares} ${p.symbol} entered ${et(p.entryAt)}`, asOf: p.lastBarAt || asOf, symbol: p.symbol, runId: fwd.runId ?? null, ...meta }),
+          ref: labRef(tool, { key: `pos:${mode}:${p.tradeId}:${p.lastBarAt}`, label: `Simulated ${mode} position: ${p.shares} ${p.symbol} entered ${et(p.entryAt)}`, asOf: p.lastBarAt || asOf, symbol: p.symbol, runId: fwd.runId ?? null, ...meta, recordId: `lab-position:${p.tradeId}`, subState: 'open position' }),
           symbol: p.symbol, tradeId: p.tradeId, shares: p.shares, entryAtET: et(p.entryAt), entryPrice: labPrice(p.entryPrice), stop: labPrice(p.stop), target: labPrice(p.target),
           lastClose: labPrice(p.lastClose), lastBarAtET: et(p.lastBarAt), marketValue: round(p.marketValue), unrealized: round(p.unrealized), plannedRisk: round(p.plannedRisk),
           timeExitBy: p.exitBy ?? null, exitOrder: p.exitOrder ? { reason: p.exitOrder.reason ?? null, placedAtET: et(p.exitOrder.placedAt), expectedAtET: et(p.exitOrder.expectedAt) } : null,
         })),
         pendingOrders: (o.pendingOrders || []).map((p) => ({
-          ref: labRef(tool, { key: `order:${mode}:${p.orderId}`, label: `Simulated ${mode} pending order: buy up to ${p.shares} ${p.symbol} at the next open (max ${labPrice(p.maxEntry)})`, asOf: p.signalAt, symbol: p.symbol, runId: fwd.runId ?? null, ...meta }),
+          ref: labRef(tool, { key: `order:${mode}:${p.orderId}`, label: `Simulated ${mode} pending order: buy up to ${p.shares} ${p.symbol} at the next open (max ${labPrice(p.maxEntry)})`, asOf: p.signalAt, symbol: p.symbol, runId: fwd.runId ?? null, ...meta, recordId: `lab-order:${p.orderId}`, subState: 'pending order' }),
           symbol: p.symbol, orderId: p.orderId, signalAtET: et(p.signalAt), validForET: et(p.validFor), maxEntry: labPrice(p.maxEntry), stop: labPrice(p.stop), target: labPrice(p.target),
           shares: p.shares, plannedRiskWorstCase: round(p.plannedRiskWorstCase), reservedCash: round(p.reservedCash),
         })),
         activeSetups: (o.activeSetups || []).map((s) => ({
-          ref: labRef(tool, { key: `setup:${mode}:${s.symbol}:${s.eligibleAt}`, label: `Simulated ${mode} setup: ${s.symbol} box eligible ${et(s.eligibleAt)}`, asOf: s.eligibleAt, symbol: s.symbol, runId: fwd.runId ?? null, ...meta }),
+          ref: labRef(tool, { key: `setup:${mode}:${s.symbol}:${s.eligibleAt}`, label: `Simulated ${mode} setup: ${s.symbol} box eligible ${et(s.eligibleAt)}`, asOf: s.eligibleAt, symbol: s.symbol, runId: fwd.runId ?? null, ...meta, subState: 'setup' }),
           symbol: s.symbol, state: s.state, eligibleAtET: et(s.eligibleAt), barsSinceEligible: s.barsSinceEligible, barsLeft: s.barsLeft, box: labBox(s.box),
           whyQualifies: whySetupQualifies({ symbol: s.symbol, box: s.box }).text,
         })),
@@ -1445,7 +1457,7 @@ export function createToolbox(ctx, { ledger, turn }) {
           version: c.version, file: c.file, label: c.label ?? null, status: c.status ?? null, createdAt: c.createdAt ?? null, valid: !!c.valid, errors: c.errors?.length ? c.errors : null, configHash: c.configHash, active: !!c.active,
         })),
         parameterLog: (r.parameterLog || []).map((l, i) => ({
-          ref: labRef(tool, { key: `plog:${i}:${l.version}:${l.date}`, label: `Parameter log ${l.date}, version ${l.versionLabel || l.version}: ${l.change}`, asOf: l.date || null, version: l.version, note: 'strategy/PARAMETER-LOG.md' }),
+          ref: labRef(tool, { key: `plog:${i}:${l.version}:${l.date}`, label: `Parameter log ${l.date}, version ${l.versionLabel || l.version}: ${l.change}`, asOf: l.date || null, version: l.version, note: 'strategy/PARAMETER-LOG.md', tradeStatus: null }),
           date: l.date, version: l.version, change: l.change, reason: l.reason, dataSeenBeforeChange: l.dataSeen,
         })),
         labChanges: (r.labChanges || []).map((c) => labChangeOut(tool, c)),
@@ -1495,15 +1507,19 @@ export function createToolbox(ctx, { ledger, turn }) {
 
   // Every Lab item: source "Strategy Lab (simulated)", labelled SYNTHETIC when it
   // is, with its run, version and config hash in the note and its time as asOf.
-  function labRef(tool, { key, label, asOf = null, symbol = null, synthetic = false, runId = null, version = null, configHash = null, note = null }) {
+  // Simulated trading (trades, orders, positions, runs, the account) is
+  // SIMULATED; a config file, the parameter log, stored market data and
+  // TradingView alerts pass tradeStatus null.
+  function labRef(tool, { key, label, asOf = null, symbol = null, synthetic = false, runId = null, version = null, configHash = null, note = null, tradeStatus = TRADE_STATUS.SIMULATED, recordId = null, subState = null }) {
     return L.add({
       key: `lab:${key}`, kind: 'simulation', label: `${synthetic ? 'SYNTHETIC — ' : ''}${label}`, source: LAB_SOURCE, asOf, symbol, tool,
       note: [synthetic ? 'synthetic data, simulated' : 'simulated', runId != null ? `run ${runId}` : null, version ? `version ${version}` : null, configHash ? `config ${hash12(configHash)}` : null, note].filter(Boolean).join(' · '),
+      tradeStatus, recordId, subState,
     });
   }
   const labStatus = (tool, label, note = null) => statusRef(L, `Strategy Lab (simulated): ${label}`, tool, note);
   // A strategy version is a config file, the same in every workspace (never synthetic itself).
-  const labVersionRef = (tool, { version, configHash, label }) => labRef(tool, { key: `config:${version}:${configHash}`, label: `Strategy version ${version}${label ? ` (${label})` : ''}`, version, configHash });
+  const labVersionRef = (tool, { version, configHash, label }) => labRef(tool, { key: `config:${version}:${configHash}`, label: `Strategy version ${version}${label ? ` (${label})` : ''}`, version, configHash, tradeStatus: null });
 
   function runOut(tool, r, extra = {}) {
     return {
@@ -1525,7 +1541,7 @@ export function createToolbox(ctx, { ledger, turn }) {
     if (t.gapThrough) flags.push('the price gapped through the exit level at the open');
     if (t.endOfData) flags.push('closed when the data ended: counts in P/L, not in per-trade statistics');
     return {
-      ref: labRef(tool, { key: `trade:${t.id}`, label: `Simulated ${where} trade ${t.id}: ${t.symbol} (${t.mode}) entered ${et(t.entryAt)}, ${t.exitReason || 'open'}${t.r != null ? `, ${round(t.r)}R` : ''}`, asOf: t.exitAt || t.entryAt || null, symbol: t.symbol, synthetic, runId: t.runId, version: t.version, configHash: t.configHash }),
+      ref: labRef(tool, { key: `trade:${t.id}`, label: `Simulated ${where} trade ${t.id}: ${t.symbol} (${t.mode}) entered ${et(t.entryAt)}, ${t.exitReason || 'open'}${t.r != null ? `, ${round(t.r)}R` : ''}`, asOf: t.exitAt || t.entryAt || null, symbol: t.symbol, synthetic, runId: t.runId, version: t.version, configHash: t.configHash, recordId: `lab-trade:${t.id}`, subState: where }),
       id: t.id, tradeId: t.tradeId, runId: t.runId, source: t.source, kind: t.kind, mode: t.mode, symbol: t.symbol, version: t.version, configHash: hash12(t.configHash), synthetic,
       signalAtET: et(t.signalAt), entryAtET: et(t.entryAt), entryPrice: labPrice(t.entryPrice), shares: t.shares,
       exitAtET: et(t.exitAt), exitPrice: labPrice(t.exitPrice), exitReason: t.exitReason, r: labR(t.r), net: round(t.net), costs: round(t.costs), flags,
@@ -1546,7 +1562,7 @@ export function createToolbox(ctx, { ledger, turn }) {
     if (e.source === 'tradingview') return tvOut(tool, e);
     const mark = { entry_filled: 'Simulated fill: ', exit_filled: 'Simulated fill: ', order_placed: 'Simulated order: ', exit_order: 'Simulated order: ' }[e.type] || '';
     return {
-      ref: labRef(tool, { key: `event:${e.id}`, label: `Simulated ${e.source || ''} journal: ${e.symbol || ''} ${e.type} at ${et(e.at)}`, asOf: e.at || null, symbol: e.symbol || null, synthetic, runId: e.runId ?? null, version, configHash }),
+      ref: labRef(tool, { key: `event:${e.id}`, label: `Simulated ${e.source || ''} journal: ${e.symbol || ''} ${e.type} at ${et(e.at)}`, asOf: e.at || null, symbol: e.symbol || null, synthetic, runId: e.runId ?? null, version, configHash, recordId: `lab-event:${e.id}`, subState: e.type || null }),
       id: e.id, runId: e.runId ?? null, source: e.source, synthetic, atET: et(e.at), symbol: e.symbol || null, type: e.type, code: e.code ?? null,
       explanation: `${mark}${e.explanation || e.reason || ''}`,
       ...(e.costs ? { costs: { commission: round(e.costs.commission), spreadSlippage: round(e.costs.spreadSlippage), fx: round(e.costs.fx) } } : {}),
@@ -1561,7 +1577,7 @@ export function createToolbox(ctx, { ledger, turn }) {
     const payload = a.details == null ? null : JSON.stringify(a.details);
     const when = (t) => (t && Number.isFinite(Date.parse(t)) ? et(t) : null);
     return {
-      ref: labRef(tool, { key: `tv:${a.id}`, label: `TradingView alert ${String(a.id).replace(/[^\w-]/g, '')}: ${event || 'unrecognised event'}${symbol ? ` ${symbol}` : ''} (${status}), third-party payload`, asOf: a.receivedAt || null, symbol, note: 'TradingView alert, untrusted; never drives the simulated account' }),
+      ref: labRef(tool, { key: `tv:${a.id}`, label: `TradingView alert ${String(a.id).replace(/[^\w-]/g, '')}: ${event || 'unrecognised event'}${symbol ? ` ${symbol}` : ''} (${status}), third-party payload`, asOf: a.receivedAt || null, symbol, note: 'TradingView alert, untrusted; never drives the simulated account', tradeStatus: null }),
       id: a.id, source: 'tradingview', receivedAtET: when(a.receivedAt), barTimeET: when(a.at),
       symbol: symbol ?? untrusted(a.symbol, 40), event: event ?? untrusted(a.type, 60), status,
       reason: untrusted(a.reason, 300), payload: untrusted(payload, 1500),
@@ -1572,7 +1588,7 @@ export function createToolbox(ctx, { ledger, turn }) {
 
   function labChangeOut(tool, c) {
     return {
-      ref: labRef(tool, { key: `change:${c.id}`, label: `Lab change log: ${c.path} ${c.fromVersion ?? 'new'} → ${c.toVersion}`, asOf: c.at || null, version: c.toVersion, note: c.dataSeen ? `data seen: ${c.dataSeen}` : null }),
+      ref: labRef(tool, { key: `change:${c.id}`, label: `Lab change log: ${c.path} ${c.fromVersion ?? 'new'} → ${c.toVersion}`, asOf: c.at || null, version: c.toVersion, note: c.dataSeen ? `data seen: ${c.dataSeen}` : null, tradeStatus: null }),
       id: c.id, atET: et(c.at), fromVersion: c.fromVersion ?? null, toVersion: c.toVersion, path: c.path, from: c.from ?? null, to: c.to ?? null, reason: c.reason ?? null, dataSeenBeforeChange: c.dataSeen ?? null,
     };
   }
@@ -1582,7 +1598,7 @@ export function createToolbox(ctx, { ledger, turn }) {
     const syms = d.symbols || [];
     const job = o.fetchJob;
     return {
-      ref: labRef(tool, { key: `data:${d.lastBar}:${syms.reduce((s, x) => s + (x.bars || 0), 0)}`, label: `Strategy Lab market data: ${syms.filter((x) => x.bars > 0).length} of ${syms.length} symbols stored, last bar ${et(d.lastBar) || 'none'}`, asOf: d.lastBar || null, synthetic: meta.synthetic }),
+      ref: labRef(tool, { key: `data:${d.lastBar}:${syms.reduce((s, x) => s + (x.bars || 0), 0)}`, label: `Strategy Lab market data: ${syms.filter((x) => x.bars > 0).length} of ${syms.length} symbols stored, last bar ${et(d.lastBar) || 'none'}`, asOf: d.lastBar || null, synthetic: meta.synthetic, tradeStatus: null }),
       lastBarET: et(d.lastBar), requiredRange: d.required || null,
       symbolsWithBars: syms.filter((x) => x.bars > 0).length, symbolsWithoutBars: syms.filter((x) => !x.bars).map((x) => x.symbol),
       syntheticBars: syms.some((x) => x.synthetic),
@@ -1645,8 +1661,9 @@ export function createToolbox(ctx, { ledger, turn }) {
 
   function registerScenario(p, scenario, inputs) {
     const id = `S${turn.scenarios.length + turn.priorScenarioCount + 1}`;
-    const ref = L.add({ key: `scenario:${id}`, kind: 'calculation', label: `Hypothetical ${scenario.side} ${scenario.shares} ${scenario.symbol}${scenario.account ? ` in ${scenario.account}` : ''} at ${scenario.price} (${id})`, source: 'Signal Desk trade calculator', asOf: now().toISOString(), symbol: scenario.symbol, tool: 'simulate_trade', note: 'hypothetical — not saved' });
-    const full = { id, ref, portfolioRef: portfolioRef(L, p, 'simulate_trade'), ...scenario, inputs, savedToRecords: false };
+    const ref = L.add({ key: `scenario:${id}`, kind: 'calculation', label: `Hypothetical ${scenario.side} ${scenario.shares} ${scenario.symbol}${scenario.account ? ` in ${scenario.account}` : ''} at ${scenario.price} (${id})`, source: 'Signal Desk trade calculator', asOf: now().toISOString(), symbol: scenario.symbol, tool: 'simulate_trade', note: 'hypothetical — not saved',
+      tradeStatus: TRADE_STATUS.SIMULATED, recordId: `scenario:${id}`, subState: 'scenario', side: String(scenario.side || '').toUpperCase() || null });
+    const full = { id, ref, tradeStatus: TRADE_STATUS.SIMULATED, portfolioRef: portfolioRef(L, p, 'simulate_trade'), ...scenario, inputs, savedToRecords: false };
     turn.scenarios.push(full);
     return full;
   }
@@ -1657,6 +1674,63 @@ export function createToolbox(ctx, { ledger, turn }) {
 function fmtAssessment(L, a, tool) {
   const ref = L.add({ key: `assess:${a.instrument_id}:${a.createdAt}`, kind: 'assessment', label: `${a.symbol} rule-based assessment ${a.action}`, source: 'Signal Desk rules engine', asOf: a.createdAt, symbol: a.symbol, tool });
   return { ref, symbol: a.symbol, action: a.action, createdAt: a.createdAt, createdAtET: et(a.createdAt), repeats: a.repeats || 1, horizon: a.horizon, reason: a.reason, trigger: a.trigger, invalidation: a.invalidation, downside: a.downside, confidence: a.confidence, dataAsOf: a.dataAsOf, notes: a.notes, sizingStatus: a.sizingStatus };
+}
+
+// ---------- trade records and their status (ledger.js TRADE_STATUS) ----------
+
+const TRADE_STATUS_MEANING = {
+  [TRADE_STATUS.PROPOSED]: 'A change proposed in this chat (propose_record_change); nothing is saved until the owner presses Confirm.',
+  [TRADE_STATUS.SIMULATED]: 'A hypothetical trade: simulate_trade(s) scenarios and the Strategy Lab account. Never real money.',
+  [TRADE_STATUS.USER_REPORTED]: "A transaction in the owner's records: entered in the app, imported from a CSV, or saved when the owner confirmed a proposal. It comes from the owner, not from a broker.",
+  [TRADE_STATUS.BROKER_CONFIRMED]: 'Reserved, never present: Signal Desk has no broker connection, so no record is confirmed by a broker.',
+};
+const TX_NOTE = 'Each transaction is USER-REPORTED: the owner entered it, imported it from a CSV or confirmed it from a chat proposal (origin). No record is confirmed by a broker. Cite the transaction\'s own ref when describing it.';
+const ORIGIN_NOTE = {
+  manual: 'entered in the app',
+  csv: 'imported from a CSV file',
+  screenshot: 'entered in the app from a screenshot',
+  chat_proposal: 'saved when you confirmed a proposal in Ask Signal Desk',
+};
+// proposals.js confirmProposal saves the transaction with source 'manual' and
+// this note; its audit entry keeps the note even after the note is edited.
+const CONFIRMED_NOTE = /Confirmed by you from Ask Signal Desk \(conversation \d+, proposal (\d+)\)/;
+
+// Transaction id -> id of the chat proposal it was saved from: the confirmed
+// proposal's result, or, when that conversation was deleted, the confirmation
+// note in the transaction's audit entry.
+function chatConfirmed(db, ids) {
+  const out = new Map();
+  const list = [...new Set(ids.filter((x) => x != null).map(Number))];
+  if (!list.length) return out;
+  const marks = list.map(() => '?').join(',');
+  const linked = db.prepare(`SELECT id, CASE WHEN json_valid(result_json) THEN json_extract(result_json, '$.id') END AS tx FROM chat_proposals
+                             WHERE change_type = 'add_transaction' AND status = 'confirmed' AND (CASE WHEN json_valid(result_json) THEN json_extract(result_json, '$.id') END) IN (${marks})`).all(...list);
+  for (const r of linked) out.set(Number(r.tx), Number(r.id));
+  const rest = list.filter((id) => !out.has(id));
+  if (rest.length) {
+    const audited = db.prepare(`SELECT entity_id, CASE WHEN json_valid(after_json) THEN json_extract(after_json, '$.note') END AS note FROM audit_log
+                                WHERE entity = 'transaction' AND action = 'create' AND entity_id IN (${rest.map(() => '?').join(',')})`).all(...rest.map(String));
+    for (const r of audited) {
+      const m = CONFIRMED_NOTE.exec(r.note || '');
+      if (m) out.set(Number(r.entity_id), Number(m[1]));
+    }
+  }
+  return out;
+}
+
+// One transaction as a USER-REPORTED trade record with its own ref.
+function txRecord(L, t, tool, chat) {
+  const proposalId = chat.get(Number(t.id)) ?? null;
+  const origin = proposalId != null ? 'chat_proposal' : String(t.source || 'unknown');
+  const what = t.symbol && t.quantity != null
+    ? `${t.type} ${t.quantity} ${t.symbol}${t.price != null ? ` at ${t.price} ${t.currency}` : ''}`
+    : `${t.type}${t.amount != null ? ` ${t.amount} ${t.currency}` : ''}${t.symbol ? ` (${t.symbol})` : ''}`;
+  const ref = L.add({
+    key: `txrow:${t.id}`, kind: 'portfolio_record', label: `Your record: ${what} on ${t.trade_date}${t.account ? ` in ${t.account}` : ''}`,
+    source: `Your records (${ORIGIN_NOTE[origin] || origin})`, asOf: t.created_at ?? t.entered_at ?? null, symbol: t.symbol || null, tool,
+    note: 'user-reported, not confirmed by a broker', tradeStatus: TRADE_STATUS.USER_REPORTED, recordId: `transaction:${t.id}`, origin, side: t.type || null,
+  });
+  return { ref, tradeStatus: TRADE_STATUS.USER_REPORTED, origin, originNote: ORIGIN_NOTE[origin] || null, ...(proposalId != null ? { confirmedProposalId: proposalId } : {}) };
 }
 
 // ---------- Strategy Lab (simulation) ----------

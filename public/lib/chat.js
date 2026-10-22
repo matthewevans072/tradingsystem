@@ -29,6 +29,45 @@ const TOOL_LABEL = {
   get_strategy_performance: 'Reading simulated results', get_strategy_versions: 'Reading strategy versions',
 };
 const CONF = { low: 'Low confidence', moderate: 'Moderate confidence', high: 'High confidence' };
+// Trade-record statuses (server/agent/ledger.js TRADE_STATUS). Badges come only
+// from the statuses the server attached to records and to details (derived from
+// the records each detail cites), never from the answer's wording.
+// BROKER-CONFIRMED is reserved: no record has it, so it is never rendered.
+const SIM_STYLE = { color: '#c9b6ef', background: 'rgba(201, 182, 239, .12)', borderColor: 'rgba(201, 182, 239, .35)' };
+const TRADE_STATUS_UI = {
+  PROPOSED: { label: 'Proposed', short: 'proposed', kind: 'warn', color: 'var(--warn)', legend: 'suggested in this chat; nothing is saved until you press Confirm',
+    title: 'Proposed in Ask Signal Desk: nothing is saved until you press Confirm.' },
+  SIMULATED: { label: 'Simulated', short: 'simulated', kind: '', style: SIM_STYLE, color: SIM_STYLE.color, legend: 'hypothetical (a scenario or the Strategy Lab), never real money',
+    title: 'Hypothetical: a calculated scenario or the Strategy Lab account. Never real money or a real order.' },
+  'USER-REPORTED': { label: 'User-reported', short: 'user-reported', kind: 'info', color: 'var(--info)', legend: 'in your records, entered or imported by you; not confirmed by a broker',
+    title: 'In your records: entered in the app, imported from a CSV or saved when you confirmed a chat proposal. Not confirmed by a broker.' },
+  'BROKER-CONFIRMED': { label: 'Broker-confirmed', short: 'broker-confirmed', kind: 'ok', color: 'var(--pos)', legend: 'confirmed by a broker', title: 'Confirmed by a broker.' },
+};
+const ORIGIN_LABEL = { manual: 'entered in the app', csv: 'imported from a CSV', screenshot: 'entered from a screenshot', chat_proposal: 'confirmed from a chat proposal' };
+const STATUS_ORDER = Object.keys(TRADE_STATUS_UI);
+
+function statusBadge(status, extra = null) {
+  const s = TRADE_STATUS_UI[status];
+  if (!s) return null;
+  return h('span', { class: `badge ${s.kind} trade-status`.replace(/\s+/g, ' ').trim(), style: s.style || null, title: s.title, dataset: { tradeStatus: status } }, extra ? `${s.label} · ${extra}` : s.label);
+}
+
+// A proposal's sub-state as it is now (the record kept the state at answer time).
+function liveSubState(item) {
+  if (!item) return null;
+  if (item.tradeStatus === 'PROPOSED') {
+    const id = Number(String(item.recordId || '').replace(/^proposal:/, ''));
+    return (state.current?.proposals || []).find((p) => p.id === id)?.status || item.subState || null;
+  }
+  return item.tradeStatus === 'USER-REPORTED' ? ORIGIN_LABEL[item.origin] || item.origin || null : item.subState || null;
+}
+
+function tradeLegend(statuses) {
+  const list = STATUS_ORDER.filter((st) => statuses.has(st));
+  if (!list.length) return null;
+  return h('div', { class: 'small muted trade-legend' }, 'Trade status: ',
+    list.map((st, i) => [i ? ' · ' : null, statusBadge(st), ` ${TRADE_STATUS_UI[st].legend}`]));
+}
 const NARROW = '(max-width: 1100px)';
 
 const state = {
@@ -377,8 +416,10 @@ function refChip(ref, ledger, held) {
   if (!item) return null;
   const status = NEWS_STATUS.includes(item.note) && item.note !== 'confirmed' ? item.note : null;
   const stale = item.kind === 'market_data' && item.freshness && item.freshness !== 'fresh' ? item.freshness : null;
-  const chip = h('button', { class: `ref-chip kind-${item.kind}`, 'aria-expanded': 'false', title: `${KIND_LABEL[item.kind] || item.kind}: ${item.label}` },
-    ref, status || stale ? h('span', { class: 'ref-flag' }, ` · ${status || stale}`) : null);
+  const trade = TRADE_STATUS_UI[item.tradeStatus] || null;
+  const chip = h('button', { class: `ref-chip kind-${item.kind}${trade ? ' trade-record' : ''}`, 'aria-expanded': 'false', title: `${KIND_LABEL[item.kind] || item.kind}${trade ? ` (${trade.label} trade record)` : ''}: ${item.label}` },
+    ref, status || stale ? h('span', { class: 'ref-flag' }, ` · ${status || stale}`) : null,
+    trade ? h('span', { class: 'ref-flag', style: { color: trade.color } }, ` · ${trade.short}`) : null);
   chip.addEventListener('click', (e) => {
     e.stopPropagation();
     const parent = chip.closest('.detail-item, .short-answer') || chip.parentElement;
@@ -395,9 +436,11 @@ function sourceCard(item, pop = false, held = null) {
     ? h('a', { href: `#/positions?symbol=${encodeURIComponent(item.symbol)}`, onclick: (e) => openHolding(e, item.symbol) }, `Open ${item.symbol}`) : null;
   return h('div', { class: pop ? 'ref-pop' : 'source-row', dataset: { ref: item.ref } },
     h('div', { class: 'row' }, h('span', { class: 'ref-id' }, item.ref), badge(KIND_LABEL[item.kind] || item.kind), item.freshness ? badge(item.freshness, item.freshness === 'fresh' ? 'ok' : 'warn') : null,
-      NEWS_STATUS.includes(item.note) ? badge(item.note, item.note === 'confirmed' ? 'ok' : item.note === 'reported' ? 'info' : 'warn') : null),
+      NEWS_STATUS.includes(item.note) ? badge(item.note, item.note === 'confirmed' ? 'ok' : item.note === 'reported' ? 'info' : 'warn') : null,
+      item.tradeStatus ? statusBadge(item.tradeStatus, liveSubState(item)) : null),
     h('div', { class: 'small' }, item.url ? extLink(item.url, item.label) : item.label),
-    h('div', { class: 'small muted' }, [item.source, item.asOf ? `as of ${item.asOf.length === 10 ? item.asOf : fmt.et(item.asOf)}` : null, item.note && !NEWS_STATUS.includes(item.note) ? item.note : null].filter(Boolean).join(' · ')),
+    h('div', { class: 'small muted' }, [item.source, item.asOf ? `as of ${item.asOf.length === 10 ? item.asOf : fmt.et(item.asOf)}` : null, item.note && !NEWS_STATUS.includes(item.note) ? item.note : null,
+      item.recordId ? `record ${item.recordId.replace(':', ' #')}` : null].filter(Boolean).join(' · ')),
     holdingLink);
 }
 
@@ -440,7 +483,7 @@ function legTitle(s) {
 function scenarioCard(s) {
   if (s.multiLeg) {
     return h('div', { class: 'scenario' },
-      h('div', { class: 'spread' }, h('strong', {}, `${s.id}: ${s.legs.length}-step scenario`), badge('Hypothetical — not saved', 'warn')),
+      h('div', { class: 'spread' }, h('strong', {}, `${s.id}: ${s.legs.length}-step scenario`), h('span', { class: 'row' }, statusBadge('SIMULATED'), badge('Hypothetical — not saved', 'warn'))),
       s.warnings?.length ? h('div', { class: 'notice warn small' }, s.warnings.map((w) => h('div', {}, w))) : null,
       s.legs.map((leg, i) => h('details', { class: 'more' }, h('summary', {}, `${i + 1}. ${legTitle(leg)}`),
         leg.side === 'convert'
@@ -458,7 +501,7 @@ function scenarioCard(s) {
         kv(s.weightsAfter.map((w) => { const b = (s.weightsBefore || []).find((x) => x.symbol === w.symbol && x.account === w.account); return [w.symbol, `${b ? pct1(b.weightPct) : '—'} → ${pct1(w.weightPct)}`]; }))) : null);
   }
   return h('div', { class: 'scenario' },
-    h('div', { class: 'spread' }, h('strong', {}, `${s.id}: ${legTitle(s)}`), badge('Hypothetical — not saved', 'warn')),
+    h('div', { class: 'spread' }, h('strong', {}, `${s.id}: ${legTitle(s)}`), h('span', { class: 'row' }, statusBadge('SIMULATED'), badge('Hypothetical — not saved', 'warn'))),
     kv(tradeRows(s)),
     h('div', { class: 'small muted' }, `Price basis: ${s.priceBasis}`),
     s.notes?.length ? h('ul', { class: 'bullets small muted' }, s.notes.map((n) => h('li', {}, n))) : null);
@@ -503,8 +546,10 @@ function proposalCard(p) {
   const posLine = (x) => (x ? `${fmt.qty(x.shares)} shares${x.averageCost != null ? ` @ ${fmt.num(x.averageCost, 4)}` : ''}${x.realizedPLAtAverageCost != null ? ` · realized ${fmt.signedMoney(x.realizedPLAtAverageCost)} at average cost` : ''}` : 'none');
   const card = h('div', { class: `proposal status-${p.status}` },
     h('div', { class: 'spread' }, h('strong', {}, 'Proposed change'),
-      badge(p.status === 'pending' ? 'Not saved — needs your confirmation' : p.status, p.status === 'confirmed' ? 'ok' : p.status === 'pending' ? 'warn' : '')),
+      h('span', { class: 'row' }, statusBadge('PROPOSED'),
+        badge(p.status === 'pending' ? 'Not saved — needs your confirmation' : p.status, p.status === 'confirmed' ? 'ok' : p.status === 'pending' ? 'warn' : ''))),
     h('div', {}, d.summary),
+    p.savedRecord ? h('div', { class: 'small' }, statusBadge(p.savedRecord.tradeStatus), ` Saved to your records as ${p.savedRecord.recordId.replace(':', ' #')}: your own entry, not confirmed by a broker.`) : null,
     d.fields?.length ? kv(d.fields.map(([k, v]) => [k, String(v)])) : null,
     'positionBefore' in d || d.positionAfter ? kv([['Position before', posLine(d.positionBefore)], ['Position after', posLine(d.positionAfter)]]) : null,
     d.duplicateWarning ? h('div', { class: 'notice danger small' }, d.duplicateWarning) : null,
@@ -522,6 +567,16 @@ function proposalCard(p) {
   const err = p.localError || p.result?.error;
   if (err) card.append(h('div', { class: 'small neg', role: 'alert' }, err));
   return card;
+}
+
+// A detail's status badges: the statuses the server derived from its cited
+// records. A proposal shows its current sub-state when the detail cites one.
+function detailStatuses(d, ledger) {
+  return (d.tradeStatuses || []).filter((st) => TRADE_STATUS_UI[st]).map((st) => {
+    const items = d.refs.map((r) => ledger.find((l) => l.ref === r)).filter((i) => i?.tradeStatus === st);
+    const subs = [...new Set(items.map((i) => (st === 'PROPOSED' ? liveSubState(i) : null)).filter(Boolean))];
+    return statusBadge(st, subs.length === 1 ? subs[0] : null);
+  });
 }
 
 function assistantMessage(m) {
@@ -553,6 +608,10 @@ function assistantMessage(m) {
       groups.map(([c, list]) => h('div', { class: 'detail-group' },
         h('div', { class: `cat-label ${CATEGORY[c][1]}` }, CATEGORY[c][0]),
         list.map((d) => h('div', { class: 'detail-item' }, h('span', {}, d.text, ' '), d.refs.map((r) => refChip(r, ledger, owned)),
+          detailStatuses(d, ledger),
+          d.tradeStatementRemoved ? badge('removed by Signal Desk', 'warn', d.tradeStatementRemoved === 'broker'
+            ? 'Signal Desk has no broker connection, so no trade record is broker-confirmed.'
+            : 'The statement described a trade, but none of the records it cited has the status it stated.') : null,
           d.uncited ? badge('uncited', 'warn', 'No supporting source was attached to this point') : null,
           d.relabelled ? badge('relabelled', 'info', 'The model called this a verified fact, but its only sources are media reports or archived briefings') : null,
           d.auto ? badge('added by Signal Desk', 'info', 'Added because the answer relies on data that may be out of date') : null)))),
@@ -569,6 +628,7 @@ function assistantMessage(m) {
         return row;
       }),
       m.tools?.length ? h('div', { class: 'small muted mt' }, 'Tools: ', m.tools.map((t) => `${t.tool} ${t.ok ? '✓' : '✗'} ${t.ms}ms`).join(' · ')) : null) : null,
+    tradeLegend(new Set([...ledger.map((i) => i.tradeStatus), ...a.details.flatMap((d) => d.tradeStatuses || [])].filter(Boolean))),
     a.follow_up_questions?.length ? h('div', { class: 'chat-suggest' }, a.follow_up_questions.map((q) => h('button', { class: 'chip-btn', disabled: state.inflight ? true : null, onclick: () => send(q) }, q))) : null,
     m.usage ? h('div', { class: 'small muted' }, `${(m.usage.models || []).length > 1 ? `${m.usage.models.at(-1)} (fallback after ${m.usage.models[0]} declined)` : m.model} · ${m.usage.calls} call${m.usage.calls === 1 ? '' : 's'} · ${(m.usage.input_tokens + m.usage.cache_read_input_tokens).toLocaleString()} in / ${m.usage.output_tokens.toLocaleString()} out tokens · ${cost}`) : null);
 }

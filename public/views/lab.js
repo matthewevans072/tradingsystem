@@ -4,7 +4,7 @@
 // order anywhere. Every text that comes from the server is rendered as a text
 // node through h(), never as markup. No bar, price or figure is made up here:
 // what the server does not return is shown as missing.
-import { h, mount, fmt, tone, notice, empty, badge, drawer, field, select, toast, loading, errorState } from '../lib/ui.js';
+import { h, mount, fmt, tone, notice, empty, badge, drawer, field, select, toast, loading, errorState, extLink } from '../lib/ui.js';
 import { line, candles, histogram } from '../lib/charts.js';
 
 const MODES = [['intraday', 'Intraday'], ['swing', 'Swing']];
@@ -301,7 +301,7 @@ function accountSection(L) {
     tile('Open planned risk', fin(riskPct) ? `${riskPct.toFixed(2)}%` : '—', `${money(a.openRisk)} of the ${riskLimit}% limit (${money((a.equity * riskLimit) / 100)})`, meter(riskPct / riskLimit)),
     tile('Positions', `${used} of ${maxPos}`, `${plural(positions.length, 'position')} + ${plural(orders.length, 'pending order')} (both count)`, meter(used / maxPos, 1)));
 
-  const blocks = [tiles, forwardControl(L)];
+  const blocks = [tiles, forwardControl(L), forwardReportBlock(L)];
   blocks.push(h('h4', { class: 'lab-h4' }, 'Open simulated positions'));
   blocks.push(positions.length
     ? table(['Symbol', 'Shares', 'Entry', 'Stop', 'Target', 'Reward/risk', 'Planned risk', 'Unrealized', 'Exit rule'], positions.map((p) => {
@@ -358,6 +358,51 @@ function forwardControl(L) {
     !fw.enabled && fw.canRun === false && fw.reason ? h('div', { class: 'small muted' }, fw.reason) : null,
     fw.lastError ? notice('danger', `Last error: ${fw.lastError}`) : null);
 }
+
+// The forward-test report: counters and simulated costs of the current
+// forward run only, kept apart from the historical runs. With no forward run
+// it says "not started" and shows zeros; nothing is estimated.
+const READY_KIND = { READY: 'ok', 'NOT READY': 'danger', 'NO DATA': 'muted' };
+const CHECK_KIND = { pass: 'ok', fail: 'danger', 'no data': 'muted', 'verified by research': 'ok', mismatch: 'danger' };
+const byReason = (o) => (o && Object.keys(o).length ? ` (${Object.entries(o).map(([k, n]) => `${String(k).replace(/_/g, ' ')} ${n}`).join(', ')})` : '');
+
+function forwardReportBlock(L) {
+  const r = L.o.forwardReport;
+  if (!r) return null;
+  const c = r.counters || {};
+  const m = c.missedSignals || {}, late = c.lateData || {}, op = c.operational || {};
+  const totals = r.costs?.totals || {};
+  const statusKind = { 'not started': 'muted', running: 'ok', stopped: 'muted', error: 'danger', 'synthetic replay': 'warn' }[r.status] || '';
+  const costs = r.costs?.trades || [];
+  const feed = r.feed || {};
+  return h('div', { class: 'lab-panel mt' },
+    h('div', { class: 'row' }, h('h4', { class: 'lab-h4 first' }, `Forward-test report · ${MODE_LABEL[S.mode]}`), badge(r.status, statusKind), badge(r.recordStatus || 'SIMULATED', 'info'),
+      r.synthetic ? badge('SYNTHETIC', 'warn') : null),
+    h('div', { class: 'small muted' }, `Separate from ${r.separateFrom}.`),
+    r.status === 'not started' ? notice('info', r.note) : r.note ? h('div', { class: 'small muted' }, r.note) : null,
+    h('dl', { class: 'kv small' },
+      h('dt', {}, 'Signals'), h('dd', {}, `${c.signals ?? 0} signals → ${c.ordersPlaced ?? 0} simulated orders → ${c.entriesFilled ?? 0} simulated entries; ${c.closedTrades ?? 0} closed, ${c.openPositions ?? 0} open`),
+      h('dt', {}, 'Missed signals'), h('dd', {}, `${m.total ?? 0}: ${m.expired ?? 0} expired (bar processed more than ${r.maxSignalDelayMinutes ?? o5(L)} minutes after its close), ${m.noNextBar ?? 0} with no next bar`),
+      h('dt', {}, 'Rejected setups'), h('dd', {}, `${c.rejectedSetups ?? 0} signals rejected by the rules${byReason(c.rejectedByReason)}; ${c.setupsExpired ?? 0} setups expired, ${c.setupsCancelled ?? 0} cancelled`),
+      h('dt', {}, 'Entry skips'), h('dd', {}, `${c.entrySkips ?? 0}${byReason(c.skippedByReason)}`),
+      h('dt', {}, 'Late data'), h('dd', {}, `${late.lateBarTimes ?? 0} bar times processed late (${late.lateBarWarnings ?? 0} warnings) · ${late.barsArrivedAfterProcessing ?? 0} bars arrived after their time was processed · ${late.missingBars ?? 0} missing-bar warnings · ${late.timeExitsWhileAsleep ?? 0} time exits while the app was not running`),
+      h('dt', {}, 'Operational'), h('dd', {}, `${op.providerErrors ?? 0} provider errors · ${op.noProvider ?? 0} without a provider · ${op.processingErrors ?? 0} processing errors · ${op.duplicateTrades ?? 0} duplicate trades · ${op.ruleChanged ?? 0} rule-change notices`),
+      h('dt', {}, 'Execution costs'), h('dd', {}, `${money(totals.total ?? 0)} simulated (commission ${money(totals.commission ?? 0)}, spread and slippage ${money(totals.spreadSlippage ?? 0)}, currency conversion ${money(totals.fx ?? 0)})`)),
+    costs.length ? h('details', { class: 'more' }, h('summary', {}, `Simulated costs per trade (${costs.length})`),
+      table(['Trade', 'Status', 'Entry', 'Exit', 'Commission', 'Spread + slippage', 'FX', 'Total', 'Net'], costs.map((t) => [
+        h('span', {}, h('span', { class: 'sym' }, t.symbol), h('div', { class: 'cell-sub mono' }, t.tradeId || '—')),
+        h('span', {}, badge(t.status, 'info'), t.open ? h('div', { class: 'cell-sub' }, 'open: entry costs only') : null),
+        whenShort(t.entryAt), t.exitAt ? whenShort(t.exitAt) : '—', money(t.commission), money(t.spreadSlippage), money(t.fx), money(t.total),
+        fin(t.net) ? h('span', { class: tone(t.net) }, sMoney(t.net)) : '—',
+      ]), { numeric: [4, 5, 6, 7, 8] }),
+      r.costs?.note ? h('div', { class: 'small muted' }, r.costs.note) : null) : null,
+    notice('warn', h('strong', {}, 'Forward data feed. '), feed.warning || ''),
+    feed.mismatch ? h('div', { class: 'small' }, feed.mismatch) : null,
+    feed.adapter ? h('div', { class: 'small muted' }, feed.adapter) : null,
+    (feed.options || []).length ? h('details', { class: 'more' }, h('summary', {}, `Real-time consolidated feed options (as last seen ${feed.lastSeen || '—'}; confirm on each vendor's page)`),
+      table(['Option', 'Real-time coverage', 'Price', 'Fit', 'Status'], feed.options.map((x) => [h('strong', {}, x.name), x.realTime, x.price, h('span', { class: 'small' }, x.fit), h('span', { class: 'small muted' }, x.status)]))) : null);
+}
+const o5 = (L) => L.o.settings?.maxSignalDelayMinutes ?? 5;
 
 function forwardDialog(L, enable) {
   const { o } = L;
@@ -1038,9 +1083,103 @@ function dataSection(L) {
       table(['Symbol', 'Exchange', 'Bars', 'First', 'Last', 'Source'], syms.map((s) => [h('span', { class: 'sym' }, s.symbol), s.exchange, s.bars ? s.bars.toLocaleString('en-US') : '0', s.first ? whenShort(s.first) : '—', s.last ? whenShort(s.last) : '—',
         h('span', { class: 'small' }, (s.sources || []).join(', ') || '—', s.synthetic ? h('span', { class: 'badge warn lab-mini' }, 'synthetic') : null)]), { numeric: [2] })));
   }
+  blocks.push(readinessBlock(L));
   blocks.push(h('div', { class: 'grid two mt' }, importCard(L), fetchCard(L)));
   blocks.push(webhookCard(L));
   return labSection('data', n ? 'Data needed' : 'Data', ...blocks);
+}
+
+// The data-readiness checklist (GET /api/lab/readiness): 17 symbols x the
+// pre-registered periods, with the reasons behind every status. It only
+// reports; nothing on this page shortens a period or swaps a symbol.
+function readinessBlock(L) {
+  return h('div', { class: 'mt' }, h('h4', { class: 'lab-h4 first' }, 'Data-readiness checklist'),
+    lazy(L.ep, async () => readinessView(await L.api('GET', '/api/lab/readiness'))));
+}
+
+function chip(status, kinds = READY_KIND) {
+  return badge(status, kinds[status] || 'warn');
+}
+
+function readinessView(r) {
+  const sum = r.summary || {};
+  const periods = r.periods || [];
+  const usable = r.usable || {};
+  const head = ['Symbol', 'Listing', 'Source', ...periods.map((p) => p.label), 'Status', 'Why'];
+  // Each row's reasons open in a full-width row below it.
+  const tbody = h('tbody');
+  for (const s of r.symbols || []) {
+    const ck = s.checks || {};
+    const keys = ck.sources?.keys || [];
+    const n = (s.blocking || []).length;
+    const detail = h('tr', { class: 'lab-ready-why', hidden: true }, h('td', { colspan: String(head.length) }, readinessReasons(s, periods)));
+    const btn = h('button', { class: 'linklike lab-link small', type: 'button', 'aria-expanded': 'false' },
+      s.status === 'READY' ? 'checks' : s.status === 'NO DATA' ? 'no bars' : `${n} reason${n === 1 ? '' : 's'}`);
+    btn.addEventListener('click', () => { detail.hidden = !detail.hidden; btn.setAttribute('aria-expanded', String(!detail.hidden)); });
+    const cells = [
+      h('span', {}, h('span', { class: 'sym' }, s.symbol), h('div', { class: 'cell-sub' }, s.exchange)),
+      h('span', { title: ck.instrument?.research?.source || '' }, chip(ck.instrument?.status || '—', CHECK_KIND)),
+      keys.length ? h('span', { class: 'small' }, keys.map((k) => `${k.source} · ${k.adjustment ?? 'not recorded'} · ${k.feed ?? 'not recorded'}`).join('; ')) : h('span', { class: 'small muted' }, 'none'),
+      ...periods.map((p) => {
+        const st = s.periods?.[p.key] || {};
+        const cov = ck.coverage?.[p.key] || {};
+        return h('span', {}, chip(st.status), h('div', { class: 'cell-sub' }, fin(cov.pctComplete) ? `${cov.pctComplete}% of ${Number(cov.expectedBars || 0).toLocaleString('en-US')}` : `0 of ${Number(cov.expectedBars || 0).toLocaleString('en-US')}`));
+      }),
+      chip(s.status),
+      btn,
+    ];
+    tbody.append(h('tr', {}, cells.map((c) => h('td', {}, c))), detail);
+  }
+  return h('div', { class: 'stack', style: { gap: '10px' } },
+    r.synthetic ? notice('warn', 'Synthetic demo bars: this checklist shows how the checks work and says nothing about real data.') : null,
+    notice(sum.ready === sum.symbols ? 'info' : 'warn', h('strong', {}, `${sum.ready ?? 0} READY · ${sum.notReady ?? 0} NOT READY · ${sum.noData ?? 0} NO DATA of ${sum.symbols ?? 0} symbols. `),
+      `Usable periods: ${(sum.usablePeriods || []).length ? sum.usablePeriods.join(', ') : 'none'}. `, r.rule || ''),
+    table(['Period', 'Dates', 'Sessions', 'Bars per symbol', 'Early closes', 'Usable'], periods.map((p) => {
+      const u = usable[p.key] || {};
+      return [h('strong', {}, p.label), `${day(p.from)} – ${day(p.to)}`, p.sessions, Number(p.expectedBars).toLocaleString('en-US'), p.earlyCloses,
+        h('span', {}, badge(u.usable ? 'usable' : 'not usable', u.usable ? 'ok' : 'danger'), h('div', { class: 'cell-sub' }, `${(u.ready || []).length} ready · ${(u.notReady || []).length} not ready · ${(u.noData || []).length} no data`))];
+    }), { numeric: [2, 3, 4] }),
+    h('div', { class: 'small muted' }, `Expected sessions and bars come from the exchange calendar (${r.calendar?.verified || 'server/calendar.js'}); early-close sessions have 14 bars.`),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'lab-table lab-ready' }, h('thead', {}, h('tr', {}, head.map((t) => h('th', {}, t)))), tbody)),
+    (r.openItems || []).length ? h('details', { class: 'more' }, h('summary', {}, `What bars cannot prove (${r.openItems.length} open items)`),
+      h('ul', { class: 'bullets small' }, r.openItems.map((x) => h('li', {}, h('strong', {}, `${x.item}: `), badge(x.status, 'warn'), ` ${x.detail}`)))) : null,
+    sourceFacts(r.sources));
+}
+
+function readinessReasons(s, periods) {
+  const ck = s.checks || {};
+  const items = [];
+  if (s.status === 'NO DATA') items.push(h('li', {}, 'No bars are stored for this symbol in the pre-registered window.'));
+  for (const b of s.blocking || []) items.push(h('li', {}, b));
+  const checks = [
+    ['Instrument and exchange', ck.instrument?.status, ck.instrument?.research ? `universe ${ck.instrument.universeExchange}; research ${ck.instrument.research.exchange} (${ck.instrument.research.status}); ${ck.instrument.sourceNote || ''}` : 'no research entry'],
+    ['Timestamps and session', ck.timestamps?.status, `${ck.timestamps?.labelling || ''}; ${ck.timestamps?.offGrid?.count ?? 0} off-grid, ${ck.timestamps?.outsideSession?.total ?? 0} outside the session; early closes ${ck.timestamps?.earlyCloses?.ok ?? 0} of ${ck.timestamps?.earlyCloses?.sessionsWithBars ?? 0} correct; daylight-saving changes ${(ck.timestamps?.dst || []).filter((x) => x.status === 'pass').length} of ${(ck.timestamps?.dst || []).length} checked`],
+    ['OHLCV', ck.ohlcv?.status, `${ck.ohlcv?.nonPositive ?? 0} non-positive, ${ck.ohlcv?.inconsistent ?? 0} inconsistent, ${ck.ohlcv?.zeroVolume ?? 0} zero volume, ${ck.ohlcv?.missingVolume ?? 0} missing volume (${ck.ohlcv?.missingOrZeroVolumePct ?? 0}%), ${ck.ohlcv?.duplicates?.conflicting ?? 0} conflicting duplicates`],
+    ['Splits and dividends', ck.adjustment?.status, `${(ck.adjustment?.knownSplits || []).map((x) => `${x.label} ${x.firstAdjustedSession}: ${x.status}${x.price ? ` (price ${x.price}, volume ${x.volume?.verdict})` : ''}`).join('; ') || 'no known split in the window'}; ${(ck.adjustment?.unknownSplitScan?.candidates || []).length} split-like overnight moves; dividends: ${ck.adjustment?.dividends?.declared || '—'} (${ck.adjustment?.dividends?.status || '—'}); corporate actions: ${ck.adjustment?.corporateActionsStatus || '—'}`],
+    ['Sources', ck.sources?.status, (ck.sources?.keys || []).map((k) => `${k.source}: ${k.bars} bars`).join('; ') || 'none'],
+  ];
+  const cov = periods.map((p) => {
+    const c = ck.coverage?.[p.key] || {};
+    const miss = (c.missingSessionRanges || []).slice(0, 3).map((x) => (x.from === x.to ? x.from : `${x.from} to ${x.to} (${x.sessions})`)).join(', ');
+    return h('li', {}, `${p.label}: ${c.sessionsWithBars ?? 0} of ${c.expectedSessions ?? 0} sessions, ${Number(c.presentBars || 0).toLocaleString('en-US')} of ${Number(c.expectedBars || 0).toLocaleString('en-US')} bars`,
+      c.missingSessions ? `; missing ${c.missingSessions} sessions${miss ? ` (${miss}${(c.missingSessionRanges || []).length > 3 ? ', …' : ''})` : ''}` : '',
+      c.partialSessions ? `; ${c.partialSessions} partial (first ${c.partialSample?.[0]?.date}: missing ${(c.partialSample?.[0]?.missingTimes || []).join(', ')} ET)` : '');
+  });
+  // Kept within the viewport while the wide table scrolls sideways on a phone.
+  return h('div', { class: 'stack', style: { gap: '6px', position: 'sticky', left: '0', maxWidth: 'min(960px, calc(100vw - 72px))', whiteSpace: 'normal' } },
+    h('div', { class: 'row' }, h('strong', {}, s.symbol), chip(s.status)),
+    items.length ? h('ul', { class: 'bullets small' }, items) : null,
+    h('ul', { class: 'bullets small' }, checks.map(([name, st, text]) => h('li', {}, h('strong', {}, `${name}: `), chip(st || '—', CHECK_KIND), ` ${text}`))),
+    h('div', { class: 'small' }, h('strong', {}, 'Coverage')), h('ul', { class: 'bullets small' }, cov),
+    (s.openItems || []).length ? h('div', { class: 'small muted' }, `Open: ${s.openItems.join('; ')}.`) : null);
+}
+
+function sourceFacts(src) {
+  if (!src?.sources?.length) return null;
+  return h('details', { class: 'more' }, h('summary', {}, `Sources: costs, limits and permitted use (as last seen ${src.lastSeen})`),
+    h('div', { class: 'small muted' }, src.method),
+    src.sources.map((x) => h('div', { class: 'mt' }, h('div', {}, h('strong', {}, x.name), h('span', { class: 'small muted' }, ` · ${x.role}`)),
+      table(['Item', 'As last seen', 'Status', 'Source'], x.facts.map((f) => [h('strong', { class: 'small' }, f.item), h('span', { class: 'small' }, f.value), badge(f.status, /^official/.test(f.status) ? 'info' : 'warn'), f.url ? extLink(f.url, 'page') : h('span', { class: 'small muted' }, '—')])))));
 }
 
 function importCard(L) {
@@ -1108,9 +1247,16 @@ function importResult(r) {
 
 function fetchCard(L) {
   const { o, ep } = L;
-  const provider = o.settings?.marketProvider;
-  const hasProvider = !L.demo && provider && provider !== 'none';
+  const sources = L.demo ? [] : o.settings?.historySources || [];
+  const hasProvider = sources.length > 0;
   const today = ET_DATE.format(new Date());
+  const pick = select('source', sources.map((x) => [x.id, `${x.name} · adjustment ${x.adjustment} · feed ${x.feed}${x.preferred ? ' (default)' : ''}`]), (sources.find((x) => x.preferred) || sources[0])?.id);
+  pick.disabled = !hasProvider;
+  const srcNote = h('div', { class: 'small muted' });
+  const showNote = () => mount(srcNote, sources.find((x) => x.id === pick.value)?.note || '');
+  pick.addEventListener('change', showNote);
+  showNote();
+  const replace = h('input', { type: 'checkbox', name: 'replace', disabled: hasProvider ? null : true });
   const from = h('input', { type: 'date', name: 'from', value: o.needs?.dateRange?.from || o.data?.required?.from || '2021-07-01', max: today });
   const to = h('input', { type: 'date', name: 'to', value: today, max: today });
   const symbols = h('input', { type: 'text', name: 'symbols', placeholder: 'Blank = whole universe', autocomplete: 'off' });
@@ -1133,29 +1279,38 @@ function fetchCard(L) {
       return false;
     });
   };
-  btn.addEventListener('click', async () => {
+  const start = async () => {
     mount(err);
     btn.disabled = true;
     try {
       const list = symbols.value.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
-      const r = await L.api('POST', '/api/lab/fetch', { from: from.value || undefined, to: to.value || undefined, ...(list.length ? { symbols: list } : {}) });
+      const r = await L.api('POST', '/api/lab/fetch', { from: from.value || undefined, to: to.value || undefined, source: pick.value || undefined, replace: replace.checked, ...(list.length ? { symbols: list } : {}) });
       show(r.job);
       if (r.note) mount(err, h('div', { class: 'small muted' }, r.note));
       follow();
     } catch (e) {
       mount(err, notice('danger', `Download not started: ${e.message}`));
+      throw e;
     } finally {
       btn.disabled = hasProvider ? null : true;
     }
+  };
+  btn.addEventListener('click', () => {
+    if (!replace.checked) { start().catch(() => {}); return; }
+    confirmDialog('Re-download and replace?', h('div', { class: 'stack', style: { gap: '10px' } },
+      notice('warn', 'For each chosen symbol, bars from any other source in the pre-registered history window (2021-07-01 to 2026-06-30) are deleted when the first new chunk arrives, so a symbol never mixes sources. Bars after the window (the forward period) are kept.'),
+      h('div', { class: 'small' }, `Source: ${pick.selectedOptions?.[0]?.textContent || pick.value}.`)), { confirmLabel: 'Re-download', onConfirm: start });
   });
   show(o.fetchJob);
   if (o.fetchJob?.status === 'running') follow();
   return h('div', { class: 'lab-panel' },
     h('h4', { class: 'lab-h4 first' }, 'Download history'),
     L.demo ? notice('info', 'The demo workspace holds synthetic data only. Switch to your workspace to download market data.')
-      : !hasProvider ? notice('warn', 'No market-data provider is connected. Set MARKET_DATA_PROVIDER=twelvedata and TWELVEDATA_API_KEY in .env and restart Signal Desk, or import CSV files instead.')
-        : h('div', { class: 'small muted' }, `Through ${provider}: one request per symbol per quarter of data, within the provider's rate limits. Progress is saved and resumes after a restart.`),
-    h('div', { class: 'form-grid' }, field('From', from), field('To', to), field('Symbols', symbols, 'e.g. NVDA, SPY')),
+      : !hasProvider ? notice('warn', 'No history source is configured. Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY in .env (a free Alpaca market-data account: split-adjusted consolidated SIP bars; preferred), or MARKET_DATA_PROVIDER=twelvedata with TWELVEDATA_API_KEY (its free plan is not verified to reach 2021-07-01), and restart Signal Desk; or import CSV files instead.')
+        : h('div', { class: 'small muted' }, 'One request per symbol per quarter of data (more if a quarter needs several pages), within the provider\'s rate limits. Progress is saved and resumes after a restart. Sources are never mixed within a symbol.'),
+    h('div', { class: 'form-grid' }, field('Source', pick), field('From', from), field('To', to), field('Symbols', symbols, 'e.g. NVDA, SPY')),
+    srcNote,
+    h('label', { class: 'row small mt' }, replace, 'Re-download: replace bars from another source in the history window'),
     h('div', { class: 'row mt' }, btn),
     err, out);
 }
@@ -1163,7 +1318,7 @@ function fetchCard(L) {
 function fetchJobView(job) {
   const kind = { running: 'info', paused: 'warn', failed: 'danger', done: 'ok', done_with_errors: 'warn' }[job.status] || '';
   return h('div', { class: 'stack mt', style: { gap: '8px' } },
-    h('div', { class: 'row small' }, badge(job.status.replace(/_/g, ' '), kind), `${job.provider} · ${job.from} to ${job.to} · ${job.done} of ${job.total} symbols done · updated ${fmt.ago(job.updatedAt)}`),
+    h('div', { class: 'row small' }, badge(job.status.replace(/_/g, ' '), kind), `${job.provider}${job.adjustment ? ` (adjustment ${job.adjustment}, feed ${job.feed})` : ''}${job.replace ? ' · replacing other sources' : ''} · ${job.from} to ${job.to} · ${job.done} of ${job.total} symbols done · updated ${fmt.ago(job.updatedAt)}`),
     job.status === 'running' ? meter(job.total ? job.done / job.total : 0, 2) : null,
     job.error ? notice(job.status === 'failed' ? 'danger' : 'warn', job.error, job.resumeAfter ? ` Resumes after ${when(job.resumeAfter)}.` : '') : null,
     h('div', { class: 'lab-symgrid' }, (job.symbols || []).map((s) => h('div', { class: `lab-symcell ${s.status === 'error' ? 'missing' : ''}` },

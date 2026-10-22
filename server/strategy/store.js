@@ -132,6 +132,31 @@ const MIGRATIONS = [
 
   CREATE TABLE lab_settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
   `,
+  // 2: where each bar came from (strategy/DATA-READINESS.md). NULL adjustment
+  // and feed mean "not recorded" (bars stored before this, the forward test).
+  `
+  ALTER TABLE lab_bars ADD COLUMN adjustment TEXT;   -- split | unknown | ... as requested from or declared by the source
+  ALTER TABLE lab_bars ADD COLUMN feed TEXT;         -- sip | default | unknown | ...
+
+  CREATE TABLE lab_bar_sets (
+    id INTEGER PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    interval TEXT NOT NULL,
+    source TEXT NOT NULL,
+    adjustment TEXT,
+    feed TEXT,
+    requested_from TEXT, requested_to TEXT,  -- exchange-local dates asked for
+    first_t TEXT, last_t TEXT,               -- bars actually received (after normalisation)
+    bars INTEGER NOT NULL,
+    inserted INTEGER, updated INTEGER, kept_existing INTEGER, deleted_other INTEGER,
+    stored_at TEXT NOT NULL,
+    details_json TEXT                        -- pages, raw bars, dropped bars by reason, timestamp format
+  );
+  CREATE INDEX lab_bar_sets_symbol ON lab_bar_sets(symbol, id);
+
+  -- Bars stored before this migration: their adjustment was never declared.
+  UPDATE lab_bars SET adjustment = 'unknown', feed = CASE source WHEN 'twelvedata' THEN 'default' ELSE 'unknown' END WHERE synthetic = 0;
+  `,
 ];
 
 // The portfolio databases (server/context.js dbFileFor) are never opened here.
@@ -291,6 +316,94 @@ export function hasSyntheticBars(db) {
   return !!db.prepare('SELECT 1 FROM lab_bars WHERE synthetic = 1 LIMIT 1').get();
 }
 
+// ---------- bar sources (strategy/DATA-READINESS.md) ----------
+
+const SAME_KEY = 'source = ? AND IFNULL(adjustment, \'\') = IFNULL(?, \'\') AND IFNULL(feed, \'\') = IFNULL(?, \'\')';
+
+export class MixedSourceError extends Error {
+  constructor(message, conflicts) { super(message); this.kind = 'mixed_source'; this.conflicts = conflicts; }
+}
+
+export const sourceKeyText = (k) => `${k.source} (adjustment ${k.adjustment ?? 'not recorded'}, feed ${k.feed ?? 'not recorded'})`;
+
+// [{ source, adjustment, feed, bars, first, last }] for a symbol (or every
+// symbol when symbol is null) between two UTC ISO instants (inclusive).
+export function barSourceKeys(db, symbol = null, { from = null, to = null, interval = '15min' } = {}) {
+  const where = ['interval = ?'], args = [interval];
+  if (symbol) { where.push('symbol = ?'); args.push(symbol); }
+  if (from) { where.push('t >= ?'); args.push(from); }
+  if (to) { where.push('t <= ?'); args.push(to); }
+  return db.prepare(`SELECT source, adjustment, feed, COUNT(*) AS bars, MIN(t) AS first, MAX(t) AS last
+    FROM lab_bars WHERE ${where.join(' AND ')} GROUP BY source, adjustment, feed ORDER BY bars DESC, source`).all(...args);
+}
+
+// Stores one downloaded or imported set of bars with its source, adjustment
+// and feed, in one transaction. Sources are never mixed within a symbol:
+// inside the guard range (the pre-registered history window) bars from
+// another source, adjustment or feed make it throw MixedSourceError, unless
+// `replace` names a range whose bars from other sources are deleted first
+// (the owner re-downloads). Outside the guard range an existing bar from
+// another source is never overwritten (keptExisting).
+export function storeBarSet(db, symbol, bars, {
+  interval = '15min', source, adjustment = null, feed = null, fetchedAt = nowIso(), guard = null, replace = null,
+  requestedFrom = null, requestedTo = null, details = null,
+} = {}) {
+  if (!source) throw new Error('storeBarSet needs a source');
+  const key = [source, adjustment, feed];
+  const count = db.prepare('SELECT COUNT(*) n FROM lab_bars WHERE symbol = ? AND interval = ?');
+  const put = db.prepare(`INSERT INTO lab_bars (symbol, interval, t, o, h, l, c, v, source, synthetic, fetched_at, adjustment, feed) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?)
+    ON CONFLICT(symbol, interval, t) DO UPDATE SET o = excluded.o, h = excluded.h, l = excluded.l, c = excluded.c, v = excluded.v, fetched_at = excluded.fetched_at
+    WHERE lab_bars.source = excluded.source AND IFNULL(lab_bars.adjustment, '') = IFNULL(excluded.adjustment, '') AND IFNULL(lab_bars.feed, '') = IFNULL(excluded.feed, '') AND lab_bars.synthetic = 0`);
+  barWrites.set(db, (barWrites.get(db) || 0) + 1);
+  return tx(db, () => {
+    let deleted = 0;
+    if (replace?.from && replace?.to) {
+      deleted = Number(db.prepare(`DELETE FROM lab_bars WHERE symbol = ? AND interval = ? AND t >= ? AND t <= ? AND NOT (${SAME_KEY})`)
+        .run(symbol, interval, replace.from, replace.to, ...key).changes);
+    }
+    if (guard?.from && guard?.to) {
+      const other = db.prepare(`SELECT source, adjustment, feed, COUNT(*) AS bars, MIN(t) AS first, MAX(t) AS last FROM lab_bars
+        WHERE symbol = ? AND interval = ? AND t >= ? AND t <= ? AND NOT (${SAME_KEY}) GROUP BY source, adjustment, feed`).all(symbol, interval, guard.from, guard.to, ...key);
+      if (other.length) {
+        throw new MixedSourceError(`${symbol} already holds ${other.map((o) => `${o.bars} bars from ${sourceKeyText(o)}`).join(' and ')} in the history window; mixing sources within a symbol is refused. Re-download from one source (replace) or keep the existing one.`, other);
+      }
+    }
+    const before = count.get(symbol, interval).n;
+    let changed = 0, first = null, last = null;
+    for (const b of bars) {
+      const t = new Date(typeof b.t === 'number' ? b.t : Date.parse(b.t)).toISOString();
+      if (first == null || t < first) first = t;
+      if (last == null || t > last) last = t;
+      changed += Number(put.run(symbol, interval, t, b.o, b.h, b.l, b.c, b.v ?? null, source, fetchedAt, adjustment, feed).changes);
+    }
+    const inserted = count.get(symbol, interval).n - before;
+    const out = { inserted, updated: changed - inserted, keptExisting: bars.length - changed, deletedOther: deleted };
+    db.prepare(`INSERT INTO lab_bar_sets (symbol, interval, source, adjustment, feed, requested_from, requested_to, first_t, last_t, bars, inserted, updated, kept_existing, deleted_other, stored_at, details_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(symbol, interval, source, adjustment, feed, requestedFrom, requestedTo, first, last, bars.length,
+      out.inserted, out.updated, out.keptExisting, out.deletedOther, fetchedAt, json(details));
+    return out;
+  });
+}
+
+export function listBarSets(db, { symbol = null, limit = 500 } = {}) {
+  const rows = symbol
+    ? db.prepare('SELECT * FROM lab_bar_sets WHERE symbol = ? ORDER BY id DESC LIMIT ?').all(symbol, limit)
+    : db.prepare('SELECT * FROM lab_bar_sets ORDER BY id DESC LIMIT ?').all(limit);
+  return rows.map((r) => ({
+    id: r.id, symbol: r.symbol, interval: r.interval, source: r.source, adjustment: r.adjustment, feed: r.feed,
+    requestedFrom: r.requested_from, requestedTo: r.requested_to, first: r.first_t, last: r.last_t, bars: r.bars,
+    inserted: r.inserted, updated: r.updated, keptExisting: r.kept_existing, deletedOther: r.deleted_other, storedAt: r.stored_at, details: parse(r.details_json),
+  }));
+}
+
+// A cheap fingerprint of the stored bars: it changes whenever bars are
+// written, through this connection or another one.
+export function barsFingerprint(db) {
+  const r = db.prepare("SELECT COUNT(*) AS n, MAX(fetched_at) AS f, MIN(t) AS a, MAX(t) AS b FROM lab_bars WHERE interval = '15min'").get();
+  const s = db.prepare('SELECT COUNT(*) AS n, MAX(id) AS id FROM lab_bar_sets').get();
+  return `${r.n}|${r.f}|${r.a}|${r.b}|${s.n}|${s.id}`;
+}
+
 // ---------- runs ----------
 
 export function createRun(db, r) {
@@ -431,6 +544,14 @@ export function listEvents(db, { runId = null, runIds = null, source = null, typ
 export function countEvents(db, runId, type, code = null) {
   if (code == null) return db.prepare('SELECT COUNT(*) n FROM lab_events WHERE run_id = ? AND type = ?').get(runId, type).n;
   return db.prepare("SELECT COUNT(*) n FROM lab_events WHERE run_id = ? AND type = ? AND json_extract(details_json, '$.code') = ?").get(runId, type, code).n;
+}
+
+// Events of a run grouped by type and details.code, with the number of bars
+// a data warning names (a count or a list): the forward report's counters.
+export function eventCounts(db, runId) {
+  return db.prepare(`SELECT type, json_extract(details_json, '$.code') AS code, COUNT(*) AS n,
+      SUM(CASE json_type(details_json, '$.bars') WHEN 'integer' THEN json_extract(details_json, '$.bars') WHEN 'array' THEN json_array_length(details_json, '$.bars') ELSE 0 END) AS bars
+    FROM lab_events WHERE run_id = ? GROUP BY type, code ORDER BY type, code`).all(runId);
 }
 
 export function insertEquity(db, runId, points) {

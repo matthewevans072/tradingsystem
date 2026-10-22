@@ -27,6 +27,7 @@ import { getSetting, setSetting, nowIso, audit, tx } from '../db.js';
 import { alertSettings } from '../alerts.js';
 import { todayIn, NY } from '../time.js';
 import { round } from '../portfolio.js';
+import { TRADE_STATUS } from './ledger.js';
 
 export const PROPOSAL_TYPES = {
   add_transaction: 'Record a trade or cash movement you made at your brokerage',
@@ -759,18 +760,23 @@ export function createProposal(ctx, { conversationId, changeType, details, userQ
   const alt = changeType === 'add_transaction' ? siblingKeys(ctx.db, conversationId, payload) : [];
   const r = ctx.db.prepare(`INSERT INTO chat_proposals (conversation_id, change_type, payload_json, diff_json, user_quote, status, result_json, created_at)
                             VALUES (?,?,?,?,?, 'pending', ?, ?)`).run(conversationId, changeType, JSON.stringify(payload), JSON.stringify(diff), String(userQuote).slice(0, 500), JSON.stringify({ stateKey, ...(alt.length ? { altStateKeys: alt } : {}) }), nowIso());
-  return { id: Number(r.lastInsertRowid), changeType, payload, diff, status: 'pending', superseded: same.map((x) => x.id) };
+  return { id: Number(r.lastInsertRowid), changeType, payload, diff, status: 'pending', tradeStatus: TRADE_STATUS.PROPOSED, superseded: same.map((x) => x.id) };
 }
 
 export function listProposals(db, conversationId) {
   return db.prepare('SELECT * FROM chat_proposals WHERE conversation_id = ? ORDER BY id').all(conversationId).map(rowOut);
 }
 
+// Every proposal is a PROPOSED record (ledger.js TRADE_STATUS) whose sub-state
+// is its status. A confirmed transaction proposal names the record it saved,
+// which is USER-REPORTED: the owner's own entry, not a broker confirmation.
 function rowOut(p) {
   const result = p.result_json ? JSON.parse(p.result_json) : null;
+  const status = expired(p) ? 'expired' : p.status;
   return {
     id: p.id, conversationId: p.conversation_id, messageId: p.message_id, changeType: p.change_type, label: PROPOSAL_TYPES[p.change_type],
-    diff: JSON.parse(p.diff_json), userQuote: p.user_quote, status: expired(p) ? 'expired' : p.status,
+    diff: JSON.parse(p.diff_json), userQuote: p.user_quote, status, tradeStatus: TRADE_STATUS.PROPOSED,
+    savedRecord: status === 'confirmed' && p.change_type === 'add_transaction' && result?.id != null ? { tradeStatus: TRADE_STATUS.USER_REPORTED, recordId: `transaction:${result.id}`, origin: 'chat_proposal' } : null,
     result: result && (result.error || result.applied) ? result : null, createdAt: p.created_at, decidedAt: p.decided_at,
   };
 }

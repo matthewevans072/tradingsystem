@@ -51,6 +51,9 @@ export function loadConfig(overrides = {}) {
       NTFY_TOKEN: get('NTFY_TOKEN'),
       // Optional TradingView alert receiver for the Strategy Lab (simulation journal only).
       LAB_WEBHOOK_SECRET: get('LAB_WEBHOOK_SECRET'),
+      // Optional Alpaca market-data keys: Strategy Lab history only (no trading API is used).
+      ALPACA_API_KEY_ID: get('ALPACA_API_KEY_ID'),
+      ALPACA_API_SECRET_KEY: get('ALPACA_API_SECRET_KEY'),
     },
     secContactEmail: get('SEC_CONTACT_EMAIL'),
     anthropicModel: get('ANTHROPIC_MODEL', 'claude-opus-5-5'),
@@ -76,6 +79,8 @@ export function loadConfig(overrides = {}) {
     lab: {
       webhookPort: get('LAB_WEBHOOK_PORT', '') === '' ? null : Number(get('LAB_WEBHOOK_PORT')),
       maxSignalDelayMin: get('LAB_MAX_SIGNAL_DELAY_MIN', '') === '' ? 5 : Number(get('LAB_MAX_SIGNAL_DELAY_MIN')),
+      // auto (Alpaca when its keys are set, else the market-data provider) | alpaca | twelvedata
+      historySource: ['auto', 'alpaca', 'twelvedata'].includes(get('LAB_HISTORY_SOURCE', 'auto')) ? get('LAB_HISTORY_SOURCE', 'auto') : 'auto',
     },
   };
   return cfg;
@@ -112,6 +117,7 @@ export function publicConfigStatus(cfg) {
       email: !!(cfg.smtp.host && cfg.smtp.user && cfg.secrets.SMTP_PASSWORD && cfg.smtp.to),
       ntfy: !!cfg.ntfy.url,
       labWebhook: !!(cfg.secrets.LAB_WEBHOOK_SECRET && cfg.lab?.webhookPort),
+      alpaca: !!(cfg.secrets.ALPACA_API_KEY_ID && cfg.secrets.ALPACA_API_SECRET_KEY),
     },
   };
 }

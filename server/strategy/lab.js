@@ -18,11 +18,23 @@ import { generateSyntheticBars } from './synthetic.js';
 import { whySetupQualifies, whySignal, whyRejectedOrSkipped, whatEnded } from './explain.js';
 import { dayStartMs, tradingDays } from './sessions.js';
 import { forwardTick, startForward, stopForward, replayForward, forwardAccount, forwardResults, DEFAULT_MAX_SIGNAL_DELAY_MIN } from './forward.js';
+import { createAlpacaSource } from './sources/alpaca.js';
+import { buildReadiness, loadCorporateActions, CORPORATE_ACTIONS_FILE, FORWARD_FEEDS } from './readiness.js';
 import { todayIn, addDays, NY } from '../time.js';
+import { redact } from '../config.js';
 
 export const SYNTHETIC_LABEL = 'SYNTHETIC — demonstrates the interface, not the strategy';
 export const REAL_PORTFOLIO_NOTE = 'Separate from your real portfolio: your last reported real available cash is $0, paper profits are not buying power, and nothing here assumes you sold any real holding.';
 export const MAX_CSV_BYTES = 20 * 1024 * 1024;
+// What each history source declares about its bars (strategy/DATA-READINESS.md).
+// Bars from different keys are never mixed within a symbol's history window.
+export const SOURCE_META = {
+  alpaca: { name: 'Alpaca (SIP, split-adjusted)', adjustment: 'split', feed: 'sip', note: 'adjustment=split and feed=sip are sent with every request; Alpaca\'s handling of them is checked by the readiness checklist, not assumed.' },
+  twelvedata: { name: 'Twelve Data', adjustment: 'unknown', feed: 'default', note: 'No adjust parameter is sent; Twelve Data\'s FAQ says intraday bars are unadjusted (unverified), and its free plan is not verified to reach 2021-07-01.' },
+  csv: { name: 'CSV import', adjustment: 'unknown', feed: 'unknown', note: 'Adjustment and feed depend on where the file came from.' },
+};
+const metaOf = (id) => SOURCE_META[id] || { name: id, adjustment: 'unknown', feed: 'unknown', note: 'Adjustment and feed are not declared by this provider.' };
+const sameKey = (a, b) => a.source === b.source && (a.adjustment ?? null) === (b.adjustment ?? null) && (a.feed ?? null) === (b.feed ?? null);
 export const SPLITS = ['development', 'validation', 'stress', 'walk_forward'];
 const KIND_OF = { development: 'backtest', validation: 'backtest', stress: 'stress', walk_forward: 'walk_forward' };
 export const DEMO_DEFAULTS = { seed: 1, from: '2021-07-01', to: '2024-12-31', replaySessions: 30, warmupSessions: 5 };
@@ -253,12 +265,47 @@ export function createLab(ctx, opts = {}) {
   const demoOpts = { ...DEMO_DEFAULTS, ...(opts.demo || {}) };
   const universe = loadUniverse(), splits = loadSplits(), acceptance = loadAcceptance();
   const uSyms = new Map(universe.symbols.map((s) => [s.symbol, s]));
+  // The pre-registered history window: the only range the source-mixing rule and the readiness checklist cover.
+  const windowIso = { from: dayStartIso(splits.warmup.from), to: dayEndIso(splits.holdout.to) };
+  const caFile = opts.corporateActionsFile || CORPORATE_ACTIONS_FILE;
+  const safe = (m) => (ctx.cfg?.secrets ? redact(String(m ?? ''), ctx.cfg) : String(m ?? ''));
+  const sec = ctx.cfg?.secrets || {};
+  // Alpaca history (keys in .env only); never in the demo workspace.
+  const alpaca = demo ? null : opts.alpaca !== undefined ? opts.alpaca
+    : sec.ALPACA_API_KEY_ID && sec.ALPACA_API_SECRET_KEY
+      ? createAlpacaSource({ keyId: sec.ALPACA_API_KEY_ID, secretKey: sec.ALPACA_API_SECRET_KEY, fetchImpl: opts.alpacaFetch, sleep: opts.alpacaSleep, now: clock })
+      : null;
+  let readinessCache = null;
+  // Sources in the history window, recomputed when barCoverage's cached rows change.
+  const histKeysCache = new WeakMap();
+  const historyKeys = () => {
+    const cov = store.barCoverage(db);
+    if (!histKeysCache.has(cov)) histKeysCache.set(cov, store.barSourceKeys(db, null, windowIso));
+    return histKeysCache.get(cov);
+  };
   const workers = new Set();
   const memos = new Map();
   let busy = null, ticking = false, fetching = false, closed = false;
   let pauseCheck = () => false;
 
   const market = () => (demo ? null : ctx.providers?.market || null);
+
+  // History sources that are configured now, the preferred one first unless
+  // LAB_HISTORY_SOURCE names another: Alpaca when its keys are set, then the
+  // market-data provider if it can download 15-minute history.
+  function historySources() {
+    const list = [];
+    if (alpaca) list.push({ id: 'alpaca', kind: 'alpaca', impl: alpaca, ...metaOf('alpaca') });
+    const p = market();
+    if (p && typeof p.getIntradayRange === 'function') list.push({ id: p.id || 'provider', kind: 'provider', impl: p, ...metaOf(p.id || 'provider'), name: p.name || metaOf(p.id).name });
+    const pref = ctx.cfg?.lab?.historySource || 'auto';
+    const preferred = (pref !== 'auto' && list.find((s) => s.id === pref)) || list[0] || null;
+    return { list, preferred };
+  }
+  const publicSources = () => {
+    const { list, preferred } = historySources();
+    return list.map((s) => ({ id: s.id, name: s.name, adjustment: s.adjustment, feed: s.feed, preferred: s.id === preferred?.id, note: s.note }));
+  };
 
   function configs() { return readConfigs(configsDir); }
   function activeConfigEntry() {
@@ -346,10 +393,14 @@ export function createLab(ctx, opts = {}) {
       },
       dataSources: [
         'Import a TradingView chart export (15-minute candles, one CSV per symbol) or a generic CSV with time, open, high, low, close and volume columns.',
+        alpaca
+          ? 'Or download the history through Alpaca (split-adjusted consolidated SIP bars; one request per symbol per quarter, more if a quarter needs several pages).'
+          : 'Or set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY in .env (free Alpaca market-data account; preferred: split-adjusted consolidated SIP bars) and download the history from here.',
         p && typeof p.getIntradayRange === 'function'
-          ? `Or download the history through ${p.name} (uses about one provider request per symbol per quarter of data).`
-          : 'Or set MARKET_DATA_PROVIDER=twelvedata with TWELVEDATA_API_KEY in .env and download the history from here.',
+          ? `Or download the history through ${p.name} (uses about one provider request per symbol per quarter of data; its free plan is not verified to reach ${splits.warmup.from}).`
+          : 'Or set MARKET_DATA_PROVIDER=twelvedata with TWELVEDATA_API_KEY in .env (its free plan is not verified to cover the required history; see strategy/DATA-READINESS.md).',
       ],
+      readiness: 'GET /api/lab/readiness lists, per symbol and period, exactly what is present and what is missing.',
       lowerTimeframe: 'Optional: 1-minute bars only help resolve bars that touch both the stop and the target.',
       note: splits.dataRequirements,
     };
@@ -479,7 +530,8 @@ export function createLab(ctx, opts = {}) {
 
   const publicJob = (j) => (j ? {
     id: j.id, status: j.status, provider: j.provider, from: j.from, to: j.to, startedAt: j.startedAt, updatedAt: j.updatedAt, error: j.error ?? null, resumeAfter: j.resumeAfter ?? null,
-    symbols: Object.entries(j.symbols).map(([symbol, s]) => ({ symbol, status: s.status, fetchedThrough: s.fetchedThrough ?? null, bars: s.bars, error: s.error ?? null })),
+    source: j.source ?? null, adjustment: j.adjustment ?? null, feed: j.feed ?? null, replace: !!j.replace,
+    symbols: Object.entries(j.symbols).map(([symbol, s]) => ({ symbol, status: s.status, fetchedThrough: s.fetchedThrough ?? null, bars: s.bars, error: s.error ?? null, deletedOther: s.deletedOther ?? 0, keptExisting: s.keptExisting ?? 0 })),
     done: Object.values(j.symbols).filter((s) => s.status === 'done').length, total: Object.keys(j.symbols).length,
   } : null);
 
@@ -494,8 +546,9 @@ export function createLab(ctx, opts = {}) {
     try {
       let job = store.getSetting(db, 'fetchJob');
       while (job && job.status === 'running' && !closed) {
-        const p = market();
-        if (!p || typeof p.getIntradayRange !== 'function') { job.status = 'paused'; job.error = 'No market-data provider with 15-minute history is configured'; break; }
+        // Jobs saved before sources were recorded used the market-data provider.
+        const src = job.source ? historySources().list.find((x) => x.id === job.source) : historySources().list.find((x) => x.kind === 'provider');
+        if (!src) { job.status = 'paused'; job.error = job.source ? `The history source ${job.source} is no longer configured` : 'No market-data provider with 15-minute history is configured'; break; }
         const sym = Object.keys(job.symbols).find((s) => ['pending', 'running'].includes(job.symbols[s].status));
         if (!sym) { job.status = Object.values(job.symbols).some((s) => s.status === 'error') ? 'done_with_errors' : 'done'; break; }
         if (pauseCheck()) { await new Promise((r) => setTimeout(r, opts.pauseMs ?? 10000)); continue; }
@@ -504,11 +557,28 @@ export function createLab(ctx, opts = {}) {
         const cFrom = st.next, cTo = quarterEnd(cFrom) < job.to ? quarterEnd(cFrom) : job.to;
         const u = uSyms.get(sym);
         try {
-          const raw = await p.getIntradayRange({ symbol: sym, exchange: u.exchange, currency: 'USD', provider_symbol: null }, cFrom, cTo, '15min');
+          const inst = { symbol: sym, exchange: u.exchange, currency: 'USD', provider_symbol: null };
+          let got, details;
+          if (src.kind === 'alpaca') {
+            const r = await src.impl.getHistory(inst, cFrom, cTo);
+            got = r.bars;
+            details = { rawBars: r.rawBars, pages: r.pages, dropped: r.dropped, session: r.session, timestamps: { utc: r.timestamps.utc, offset: r.timestamps.offset, unreadable: r.timestamps.unreadable }, request: r.request };
+          } else {
+            const raw = await src.impl.getIntradayRange(inst, cFrom, cTo, '15min');
+            const norm = normalizeBars(raw.map((b) => ({ t: b.ts ?? b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })), { exchange: u.exchange, intervalMinutes: 15, inputIntervalMinutes: 15 });
+            got = norm.bars;
+            details = { rawBars: raw.length, dropped: norm.dropped };
+          }
           const nowMs = clock().getTime();
-          const n = normalizeBars(raw.map((b) => ({ t: b.ts ?? b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })), { exchange: u.exchange, intervalMinutes: 15, inputIntervalMinutes: 15 }).bars
-            .filter((b) => Date.parse(b.t) + 15 * 60000 <= nowMs);
-          if (n.length) store.upsertBars(db, sym, n, { source: p.id || 'provider' });
+          const n = got.filter((b) => Date.parse(b.t) + 15 * 60000 <= nowMs);
+          // Re-download: the first chunk deletes this symbol's bars from other sources in the history window.
+          const res = store.storeBarSet(db, sym, n, {
+            source: src.id, adjustment: src.adjustment, feed: src.feed, guard: windowIso, replace: job.replace && !st.replacedOther ? windowIso : null,
+            requestedFrom: cFrom, requestedTo: cTo, details, fetchedAt: clock().toISOString(),
+          });
+          if (job.replace) st.replacedOther = true;
+          st.deletedOther = (st.deletedOther || 0) + res.deletedOther;
+          st.keptExisting = (st.keptExisting || 0) + res.keptExisting;
           st.bars += n.length;
           st.fetchedThrough = cTo;
           st.next = addDays(cTo, 1);
@@ -517,7 +587,9 @@ export function createLab(ctx, opts = {}) {
           if (st.next > job.to) st.status = 'done';
         } catch (e) {
           st.status = 'pending';
+          e.message = safe(e.message);
           if (e.kind === 'auth') { job.status = 'failed'; job.error = e.message; }
+          else if (e.kind === 'mixed_source') { st.status = 'error'; st.error = e.message; }
           else if (e.kind === 'rate_limit') {
             job.status = 'paused'; job.error = e.message;
             const now = clock().getTime();
@@ -557,6 +629,65 @@ export function createLab(ctx, opts = {}) {
       startedAt: f?.startedAt ?? null, stoppedAt: f?.stoppedAt ?? null, processedThrough: f?.processedThrough ?? null, lastError: f?.lastError ?? null,
       canRun, reason, maxSignalDelayMinutes: maxSignalDelayMin, synthetic: demo,
       note: `A signal is acted on only if its bar is processed within ${maxSignalDelayMin} minutes of the bar's close; otherwise it is journalled as expired. If your data plan delays intraday bars, signals will expire.`,
+    };
+  }
+
+  // ---------- forward report (kept apart from historical runs) ----------
+
+  // Counters and per-trade simulated costs of the current forward run, read
+  // only from its stored journal and trades: no run means "not started" and
+  // zeros; nothing is estimated or filled in.
+  function forwardReport(mode) {
+    const f = store.getForward(db, mode);
+    const p = market();
+    const histKeys = historyKeys();
+    const feed = {
+      warning: FORWARD_FEEDS.warning, adapter: FORWARD_FEEDS.adapter, options: FORWARD_FEEDS.options, lastSeen: FORWARD_FEEDS.lastSeen,
+      forwardProvider: demo ? 'synthetic' : p ? (p.id || p.name) : null,
+      historySources: histKeys.map((k) => ({ source: k.source, adjustment: k.adjustment ?? null, feed: k.feed ?? null, bars: k.bars })),
+      consolidatedRealTime: false,
+      mismatch: !demo && p && histKeys.some((k) => k.source !== (p.id || 'provider'))
+        ? `The history in the window comes from ${[...new Set(histKeys.map((k) => k.source))].join(', ')} but forward bars would come from ${p.name || p.id}; volume and prices from different feeds are not comparable.` : null,
+    };
+    const base = {
+      mode, kind: 'forward', separateFrom: 'historical runs (development, validation, stress, walk-forward, holdout): forward results are never added to them, and they are never added here',
+      recordStatus: 'SIMULATED', feed,
+    };
+    const zeros = { signals: 0, ordersPlaced: 0, entriesFilled: 0, closedTrades: 0, openPositions: 0, rejectedSetups: 0, rejectedByReason: {}, setupsExpired: 0, setupsCancelled: 0, entrySkips: 0, skippedByReason: {}, missedSignals: { expired: 0, noNextBar: 0, total: 0 }, lateData: { lateBarTimes: 0, lateBarWarnings: 0, barsArrivedAfterProcessing: 0, missingBars: 0, timeExitsWhileAsleep: 0 }, operational: { providerErrors: 0, noProvider: 0, processingErrors: 0, duplicateTrades: 0, ruleChanged: 0 } };
+    if (!f?.runId) {
+      return { ...base, status: 'not started', runId: null, version: null, configHash: null, startedAt: null, processedThrough: null, synthetic: demo, counters: zeros, costs: { trades: [], totals: { commission: 0, spreadSlippage: 0, fx: 0, total: 0 } }, note: 'No forward test has run in this mode: there are no forward signals, no simulated fills and no forward trades.' };
+    }
+    const run = store.getRun(db, f.runId, { full: false });
+    const rows = store.eventCounts(db, f.runId);
+    const n = (type, code) => rows.filter((r) => r.type === type && (code === undefined || r.code === code)).reduce((a, r) => a + r.n, 0);
+    const bars = (type, code) => rows.filter((r) => r.type === type && r.code === code).reduce((a, r) => a + (r.bars || 0), 0);
+    const byCode = (type) => Object.fromEntries(rows.filter((r) => r.type === type).map((r) => [r.code || 'unspecified', r.n]));
+    const trades = store.runTrades(db, f.runId);
+    const closedIds = new Set(trades.map((t) => t.id));
+    const costRow = (t) => {
+      const commission = (t.entry?.commission || 0) + (t.exit?.commission || 0), spreadSlippage = (t.entry?.spreadSlippage || 0) + (t.exit?.spreadSlippage || 0), fx = (t.entry?.fx || 0) + (t.exit?.fx || 0);
+      return { tradeId: t.id, symbol: t.symbol, status: 'SIMULATED', open: false, entryAt: t.entry?.at ?? null, exitAt: t.exit?.at ?? null, shares: t.entry?.shares ?? null, commission, spreadSlippage, fx, total: t.pnl?.costs ?? commission + spreadSlippage + fx, net: t.pnl?.net ?? null, r: t.pnl?.r ?? null, exitReason: t.exit?.reason ?? null };
+    };
+    const open = store.listEvents(db, { runId: f.runId, types: ['entry_filled'], limit: 5000, order: 'ASC' }).map((r) => store.eventFromRow(r))
+      .filter((e) => !closedIds.has(e.details?.tradeId))
+      .map((e) => ({ tradeId: e.details?.tradeId ?? null, symbol: e.symbol, status: 'SIMULATED', open: true, entryAt: e.at, exitAt: null, shares: e.details?.shares ?? null, commission: e.details?.commission || 0, spreadSlippage: e.details?.spreadSlippage || 0, fx: e.details?.fx || 0, total: (e.details?.commission || 0) + (e.details?.spreadSlippage || 0) + (e.details?.fx || 0), net: null, r: null, exitReason: null, note: 'entry costs only; the position is still open' }));
+    const list = [...trades.map(costRow), ...open];
+    const sum = (k) => list.reduce((a, x) => a + (x[k] || 0), 0);
+    const expired = n('entry_skipped', 'expired'), noNext = n('entry_skipped', 'no_next_bar');
+    return {
+      ...base,
+      status: f.status === 'replay' ? 'synthetic replay' : f.status, runId: f.runId, version: f.version, configHash: f.configHash, startedAt: f.startedAt, stoppedAt: f.stoppedAt ?? null,
+      processedThrough: f.processedThrough ?? null, synthetic: !!run?.synthetic, maxSignalDelayMinutes: maxSignalDelayMin,
+      counters: {
+        signals: n('signal'), ordersPlaced: n('order_placed'), entriesFilled: n('entry_filled'), closedTrades: trades.length, openPositions: open.length,
+        rejectedSetups: n('signal_rejected'), rejectedByReason: byCode('signal_rejected'), setupsExpired: n('setup_expired'), setupsCancelled: n('setup_invalidated'),
+        entrySkips: n('entry_skipped'), skippedByReason: byCode('entry_skipped'),
+        missedSignals: { expired, noNextBar: noNext, total: expired + noNext },
+        lateData: { lateBarTimes: bars('data_warning', 'late_bars'), lateBarWarnings: n('data_warning', 'late_bars'), barsArrivedAfterProcessing: bars('data_warning', 'late_bar'), missingBars: n('data_warning', 'missing_bar'), timeExitsWhileAsleep: n('data_warning', 'time_exit_while_asleep') },
+        operational: { providerErrors: n('operational_error', 'provider_error'), noProvider: n('operational_error', 'no_provider'), processingErrors: n('operational_error', 'processing_error'), duplicateTrades: n('operational_error', 'duplicate_trade'), ruleChanged: n('operational_error', 'rule_changed') },
+      },
+      costs: { trades: list.slice(-500), totals: { commission: sum('commission'), spreadSlippage: sum('spreadSlippage'), fx: sum('fx'), total: sum('total') }, note: 'Simulated costs from the strategy config\'s cost model (commission, half-spread and slippage, currency conversion), not broker fills.' },
+      note: run?.synthetic ? 'Synthetic replay for the demo: nothing here is forward evidence.' : 'Forward results only; historical runs are reported separately.',
     };
   }
 
@@ -606,6 +737,7 @@ export function createLab(ctx, opts = {}) {
         version: { strategy: c.strategy, version: c.version, label: c.label, configHash: c.configHash, file: c.file },
         settings: {
           maxSignalDelayMinutes: maxSignalDelayMin, marketProvider: demo ? 'synthetic' : ctx.cfg?.marketProvider || 'none',
+          historySources: publicSources(), historySource: historySources().preferred?.id ?? null,
           webhook: { enabled: !demo && !!(ctx.cfg?.secrets?.LAB_WEBHOOK_SECRET && ctx.cfg?.lab?.webhookPort), port: demo ? null : ctx.cfg?.lab?.webhookPort ?? null },
           universe: universe.name, splits: splits.name, criteria: acceptance.name,
         },
@@ -613,6 +745,7 @@ export function createLab(ctx, opts = {}) {
         recentDecisions: decisions.map((r) => journalItem(store.eventFromRow(r, params))),
         recentTrades: closedForward.rows.map(tradeSummary), forwardTradeCount: closedForward.total,
         forward: fwd,
+        forwardReport: forwardReport(mode),
         data: {
           symbols: universe.symbols.map((s) => ({ symbol: s.symbol, exchange: s.exchange, ...(covBy.get(s.symbol) ? { bars: covBy.get(s.symbol).bars, first: covBy.get(s.symbol).first, last: covBy.get(s.symbol).last, sources: covBy.get(s.symbol).sources, synthetic: covBy.get(s.symbol).synthetic } : { bars: 0, first: null, last: null, sources: [], synthetic: false }) })),
           required: { from: splits.warmup.from, to: splits.holdout.to }, lastBar: coverage.reduce((m, x) => (x.last > (m || '') ? x.last : m), null),
@@ -840,7 +973,7 @@ export function createLab(ctx, opts = {}) {
       return lab.getRun(await done);
     },
 
-    importCsv({ symbol, exchange = null, text, format = null } = {}) {
+    importCsv({ symbol, exchange = null, text, format = null, replace = false } = {}) {
       if (demo) throw new LabError(400, 'The demo workspace holds synthetic data only. Switch to your workspace to import market data.');
       const sym = checkSymbol(symbol);
       if (typeof text !== 'string' || !text.trim()) throw new LabError(400, 'CSV text is missing');
@@ -856,7 +989,17 @@ export function createLab(ctx, opts = {}) {
         norm = normalizeBars(parsed.bars, { exchange: ex, intervalMinutes: 15 });
       } catch (e) { throw new LabError(400, e.message); }
       if (!norm.bars.length) throw new LabError(400, `No regular-session 15-minute bars were found (${parsed.bars.length} rows read, ${parsed.rejected.length} rejected)`);
-      const stored = store.upsertBars(db, sym, norm.bars, { source: 'csv', fetchedAt: clock().toISOString() });
+      let res;
+      try {
+        res = store.storeBarSet(db, sym, norm.bars, {
+          source: 'csv', adjustment: metaOf('csv').adjustment, feed: metaOf('csv').feed, guard: windowIso, replace: replace === true ? windowIso : null,
+          requestedFrom: etDate(norm.bars[0].t), requestedTo: etDate(norm.bars[norm.bars.length - 1].t), details: { rawBars: parsed.bars.length, rejected: parsed.rejected.length, dropped: norm.dropped, format: parsed.format }, fetchedAt: clock().toISOString(),
+        });
+      } catch (e) {
+        if (e instanceof store.MixedSourceError) throw new LabError(409, `${e.message} To replace them with this file, import again with replace.`);
+        throw e;
+      }
+      const stored = { inserted: res.inserted, replaced: res.updated };
       const quality = qualityReport(norm.bars, { exchange: ex });
       const cov = store.barCoverage(db).find((x) => x.symbol === sym);
       const first = etDate(norm.bars[0].t), last = etDate(norm.bars[norm.bars.length - 1].t);
@@ -867,27 +1010,49 @@ export function createLab(ctx, opts = {}) {
       return wrap({
         symbol: sym, exchange: ex, format: parsed.format, inputIntervalMinutes: norm.inputIntervalMinutes,
         rows: { read: parsed.bars.length + parsed.rejected.length, parsed: parsed.bars.length, rejected: parsed.rejected.length, rejectedSample: parsed.rejected.slice(0, 10) },
-        dropped: norm.dropped, stored, quality, dataHash: datasetHash(new Map([[sym, norm.bars]])),
+        dropped: norm.dropped, stored, sourceCheck: { source: 'csv', adjustment: metaOf('csv').adjustment, feed: metaOf('csv').feed, keptExisting: res.keptExisting, deletedOther: res.deletedOther }, quality, dataHash: datasetHash(new Map([[sym, norm.bars]])),
         coverage: cov ? { bars: cov.bars, first: cov.first, last: cov.last } : null, notes,
       });
     },
 
-    fetchHistory({ symbols = null, from = null, to = null } = {}) {
+    // source: 'alpaca' | the market provider's id | null (the preferred one).
+    // replace: re-download, deleting the symbols' bars from other sources in
+    // the history window; without it, mixing sources within a symbol is refused.
+    fetchHistory({ symbols = null, from = null, to = null, source = null, replace = false } = {}) {
       if (demo) throw new LabError(400, 'The demo workspace holds synthetic data only. Switch to your workspace to download market data.');
       const p = market();
-      if (!p) throw new LabError(400, `No market-data provider is configured (MARKET_DATA_PROVIDER=${ctx.cfg?.marketProvider || 'none'}). Set MARKET_DATA_PROVIDER=twelvedata and TWELVEDATA_API_KEY in .env, or import CSV files.`);
-      if (typeof p.getIntradayRange !== 'function') throw new LabError(400, `${p.name} cannot download 15-minute history here; import CSV files instead.`);
+      const { list: sources, preferred } = historySources();
+      if (!sources.length) {
+        if (p) throw new LabError(400, `${p.name} cannot download 15-minute history here. Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY in .env, or import CSV files instead.`);
+        throw new LabError(400, `No history source is configured (MARKET_DATA_PROVIDER=${ctx.cfg?.marketProvider || 'none'}, no Alpaca keys). Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY (preferred), or MARKET_DATA_PROVIDER=twelvedata and TWELVEDATA_API_KEY, in .env, or import CSV files.`);
+      }
+      if (source != null && typeof source !== 'string') throw new LabError(400, 'source must be text');
+      const src = source ? sources.find((x) => x.id === source) : preferred;
+      if (!src) throw new LabError(400, `The history source ${source} is not configured (configured: ${sources.map((x) => x.id).join(', ')})`);
       const list = symbols == null || (Array.isArray(symbols) && !symbols.length) ? [...uSyms.keys()] : (Array.isArray(symbols) ? symbols : String(symbols).split(',')).map(checkSymbol);
       const f = from || splits.warmup.from, t = to || todayIn(NY, clock());
       if (!DATE.test(f) || !DATE.test(t) || f > t) throw new LabError(400, 'from and to must be YYYY-MM-DD with from on or before to');
       if (f < '2000-01-01' || t > todayIn(NY, clock())) throw new LabError(400, 'The range must lie between 2000-01-01 and today');
       const cur = store.getSetting(db, 'fetchJob');
       if (cur && ['running', 'paused'].includes(cur.status) && fetching) throw new LabError(409, 'A history download is already running');
+      const key = { source: src.id, adjustment: src.adjustment, feed: src.feed };
+      const conflicts = list.map((s) => ({ symbol: s, other: store.barSourceKeys(db, s, windowIso).filter((k) => !sameKey(k, key)) })).filter((c) => c.other.length);
+      if (conflicts.length && replace !== true) {
+        throw new LabError(409, `Mixing sources within a symbol is refused: ${conflicts.map((c) => `${c.symbol} holds ${c.other.map((o) => `${o.bars} bars from ${store.sourceKeyText(o)}`).join(' and ')}`).join('; ')} in the history window (${splits.warmup.from} to ${splits.holdout.to}). Download from that source instead, or re-download (replace) to delete those bars first.`);
+      }
       const now = clock().toISOString();
-      const job = { id: Date.now(), status: 'running', provider: p.name, from: f, to: t, startedAt: now, updatedAt: now, error: null, symbols: Object.fromEntries(list.map((s) => [s, { status: 'pending', next: f, bars: 0, error: null, fetchedThrough: null }])) };
+      const job = {
+        id: Date.now(), status: 'running', provider: src.name, source: src.id, adjustment: src.adjustment, feed: src.feed, replace: replace === true,
+        from: f, to: t, startedAt: now, updatedAt: now, error: null,
+        symbols: Object.fromEntries(list.map((s) => [s, { status: 'pending', next: f, bars: 0, error: null, fetchedThrough: null }])),
+      };
       store.setSetting(db, 'fetchJob', job);
       lab.fetchDone = runFetchJob().catch(() => {});
-      return wrap({ job: publicJob(job), note: `Downloading in the background through ${p.name}, one request per symbol per quarter, within the provider's rate limits. Progress is saved, so it resumes after a restart.` });
+      return wrap({
+        job: publicJob(job), source: { id: src.id, name: src.name, adjustment: src.adjustment, feed: src.feed, note: src.note },
+        replacing: replace === true ? conflicts.map((c) => ({ symbol: c.symbol, bars: c.other.reduce((n, o) => n + o.bars, 0), sources: c.other.map((o) => store.sourceKeyText(o)) })) : [],
+        note: `Downloading in the background through ${src.name} (adjustment ${src.adjustment}, feed ${src.feed}), one request per symbol per quarter, within the provider's rate limits. Progress is saved, so it resumes after a restart. Check the readiness checklist afterwards; nothing is shortened or replaced automatically.`,
+      });
     },
 
     fetchStatus() { return wrap({ job: publicJob(store.getSetting(db, 'fetchJob')) }); },
@@ -913,7 +1078,24 @@ export function createLab(ctx, opts = {}) {
 
     evaluation({ mode = 'intraday' } = {}) {
       checkMode(mode);
-      return wrap(evaluate(mode));
+      return wrap({ ...evaluate(mode), forwardReport: forwardReport(mode) });
+    },
+
+    forwardReport({ mode = 'intraday' } = {}) {
+      checkMode(mode);
+      return wrap({ report: forwardReport(mode) });
+    },
+
+    // The data-readiness checklist (readiness.js), recomputed only when the
+    // stored bars or the corporate-actions file change. Read-only.
+    readiness() {
+      let caText;
+      try { caText = fs.readFileSync(caFile, 'utf8'); } catch (e) { throw new LabError(500, `The corporate-actions file could not be read: ${e.message}`); }
+      const key = `${store.barsFingerprint(db)}|${caText}`;
+      if (!readinessCache || readinessCache.key !== key) {
+        readinessCache = { key, value: buildReadiness({ db, universe, splits, corporateActions: loadCorporateActions(caFile), now: clock(), synthetic: demo }) };
+      }
+      return wrap({ ...readinessCache.value, historySources: publicSources() });
     },
 
     // Scheduler hook: forward ticks for running modes and a paused history

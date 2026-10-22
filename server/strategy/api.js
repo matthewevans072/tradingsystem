@@ -33,6 +33,8 @@ export function registerLabRoutes(r, HttpError) {
   route('GET', '/api/lab/versions/diff', (lab, { query }) => lab.diffVersions(query.from, query.to));
   route('GET', '/api/lab/evaluation', (lab, { query }) => lab.evaluation({ mode: query.mode || 'intraday' }));
   route('GET', '/api/lab/fetch', (lab) => lab.fetchStatus());
+  route('GET', '/api/lab/readiness', (lab) => lab.readiness());
+  route('GET', '/api/lab/forward-report', (lab, { query }) => lab.forwardReport({ mode: query.mode || 'intraday' }));
 
   route('POST', '/api/lab/runs', (lab, { body }) => {
     const b = obj(body);
@@ -48,13 +50,16 @@ export function registerLabRoutes(r, HttpError) {
   route('POST', '/api/lab/import', (lab, { body }) => {
     const b = obj(body);
     if (typeof b.text === 'string' && Buffer.byteLength(b.text, 'utf8') > MAX_CSV_BYTES) throw new HttpError(413, 'The CSV is larger than 20 MB; split it into smaller files');
-    return lab.importCsv({ symbol: b.symbol, exchange: b.exchange || null, text: b.text, format: b.format || null });
+    if (b.replace != null && typeof b.replace !== 'boolean') throw new HttpError(400, 'replace must be true or false');
+    return lab.importCsv({ symbol: b.symbol, exchange: b.exchange || null, text: b.text, format: b.format || null, replace: b.replace === true });
   });
   route('POST', '/api/lab/fetch', (lab, { body }) => {
     const b = obj(body);
     if (b.symbols != null && !Array.isArray(b.symbols)) throw new HttpError(400, 'symbols must be a list');
     if (Array.isArray(b.symbols) && b.symbols.length > 50) throw new HttpError(400, 'Too many symbols');
-    return lab.fetchHistory({ symbols: b.symbols ?? null, from: b.from || null, to: b.to || null });
+    if (b.source != null && typeof b.source !== 'string') throw new HttpError(400, 'source must be text');
+    if (b.replace != null && typeof b.replace !== 'boolean') throw new HttpError(400, 'replace must be true or false');
+    return lab.fetchHistory({ symbols: b.symbols ?? null, from: b.from || null, to: b.to || null, source: b.source || null, replace: b.replace === true });
   });
   route('POST', '/api/lab/forward', (lab, { body }) => {
     const b = obj(body);

@@ -22,6 +22,10 @@ here instead of repeating sources.
   AI/MCP guide, the Questrade API trading rule, TradingView webhook headers,
   and the Questrade–TradingView integration). They have the same limitation
   and are marked "this pass".
+- **A second Questrade pass on 2026-10-22**: 11 searches restricted to
+  questrade.com, mostly about Questrade's MCP server for AI agents (sections
+  8 to 11). A direct fetch of the MCP setup guide failed with the same DNS
+  error, so these are search summaries too, marked "(2026-10-22)".
 - **Age.** The search tool reported several Questrade API documentation pages
   as about 3,960 days old (about 11 years), and some TradingView support
   articles as 3–4 years old. A page can still be live and out of date.
@@ -34,6 +38,7 @@ here instead of repeating sources.
 |---|---|
 | **Search summary** | Supported by a search result from the official domain (tradingview.com or questrade.com). Not re-verified; the page was not read directly. |
 | **Search summary (this pass)** | The same, from the four searches made while writing these notes. |
+| **Search summary (2026-10-22)** | The same, from the second Questrade pass (questrade.com only). |
 | **Likely** | The source is paraphrased, partial, old or indirect, or the item is an inference from two documented statements. |
 | **Unverified** | No official source was found. Not to be relied on or presented as fact. |
 
@@ -422,15 +427,21 @@ CSV import.
   [How Deep Backtesting works](https://www.tradingview.com/support/solutions/43000666265-how-deep-backtesting-works/),
   [Data for Deep Backtesting](https://www.tradingview.com/support/solutions/43000668210-how-much-data-is-available-for-deep-backtesting/)
 
-## 8. Questrade API
+## 8. Questrade API (the personal REST API)
 
-Used by: `QUESTRADE-ASSESSMENT.md`.
+Used by: `QUESTRADE-ASSESSMENT.md` (section 1).
+
+This section covers the REST API at questrade.com/api only: personal apps
+and partner developers. Questrade's MCP server for AI agents is a different
+interface with different rules (section 10). A fact about one says nothing
+about the other.
 
 - "Executing trades using the API is available to Questrade partner
   developers only. If you're a customer with Questrade, you can access
   account and market data but you cannot execute trades using the API."
-  **Search summary**, found again in this pass. The search tool reported the
-  page as about 11 years old.
+  **Search summary**, found again in this pass and on 2026-10-22. The search
+  tool reported the page as about 11 years old (about 3,961 days on
+  2026-10-22).
   [Questrade API](https://www.questrade.com/api)
 - The security page's scope table lists "Trade (partner developers only)",
   identifier `trade`. That it covers placing, previewing and cancelling
@@ -469,6 +480,16 @@ Used by: `QUESTRADE-ASSESSMENT.md`.
 - Without a real-time data subscription, quote requests count as snapshots
   with a per-market limit, after which delayed data is returned.
   **Likely.** [Quotes endpoint](https://www.questrade.com/api/documentation/rest-operations/market-calls/markets-quotes-id)
+- A customer using personal API access for an app they built must accept
+  Questrade's personal API licence agreement; its text was not seen.
+  **Likely (2026-10-22)** (the summary did not name the page).
+  [Getting started](https://www.questrade.com/api/documentation/getting-started)
+- The API's enumerations list account types (including Margin, TFSA, RRSP
+  and LRRSP) and order types (including Market, Limit, Stop, StopLimit,
+  trailing-stop variants, limit-on-open and limit-on-close).
+  **Search summary (2026-10-22)**, found incidentally; probably as old as
+  the other API pages.
+  [Enumerations](https://www.questrade.com/api/documentation/rest-operations/enumerations/enumerations)
 - A page at developer.questrade.com exists; its content was not seen.
   Whether it replaces the older documentation or changes the trading rule:
   **Unverified.**
@@ -496,47 +517,149 @@ Used by: `QUESTRADE-ASSESSMENT.md`.
   verification renewed every 7 days. **Search summary.**
   [Data purchased through a broker](https://www.tradingview.com/support/solutions/43000479666-how-can-i-get-real-time-data-from-exchanges-that-i-have-already-purchased-with-my-broker/)
 
-## 10. Questrade's AI-agent (MCP) connection
+## 10. Questrade's MCP server for AI agents
 
-- Questrade publishes a "Questrade MCP Setup Guide" for connecting a
-  Questrade account to AI agents. As summarized: one server address for all
-  supported agents; sign-in happens on Questrade's own page; read-only access
-  can be granted without trade permission; when an agent prepares an order,
-  it shows a preview, and Questrade sends a Push Approval notification to the
-  Questrade app (version 2.0.0 or later), where the customer approves or
-  declines; the agent cannot place, change or cancel an order on its own,
-  and an ignored request is cancelled. One Questrade page describes the
-  connection as read-and-write; the newer guide says trading permission is
-  turned on separately after an extra security check.
-  **Search summary (this pass)**; the first research pass rated the same
-  page **Likely** (paraphrase only).
-  [Questrade MCP Setup Guide](https://www.questrade.com/learning/using-questrade/connect-your-questrade-account-to-ai),
-  [Questrade MCP guides](https://www.questrade.com/learning/questrade-mcp),
-  [Agentic finance](https://www.questrade.com/agentic-finance)
-- Not established: when it launched; who is eligible and for which account
-  types; whether it runs through the partner-only API scope or a separate
-  channel; any extra cost. **Unverified.**
+Used by: `QUESTRADE-ASSESSMENT.md` (section 3, rows M1 to M18).
+
+Re-researched on 2026-10-22 (11 searches restricted to questrade.com; a
+direct fetch of the setup guide failed with a DNS error). Every item is a
+search summary; no page was read directly. The first pass (2026-10-21)
+found the same setup guide and the same approval flow, rated first
+**Likely** and then **Search summary (this pass)**.
+
+**The owner's statement.** The owner states that the official Questrade MCP
+supports order drafting with user approval. The items below support it, as
+search summaries only; it stays recorded as the owner's statement.
+
+Sources used below: [MCP Setup Guide](https://www.questrade.com/learning/using-questrade/connect-your-questrade-account-to-ai),
+[MCP guides](https://www.questrade.com/learning/questrade-mcp),
+[Connect Questrade to your AI tool](https://www.questrade.com/learning/using-questrade/connect-questrade-to-your-ai-tool),
+[Developer docs: MCP & llms.txt](https://www.questrade.com/learning/using-questrade/llms-txt-questrade-mcp),
+[Amplify your trading with AI](https://wealth.questrade.com/mcp),
+[Agentic Finance](https://www.questrade.com/agentic-finance),
+[Questrade Next](https://wealth.questrade.com/next),
+[Push Approval](https://www.questrade.com/learning/using-questrade/push-approval-a-secure-and-convenient-way-to-protect-your-account),
+[Press releases](https://www.questrade.com/newsroom/press-releases).
+
+- **What it is.** An MCP server that lets an AI agent read the customer's
+  account and market data and draft orders, each order needing the
+  customer's approval. One server address for all supported agents,
+  `https://mcp.questrade.com/v1/brokerage/mcp`. Questrade presents it as
+  part of "Agentic Finance". **Search summary (2026-10-22).** Setup Guide,
+  MCP guides, Amplify, Agentic Finance.
+- **Sign-in.** Adding the server opens Questrade's login in the browser; the
+  customer signs in, reviews the permissions the agent asks for and grants
+  them (OAuth 2.0). The agent does not receive the password.
+  **Search summary (2026-10-22).** Setup Guide, Developer docs.
+- **Read-only option.** Read-only access can be granted without trade
+  permission. The setup guide calls the connection "read-first": order
+  drafting is turned on separately, after an extra security check (what the
+  check involves: **Unverified**). The "Connect Questrade to your AI tool"
+  page describes read and write access without mentioning that step.
+  **Search summary (2026-10-22).**
+- **Order drafting.** With trade permission, the agent builds an order
+  preview (symbol, side, order type, quantity, limit or stop price,
+  estimated cost, commission). The developer page: "draft, change, and
+  cancel orders, with a preview and a mandatory push notification".
+  **Search summary (2026-10-22).** Setup Guide, Developer docs.
+- **Approval.** Questrade sends a Push Approval notification through the
+  Questrade app (version 2.0.0 or later, Push Approval set up,
+  notifications on); approving sends the order to market, declining cancels
+  it. **Search summary (2026-10-22).** Setup Guide, Push Approval.
+- **No action without approval.** "AI agents cannot place, modify, or cancel
+  orders independently. Every trade requires your Push Approval." Changing
+  an open order needs a fresh preview; a confirmed cancellation cannot be
+  undone. A declined or ignored request is cancelled. **Search summary
+  (2026-10-22)** (quote as reported). Agentic Finance, Setup Guide. How
+  long an unanswered order request stays open: **Unverified** (an older
+  Push Approval page gives three minutes for login approvals only).
+- **Data exposed.** Balances, equity, positions, open and filled orders,
+  account activity (deposits, withdrawals, dividends, commissions) for the
+  last 90 days; quotes, symbol search, historical prices (candles), option
+  chains. **Search summary (2026-10-22).** Setup Guide, Developer docs. The
+  full tool list: **Unverified** (only `get_positions`, in a marketing
+  screenshot).
+- **Accounts.** The agent sees only the accounts on the login used, within
+  the permissions granted. **Search summary (2026-10-22).** Which account
+  types are eligible, and any other eligibility rule: **Unverified** (not
+  found).
+- **Supported agents.** Pages conflict: Claude (web, desktop), Claude Code,
+  ChatGPT, Cursor, VS Code (GitHub Copilot Chat) and Codex CLI (Setup
+  Guide); only Claude and Claude Code for now (Developer docs); ChatGPT,
+  Claude, Codex and Cursor (Questrade Next). **Likely** (page dates not
+  confirmed).
+- **Costs.** Connecting "does not change your commissions, market-data
+  entitlements, or account fees"; no separate MCP fee found. **Search
+  summary (2026-10-22)** (the summary did not name the page). The
+  commission that would apply: **Unverified**.
+- **Launch.** The newsroom lists a 2026-07-30 release, "Questrade Leads New
+  Age of Financial Services in Canada, Unleashing Agentic Finance, $0
+  Options and More". The release text was not seen; the MCP server's own
+  availability date is not established. **Likely.** Press releases.
+- **Responsibility.** "Questrade does not control, monitor or take any
+  responsibility for how your AI Agent uses your data. All actions taken,
+  including trades are your sole responsibility" (with reference to the API
+  Access Agreement and Privacy Policy); agent output is "not Questrade's
+  advice or recommendation"; the customer approves everything "at your own
+  discretion and risk". **Search summary (2026-10-22)** (quotes as
+  reported). Setup Guide, MCP guides.
+- **Terms on automated trading.** The API Access Agreement was not found;
+  nothing found allows an MCP order without Push Approval. **Unverified.**
+- **Revoking.** Settings > API Access > Permissions; data already shared is
+  not removed. **Search summary (2026-10-22).** Setup Guide.
+- **Relation to the REST API** (section 8): whether the MCP server uses the
+  REST API's scopes, including the partner-only `trade` scope, or a
+  separate channel. **Unverified** (not found).
+- **Not the same product:** Questrade's "AI Assistant" is an information
+  tool that, per its disclosures, is not connected to order execution and
+  cannot trade. **Search summary (2026-10-22).**
+  [AI Assistant disclosures](https://www.questrade.com/disclosure/legal-notice-and-disclosures/questrade-ai-assistant-important-disclosures-and-risk-information)
+- **Found incidentally: Flows in Questrade Pro.** A no-code feature that
+  runs rules the customer sets and can place orders when the conditions are
+  met; limits reported as $250,000 per order and up to 50 active Flows (at
+  most 20 placing orders); pages disagree on whether a Flow can wait for
+  the customer's sign-off. It is not the MCP server. **Search summary
+  (2026-10-22)**, not researched further.
+  [Flows in Questrade Pro](https://www.questrade.com/learning/using-questrade/automate-your-trading-strategy-with-flows-in-questrade-pro)
+
+The project's position (all live trading disconnected; Signal Desk and its
+development sessions do not connect to the MCP server or the REST API; an
+approved MCP draft is a live order and falls under the pre-live checklist;
+approvals and the brokerage interface are never automated) is in
+`QUESTRADE-ASSESSMENT.md`.
 
 ## 11. Questrade topics that were not researched
 
-The search budget ran out before these were searched. Nothing in the project
-states them as fact; they are questions for the owner (see
-`QUESTRADE-ASSESSMENT.md`).
+The first pass's search budget ran out before these were searched, and the
+2026-10-22 pass looked at the MCP server only; what it found on these
+topics in passing is marked. Nothing in the project states them as fact;
+they are questions for the owner (see `QUESTRADE-ASSESSMENT.md`, section 4).
 
-- Which account types the API, the TradingView integration and the MCP
-  connection support (cash, margin, TFSA, RRSP, FHSA; USD and CAD sides).
-  The accounts endpoint page exists, but its list of types was not seen.
+- Which account types the TradingView integration and the MCP server
+  support, and which the API's accounts endpoint returns for the owner
+  (cash, margin, TFSA, RRSP, FHSA; USD and CAD sides). The API's
+  enumerations page lists types including Margin, TFSA, RRSP and LRRSP
+  (section 8); the MCP guide says the agent sees the accounts on the login
+  used (section 10). Eligibility for the MCP server was not found.
   [Accounts endpoint](https://www.questrade.com/api/documentation/rest-operations/account-calls/accounts)
 - Current commissions and any ECN fees on US stocks and ETFs, and currency
   conversion costs. [Pricing](https://www.questrade.com/pricing)
 - Real-time market data packages for the API and their cost.
-- Automation features (conditional or scripted orders) in Questrade's own
-  platforms.
-- Which App hub partners, if any, place trades. Only page titles were seen
-  (App hub, VectorVest, OptionsPlay, Stock Unlock). **Search summary** for
-  the titles. [App hub](https://www.questrade.com/partner-centre/app-hub)
+- Automation features in Questrade's own platforms. Found in passing:
+  Flows in Questrade Pro (section 10). Not researched.
+- Which App hub partners, if any, place trades. The first pass saw only
+  page titles (App hub, VectorVest, OptionsPlay, Stock Unlock). The
+  2026-10-22 pass came across a Questrade setup guide for a TipRanks
+  integration that places Market, Limit, Stop and Stop limit orders from
+  any self-directed account, and an App hub page titled "Pilot Trading".
+  **Search summary (2026-10-22)**, found incidentally; neither assessed.
+  [App hub](https://www.questrade.com/partner-centre/app-hub),
+  [TipRanks setup guide](https://www.questrade.com/learning/using-questrade/connecting-tipranks)
 - Rules for registered accounts (TFSA, RRSP) and tax treatment. These are
   outside what an official-domain search of these two sites can settle.
+  Found in passing: Questrade's Margin Power page says margin cannot be
+  used in a TFSA, citing CRA rules. **Search summary (2026-10-22).**
+  [Margin Power and your TFSA](https://www.questrade.com/learning/accounts-taxes/margin-power-and-your-tfsa)
 
 ## 12. Project assumptions the research does not support (yet)
 
@@ -562,8 +685,11 @@ In a browser, signed in, on the official pages linked above:
    trading, and whether personal-app registration is open
    ([questrade.com/api](https://www.questrade.com/api), the API Centre in
    the account menu, developer.questrade.com).
-2. **Questrade MCP guide**: eligibility, account types, the permission
-   screen, and how Push Approval works on the owner's own account.
+2. **Questrade MCP guide** (reading only; nothing is to be connected under
+   this project): eligibility and account types, the permission screen and
+   the extra security check for trade permission, how long an unanswered
+   Push Approval order request stays open, the API Access Agreement's
+   terms, and which agents are supported today.
 3. **Questrade pricing**: commissions and fees on US stocks and ETFs, and
    the currency conversion cost for the account that would be used
    ([questrade.com/pricing](https://www.questrade.com/pricing)).

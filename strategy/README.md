@@ -163,7 +163,10 @@ documentation, as found by search, reserves order placement (the `trade`
 scope) for approved partner developers. A personal app can read account and
 market data only (`RESEARCH-NOTES.md`, section 8; the owner should confirm
 this is still current). Signal Desk has no broker connection and will not
-get one under this brief.
+get one under this brief. Questrade's separate MCP server for AI agents
+drafts orders that the owner approves on their phone (Push Approval); an
+approved draft is a live order, so Signal Desk does not connect to it either
+(`QUESTRADE-ASSESSMENT.md`, section 3).
 
 **Plan-dependent TradingView features.** As reported, these need Premium or
 higher:

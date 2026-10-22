@@ -27,12 +27,15 @@ forward test, TradingView alerts, the API, the page and the chat agent.
 | `store.js` | the Lab database (schema below) |
 | `lab.js` | the service used by the API, the scheduler and the chat tools |
 | `forward.js` | the simulated forward test |
+| `readiness.js` | the data-readiness checklist: coverage per period, session boundaries, OHLCV gaps, corporate actions, source terms |
+| `sources/alpaca.js` | historical 15-minute bars from Alpaca (SIP feed, split-adjusted); keys from `.env` only |
 | `webhook.js` | optional TradingView alert receiver (off unless configured) |
 | `api.js` | `/api/lab/*` routes |
 
 ## Database (`store.js`)
 
-- `lab_bars(symbol, interval, t, o, h, l, c, v, source, synthetic, fetched_at)`, primary key `(symbol, interval, t)`.
+- `lab_bars(symbol, interval, t, o, h, l, c, v, source, synthetic, fetched_at, adjustment, feed)`, primary key `(symbol, interval, t)`; `adjustment` and `feed` were added by migration 2.
+- `lab_bar_sets(id, symbol, interval, source, adjustment, feed, requested_from, requested_to, first_t, last_t, bars, inserted, updated, kept_existing, deleted_other, stored_at, details_json)` (migration 2): one row per stored download or import, saying what was asked for and what arrived. Within the pre-registered history window a symbol's bars never mix sources, feeds or adjustments: `storeBarSet` throws `MixedSourceError` unless the owner chose to replace the other source's bars in that range. Outside the window an existing bar from another source is kept, never overwritten.
 - `lab_runs(id, kind, mode, split, version, config_hash, config_json, data_hash, from, to, symbols_json, options_json, metrics_json, acceptance_json, report_md, synthetic, contaminated, reason, created_at)`; `kind` is `backtest`, `stress`, `walk_forward`, `holdout` or `forward`.
 - `lab_trades(id, run_id, symbol, entry_at, exit_at, r, net, trade_json)`.
 - `lab_events(id, run_id, source, at, symbol, type, reason, details_json)`; `source` is `backtest`, `forward` or `tradingview`.
@@ -96,6 +99,8 @@ the owner sets up deliberately and that forwards that one path only. It:
 | `POST /api/lab/import` | import a CSV for one symbol |
 | `POST /api/lab/fetch` | download history through the configured provider (background job) |
 | `POST /api/lab/forward` | switch the forward test on or off for a mode |
+| `GET /api/lab/readiness` | the data-readiness checklist per symbol and period (`readiness.js`, `DATA-READINESS.md`); runs use only READY symbols |
+| `GET /api/lab/forward-report?mode=` | forward-test results kept apart from backtests: trades, missed and expired signals, late data, rejected setups, costs |
 
 ## Chat agent
 

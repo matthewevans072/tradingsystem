@@ -15,7 +15,8 @@ import { createToolbox, runTool, toolsForApi, ANSWER_CATEGORIES } from './tools.
 import { SYSTEM_PROMPT, turnHeader } from './prompt.js';
 import { recordUsage, budgetCheck, reserveSpend, BackendError, usableContent } from './backend.js';
 import { listProposals, checkUserIntent } from './proposals.js';
-import { guardText, findClaims } from './guard.js';
+import { guardText, findClaims, sentenceSpans } from './guard.js';
+import { TRADE_STATUS } from './ledger.js';
 
 export { guardText };
 
@@ -141,26 +142,349 @@ function companyNames(ctx, sym) {
   return [...new Set(own)].filter((x) => x.length > 2 && x !== sym && !others.some((o) => mentions(o, x)));
 }
 
+// ---------- trade statements must match trade records ----------
+// A statement about a specific trade or order may state its status only
+// through a record that carries it (ledger.js TRADE_STATUS, set by the tools
+// that read the record, never by the model). There are no BROKER-CONFIRMED
+// records, and the guard (guard.js) still removes every claim that the
+// assistant or the app traded.
+//
+// A sentence describes a specific trade when it has an anchor:
+// - a past trade verb (bought, sold, purchased, trimmed, shorted, liquidated,
+//   exited, offloaded, unloaded, dumped, acquired) with a ticker or quantity
+//   after it ("sold 10 VRT", "bought 20% of NBIS", "sold 10 shares"), whose
+//   actor is the owner ("you"), the assistant or app, an account, the
+//   simulated account, strategy or backtest, nobody ("Simulated fill: bought
+//   120 NVDA", "Oct 3: sold 10 NBIS"), or a passive on the owner's shares or a
+//   stated quantity ("your VRT was sold", "10 VRT were sold"). Other actors
+//   and bare passives are market or company narrative ("Insiders sold 10,000
+//   shares", "CRWV was dumped across the sector"), as are "sold off", "bought
+//   back" and "bought up";
+// - a trade noun bound to a ticker: "sale / purchase / order / trade / fill /
+//   buy of|for 10 VRT", "the VRT sale", or a ledger-style "SELL 10 VRT"; a
+//   plural ("orders for 15 MU") only with a scope ("your", "simulated",
+//   "proposed", "pending"…). Not a third party's ("its sale", "Vertiv's order
+//   backlog", "a sale of 10,000 NBIS by a director"), a rating or signal ("a
+//   VRT buy rating") or a number without shares or a ticker ("a purchase of
+//   100 MW").
+// Not anchors: questions, quoted text ("Say 'record that I sold 10 VRT'"),
+// anything after a condition ("If you sold…", "Suppose…") or after someone
+// else's words ("The post claims your VRT was sold"), and an anchor under a
+// negation ("you never sold", "no sale of 10 VRT") or a modal ("would have
+// sold"). A trade noun in advice or a plan ("a sale of 10 VRT would…",
+// "you'd enter BUY 12 NVDA at your broker") states a status only with a
+// status word.
+//
+// Status words, per sentence: PROPOSED ("proposed", "proposal", "pending /
+// awaiting your confirmation"; not an offer, "I can prepare a proposal", nor a
+// proposal already confirmed, which is now a USER-REPORTED record), SIMULATED
+// ("simulated", "backtest", "hypothetical", "scenario", "on paper", "paper
+// account", "Strategy Lab", "what-if", "forward test"), USER-REPORTED (the
+// owner as actor, "you sold 10 VRT", unless it is reported speech, "you said
+// you sold…", or after a hypothetical frame, "in scenario S1 you sold…", which
+// reads as SIMULATED; and, when the sentence has no other status word, the
+// owner's records: "your VRT sale", "SELL 10 VRT", "recorded", "in your
+// records"). A status word under a negation ("no proposal", "not simulated")
+// states nothing; a sentence saying the trade did not happen or is not
+// recorded ("no record of…", "hasn't happened", "nothing was sold") states no
+// USER-REPORTED trade.
+//
+// Checks. The short answer is checked against every trade record retrieved
+// this turn; a detail against the records it cites:
+// (1) each stated status needs a record of that status for the same ticker
+//     (and, for USER-REPORTED and PROPOSED, the same side: a sale needs a SELL
+//     record; a purchase a BUY or BASELINE one). A SIMULATED record without a
+//     ticker (a backtest run, a multi-leg scenario) covers any ticker;
+// (2) a detail describing a trade with no status word must cite at least one
+//     trade record, unless it says the trade did not happen or is not recorded;
+// (3) wording that a broker confirmed, filled or executed a trade
+//     ("broker-confirmed", "filled at your broker", "your broker confirmed")
+//     is removed in every answer field, unless negated or conditional in its
+//     clause ("nothing here is broker-confirmed", "once your broker confirms").
+// A failing detail is replaced by a data-gap notice; a failing sentence of the
+// short answer (or, for (3), of another field) by the notice in brackets.
+// Measured on the 551 sentences of tests/fixtures/guard-corpus.json that pass
+// the guard: 68 trigger these checks, every one a statement about a specific
+// recorded, proposed or simulated trade; none is market or third-party
+// narrative. That corpus was used to tune these rules, so it is not a measure
+// of how they generalise.
+export const TRADE_REMOVED = 'A statement about a trade was removed because no record backs it.';
+export const BROKER_REMOVED = 'A statement saying a broker confirmed or filled a trade was removed: Signal Desk has no broker connection, so no record is broker-confirmed.';
+
+const { PROPOSED, SIMULATED, USER_REPORTED } = TRADE_STATUS;
+const TRADE_TOKEN = /\d{1,2}:\d{2}|\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?%?|\$?\d+(?:\.\d+)?%?|[A-Za-z][A-Za-z0-9'’&.-]*[A-Za-z0-9]|[A-Za-z]|[,;:()?!—–"]|\s-\s/g;
+const tradeTokens = (s) => [...s.matchAll(TRADE_TOKEN)].map((m) => { const w = m[0].trim(); return { w, lw: w.toLowerCase().replace(/’/g, "'"), at: m.index }; });
+const BOUNDARY_TOKEN = /^(?:[,;:()?!—–"]|-)$/;
+const baseWord = (lw) => lw.replace(/'(?:ve|d|re|ll|s|m)$/, '');
+const tset = (s) => new Set(s.split(/\s+/).filter(Boolean));
+const PAST_TRADE_VERB = tset('bought sold purchased trimmed shorted liquidated exited offloaded unloaded dumped acquired');
+const SELL_SIDE = tset('sold trimmed shorted liquidated exited offloaded unloaded dumped sale sell sells');
+const BUY_SIDE = tset('bought purchased acquired purchase purchases buy buys');
+const TRADE_NOUN_OF = tset('sale purchase buy sell trade order fill trades orders fills purchases buys sells');
+const TRADE_NOUN_AFTER_TICKER = tset('sale purchase trade order fill trades');
+// A trade noun in advice or a plan ("a sale of 10 VRT would…", "place an order for…") states no status by itself.
+const ADVICE_CLAUSE = /\b(?:would|could|might|may|should|will|can|shall|(?:want|wants|plan|plans|going|need|needs|have|has) to)\b|['’](?:d|ll)\b|^\W*(?:place|consider|enter|submit|set|put|make|try|use|open|avoid|skip|cancel)\b/i;
+const NOT_TRADE_AFTER = tset('rating ratings recommendation recommendations signal signals side zone point points case backlog backlogs book books growth intake flow flows volume volumes pipeline program programme alert alerts setup setups rule rules price prices target targets window plan plans idea ideas thesis value values data history size sizes level levels agreement agreements contract contracts deal deals');
+const TRADES_AS_VERB = tset('at around near above below higher lower up down flat sideways hands between in on with');
+const OBJECT_STOP = tset('at for on in near around above below with after before because to from through via by when and but or so as while since into during between than which that who where if once until last this yesterday today');
+const QTY_WORD = /^(?:all|half|another|both|everything|rest|remaining|entire|whole|most|part|third|quarter|portion)$/;
+const NUMBER = /^\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?%?$|^\$?\d+(?:\.\d+)?%?$/;
+const SHARES_WORD = /^(?:shares?|units?|contracts?)$/;
+const ACTOR_AUX = tset("have has had 've 'd just already also then recently previously actually did originally initially later first finally both all each earlier ultimately partly today yesterday successfully");
+const ACTOR_MODAL = tset("would could should might may must will 'll can shall to gonna");
+const PASSIVE_AUX = tset('was were been being got get is are be');
+const ACCOUNT_WORD = tset('account accounts portfolio book tfsa rrsp resp fhsa rrif lira margin');
+const SIM_ACTOR = tset('strategy backtest engine lab simulation sim system rules');
+const ASSISTANT_ACTOR = tset('i we desk app assistant');
+const SIM_NP = /^(?:simulated|simulation|paper|hypothetical|demo|lab|sim|test|mock|backtest|backtested|scenario)$/;
+const THIRD_PARTY = /^(?:its|their|his|her|they|it|he|she|insiders?|insider|funds?|ceo|cfo|coo|directors?|executives?|investors?|traders?|institutions?|institutional|company|companies|firm|someone|somebody|people|whales?|analysts?|shareholders?|holders?|management|founders?|chair\w*|officers?|ark|berkshire|nobody)$/;
+const isNegation = (lw) => /^(?:no|not|never|none|nothing|neither|nor|without|cannot)$/.test(lw) || /n't$/.test(lw);
+const NOT_TICKER = tset(`AM PM ET EST EDT UTC GMT USD CAD US USA UK EU TFSA RRSP RESP FHSA LIRA RRIF RDSP IRA HSA CELI REER CRI FERR ETF ETFS AI CEO CFO COO CTO
+  IPO EPS GPU GPUS CPU API FX BOC NYSE NASDAQ TSX TSXV ARCA CBOE OTC ADR OK NO ID PL PNL ATR SMA EMA RSI MACD YTD QTD MTD YOY QOQ TTM NAV MER DRIP ACB SEC
+  CSV PDF AUM GAAP LLC INC LTD PLC CORP BUY SELL BASELINE DEPOSIT WITHDRAWAL DIVIDEND FEE FEES PROPOSED SIMULATED USER REPORTED BROKER CONFIRMED NOTE OR AND
+  THE IN ON AT TO OF BY IS IT AN AS BE DO IF MY UP SO WE ME HE VS MW GW KW TWH MWH FY HOLD TRIM WAIT ADD DEMO SYNTHETIC NOT ALL RR TV IR PR ESG ROI ROE FCF
+  EBITDA CAGR DCF PE EV CAPEX OPEX HBM DRAM NAND LLM LLMS HPC DC KPI`);
+const TICKER_SHAPE = /^[A-Z]{2,5}(?:\.[A-Z]{1,2})?$/;
+// Before the anchor, in its sentence: a condition makes it hypothetical; a
+// scenario frame makes the owner's "you sold" a simulated statement.
+const CONDITION = /\b(?:if|suppose|supposing|assum(?:e|ing)|imagine|whether|unless|were you to|had you|should you|in case|what if)\b/i;
+const HYPO_FRAME = /\b(?:in|under|for|with|within) (?:the |this |that |a |an |your |my |our )?(?:(?!real\b|actual\b)[\w-]+ ){0,2}?(?:scenarios?|simulations?|backtests?|back-tests?|hypotheticals?|what-ifs?|examples?|illustrations?|sketch(?:es)?|projections?|models?|sandbox|paper (?:accounts?|portfolios?|trading|books?)|strategy lab|lab|sim)\b|\bon paper\b|\bscenario S\d+\b/i;
+// Someone else's words before the anchor ("The post claims your VRT was sold").
+const REPORTED_BY_OTHER = /\b(?:it|they|he|she|someone|somebody|(?:the|this|that|a|an|one|your)\s+(?:[\w-]+\s+)?(?:post|item|article|update|message|text|note|blog|site|website|headline|source|story|report|tweet|thread|comment|email|e-mail|forum|alert|payload|newsletter|video|screenshot|filing|analyst|rumou?r|advisor|adviser|friend|broker))\s+(?:\w+\s+){0,2}?(?:claims?|claimed|asserts?|asserted|alleges?|alleged|says?|said|states?|stated|asks?|asked|tells?|told|instructs?|instructed|wants?|wanted|demands?|demanded|suggests?|suggested|urges?|urged|insists?|insisted|writes|wrote)\b/i;
+// Quoted text is material or an example, not a statement ("Say 'record that I sold 10 VRT'").
+const QUOTED_TEXT = /"[^"]{3,}"|«[^»]{3,}»|(?<![\w'])'(?=\S)(?:[^']|\b'\b)*?[^\s']'(?![\w'])/g;
+// A plural trade noun is a specific trade only with a scope ("your orders for 15 MU", "the simulated trades in NVDA").
+const PLURAL_SCOPE = /^(?:your|my|simulated|proposed|hypothetical|paper|backtest|backtested|sim|pending)$/;
+const OWNER_SPEECH = /\byou\s+(?:\w+\s+)?(?:said|told me|mentioned|wrote|reported|stated|noted|indicated|claimed|say|says)\b/i;
+const PROPOSED_WORDS = /\bproposed\b|\bproposals?\b|\bpending (?:your )?(?:confirmation|approval)\b|\b(?:awaits|awaiting|needs|requires) (?:your )?(?:confirm|confirmation|approval)\b/i;
+// Not a proposal awaiting confirmation: a negation, an offer ("I can prepare a
+// proposal"), or a proposal already confirmed, which is now a USER-REPORTED record.
+const NOT_PROPOSED = /\b(?:no|not|never|nothing|without)\s+(?:\w+\s+){0,2}?(?:proposed|proposals?)\b|n['’]t\s+(?:\w+\s+){0,2}?(?:proposed|proposals?)\b|(?:\b(?:can|could|would|will|may|might|shall|to)|['’]ll)\s+(?:\w+\s+){0,2}?(?:proposals?)\b|\b(?:confirmed|accepted|approved)\s+(?:\w+\s+)?proposals?\b|\bproposals?\s+(?:that\s+)?you\s+(?:confirmed|accepted|approved)\b/i;
+const SIM_WORDS = /\bsimulat\w*|\bback-?test\w*|\bhypothetical\w*|\bscenarios?\b|\bwhat-if\b|\bforward[- ]test\w*|\bpaper (?:account|trade|trades|trading|portfolio|book)\b|\bon paper\b|\bstrategy lab\b|\blab account\b/i;
+const NOT_SIM = /\b(?:no|not|never|nothing|isn['’]t|wasn['’]t|aren['’]t|weren['’]t)\s+(?:a |an |the |any )?(?:simulat|back-?test|hypothetical|scenario|paper)/i;
+const RECORD_WORDS = /\brecorded\b|\bin your (?:records|ledger|transactions|transaction history|history)\b|\byour (?:records|ledger|transaction history) (?:shows?|lists?|has|have|includes?)\b|\b(?:according to|per) your (?:records|ledger|transactions)\b|\bon record\b/i;
+const ABSENCE = /\b(?:no|not|never|nothing|none|without)\s+(?:[\w'’-]+\s+){0,3}?(?:record(?:ed|s)?|entered|logged|stored|saved|in your (?:records|ledger|transactions|history))\b|n['’]t\s+(?:[\w'’-]+\s+){0,3}?(?:record(?:ed|s)?|entered|logged|stored|saved|in your (?:records|ledger|transactions|history))\b|\bmissing from\b|\bnot found\b|\bno (?:such )?(?:trade|transaction|sale|purchase|order)s?\b|\b(?:has|have|had|did|was|were)(?:n['’]t| not)\s+(?:yet\s+|actually\s+|really\s+)?(?:happen(?:ed)?|gone through|go through|fill(?:ed)?|execut(?:e|ed)|take place|taken place|been (?:placed|filled|executed|made))\b|\bnothing (?:was|has been|got) (?:sold|bought|traded|placed|filled|executed|recorded)\b/i;
+const BROKER_WORDS = /\bbroker[- ]?confirm\w*|\b(?:confirmed|verified|filled|executed|settled)\s+(?:by|with|at|through|via)\s+(?:your\s+|the\s+)?broker(?:age)?\b|\b(?:your|the)\s+broker(?:age)?(?:['’]s)?\s+(?:(?:has|have|had|just|already)\s+)*(?:confirmed|filled|executed|settled|verified)\b|\bconfirm(?:ation|ed) from (?:your |the )?broker(?:age)?\b/i;
+const CLAUSE_SPLIT = /[,;:()—–]|\s-\s/;
+
+// Wording that a broker confirmed or filled a trade, outside a negated or
+// conditional clause.
+function brokerClaim(sentence) {
+  if (/\?\s*$/.test(sentence)) return false;
+  return sentence.split(CLAUSE_SPLIT).some((c) => BROKER_WORDS.test(c)
+    && !tradeTokens(c).some((t) => isNegation(t.lw)) && !/\b(?:if|once|when|whenever|after|until|unless|before|whether)\b/i.test(c));
+}
+
+// The anchors of a sentence: { actor ('owner' | 'sim' | 'neutral'), syms, side,
+// ownerish (the owner's own record form), advice (a plan or advice clause) }.
+function tradeAnchors(sentence, { isTicker, symbolsNamed }) {
+  const quoted = [...sentence.matchAll(QUOTED_TEXT)].map((m) => [m.index, m.index + m[0].length]);
+  const T = tradeTokens(sentence).filter((t) => !quoted.some(([a, b]) => t.at >= a && t.at < b));
+  const out = [];
+  const tick = (t) => (t && isTicker(t.w) ? t.w : null);
+  const clauseStart = (i) => { let j = i - 1; while (j >= 0 && !BOUNDARY_TOKEN.test(T[j].w)) j--; return j + 1; };
+  const clauseEnd = (i) => { let j = i + 1; while (j < T.length && !BOUNDARY_TOKEN.test(T[j].w)) j++; return j; };
+  // Anchors after a condition are hypothetical; "you" after a scenario frame is simulated.
+  const condAt = sentence.search(CONDITION);
+  const framed = (i) => HYPO_FRAME.test(sentence.slice(0, T[i].at));
+  const reportedBefore = (i) => REPORTED_BY_OTHER.test(sentence.slice(0, T[i].at));
+  // A ticker or quantity right after position i ("10 VRT", "20% of NBIS", "10 shares").
+  const object = (i, max, sharesOnly = false) => {
+    const syms = [], seen = [];
+    let qty = false;
+    for (let j = i + 1; j < T.length && j <= i + max; j++) {
+      const t = T[j];
+      if (BOUNDARY_TOKEN.test(t.w) || OBJECT_STOP.has(t.lw)) break;
+      seen.push(t.w);
+      if (tick(t)) syms.push(t.w);
+      else if (sharesOnly ? SHARES_WORD.test(t.lw) : NUMBER.test(t.w) || QTY_WORD.test(t.lw)) qty = true;
+    }
+    if (!syms.length) syms.push(...symbolsNamed(seen.join(' ')));
+    return { syms, qty };
+  };
+  const negatedBefore = (i, n = 3) => T.slice(Math.max(clauseStart(i), i - n), i).some((t) => isNegation(t.lw));
+  const thirdParty = (i, n = 3) => T.slice(Math.max(clauseStart(i), i - n), i).some((t) => THIRD_PARTY.test(t.lw) || (/['’]s$/.test(t.lw) && !/^(?:your|you|it)['’]s$/.test(t.lw)));
+  const ownedBefore = (i, n = 3) => T.slice(Math.max(clauseStart(i), i - n), i).some((t) => t.lw === 'your' || t.lw === 'my');
+  const byOther = (from) => { const e = clauseEnd(from); for (let j = from; j < e - 1; j++) if (T[j].lw === 'by' && !/^(?:you|yourself)$/.test(T[j + 1].lw)) return true; return false; };
+  const sideOf = (lw) => (SELL_SIDE.has(lw) ? 'SELL' : BUY_SIDE.has(lw) ? 'BUY' : null);
+  const advice = (i) => ADVICE_CLAUSE.test(T.slice(clauseStart(i), clauseEnd(i)).map((t) => t.w).join(' '));
+  for (let i = 0; i < T.length; i++) {
+    const { w, lw } = T[i];
+    if (condAt >= 0 && T[i].at > condAt) break;
+    if (reportedBefore(i)) break;
+    // Past trade verb.
+    if (PAST_TRADE_VERB.has(lw)) {
+      if (/^(?:off|back|up)$/.test(T[i + 1]?.lw || '')) continue;
+      const cs = clauseStart(i);
+      let j = i - 1, stop = false;
+      for (; j >= cs; j--) {
+        const x = T[j].lw;
+        if (isNegation(x) || ACTOR_MODAL.has(x)) { stop = true; break; }
+        if (!ACTOR_AUX.has(x)) break;
+      }
+      if (stop) continue;
+      const obj = object(i, 7);
+      const subj = j >= cs ? T[j] : null;
+      if (subj && /['’](?:d|ll)$/.test(subj.lw)) continue; // "you'd have sold", "we'll have bought"
+      const b = subj ? baseWord(subj.lw) : null;
+      let actor = null, syms = obj.syms, ownerish = false;
+      if (!subj) { actor = 'neutral'; ownerish = true; }
+      else if (b === 'you') {
+        actor = OWNER_SPEECH.test(sentence) ? 'neutral' : framed(i) ? 'sim' : 'owner';
+      } else if (ASSISTANT_ACTOR.has(b)) { actor = framed(i) ? 'sim' : 'neutral'; ownerish = actor === 'neutral'; }
+      else if (ACCOUNT_WORD.has(b)) {
+        const np = T.slice(cs, j);
+        if (np.some((t) => THIRD_PARTY.test(t.lw))) continue;
+        if (np.some((t) => SIM_NP.test(t.lw))) actor = 'sim';
+        else { actor = 'neutral'; ownerish = true; }
+      } else if (SIM_ACTOR.has(b)) actor = 'sim';
+      else if (PASSIVE_AUX.has(b)) {
+        const np = T.slice(cs, j);
+        if (byOther(i) || np.some((t) => isNegation(t.lw) || THIRD_PARTY.test(t.lw) || (/['’]s$/.test(t.lw) && !/^your['’]s$/.test(t.lw)))) continue;
+        const npSyms = np.filter((t) => tick(t)).map((t) => t.w);
+        const npQty = np.some((t) => NUMBER.test(t.w) || QTY_WORD.test(t.lw));
+        // Only the owner's shares or a stated quantity ("your VRT", "10 VRT were sold"); a bare
+        // "CRWV was dumped" or "a large block of SPY was bought" is market narrative.
+        if (!npQty && !obj.qty && !np.some((t) => t.lw === 'your' || t.lw === 'my')) continue;
+        if (!npSyms.length && !npQty && !obj.syms.length && !obj.qty) continue;
+        syms = [...new Set([...npSyms, ...obj.syms])];
+        actor = np.some((t) => SIM_NP.test(t.lw)) ? 'sim' : 'neutral';
+        ownerish = actor === 'neutral';
+        out.push({ actor, syms, side: sideOf(lw), ownerish });
+        continue;
+      } else continue;
+      if (!obj.syms.length && !obj.qty) continue;
+      out.push({ actor, syms, side: sideOf(lw), ownerish });
+      continue;
+    }
+    // Ledger-style "SELL 10 VRT" / "BUY 15 MU".
+    if (w === 'SELL' || w === 'BUY') {
+      const obj = object(i, 5);
+      if (obj.syms.length || obj.qty) out.push({ actor: 'neutral', syms: obj.syms, side: w, ownerish: true, advice: ADVICE_CLAUSE.test(sentence) || /\blook like\b/i.test(sentence) });
+      continue;
+    }
+    if (!TRADE_NOUN_OF.has(lw) && !TRADE_NOUN_AFTER_TICKER.has(lw)) continue;
+    // "the sale of 10 VRT", "an order for 15 MU", "a buy of 15 MU".
+    const plural = /s$/.test(lw);
+    if (plural && !T.slice(Math.max(clauseStart(i), i - 3), i).some((t) => PLURAL_SCOPE.test(t.lw))) continue;
+    if (TRADE_NOUN_OF.has(lw) && /^(?:of|for)$/.test(T[i + 1]?.lw || '')) {
+      const obj = object(i + 1, 6);
+      const shares = object(i + 1, 6, true).qty;
+      if ((obj.syms.length || shares) && !negatedBefore(i) && !thirdParty(i) && !byOther(i + 1)) {
+        out.push({ actor: 'neutral', syms: obj.syms, side: sideOf(lw), ownerish: ownedBefore(i), advice: advice(i) });
+        continue;
+      }
+    }
+    // "the VRT sale", "your NBIS purchase", "two simulated NVDA trades".
+    const prev = T[i - 1];
+    if (TRADE_NOUN_AFTER_TICKER.has(lw) && prev && tick(prev) && !/['’]s$/.test(prev.w)) {
+      const next = T[i + 1]?.lw || '';
+      if (NOT_TRADE_AFTER.has(next) || (lw === 'trades' && TRADES_AS_VERB.has(next))) continue;
+      if (negatedBefore(i - 1) || thirdParty(i - 1) || byOther(i)) continue;
+      out.push({ actor: 'neutral', syms: [prev.w], side: sideOf(lw), ownerish: ownedBefore(i - 1), advice: advice(i) });
+    }
+  }
+  return out;
+}
+
+// What a sentence states about trades: the claims it makes ({ statuses, anchor },
+// backed by a record of any of those statuses) and whether, with no claim, it
+// still needs a trade record (rule 2). null when it describes no trade.
+export function tradeClaims(sentence, ctx) {
+  const s = String(sentence || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+  if (!s.trim() || /\?\s*$/.test(s) || /^\s*\[/.test(s)) return null;
+  const anchors = tradeAnchors(s, ctx);
+  if (!anchors.length) return null;
+  const worded = [PROPOSED_WORDS.test(s) && !NOT_PROPOSED.test(s) && PROPOSED, SIM_WORDS.test(s) && !NOT_SIM.test(s) && SIMULATED].filter(Boolean);
+  const absent = ABSENCE.test(s);
+  // A claim is backed by a record of any of its statuses.
+  const claims = [];
+  for (const a of anchors) {
+    if (a.actor === 'owner') claims.push({ statuses: [USER_REPORTED], anchor: a });
+    else if (a.actor === 'sim') claims.push({ statuses: [SIMULATED], anchor: a });
+    else if (worded.length) claims.push({ statuses: worded, anchor: a });
+    else if (!absent && !a.advice && (a.ownerish || RECORD_WORDS.test(s))) claims.push({ statuses: [USER_REPORTED], anchor: a });
+  }
+  // A status word with no anchor of its own ("You sold 10 VRT; I've proposed recording it.").
+  const general = worded.filter((st) => !claims.some((c) => c.statuses.includes(st)));
+  if (general.length) claims.push({ statuses: general, anchor: null });
+  return { claims, needsRecord: !claims.length && !absent && anchors.some((a) => !a.advice) };
+}
+
+// Is the claim backed by one of these records? Same status, same ticker (a
+// SIMULATED record without one covers any) and, for USER-REPORTED and
+// PROPOSED, a compatible side.
+function backedBy(claim, items) {
+  return claim.statuses.some((status) => {
+    const pool = items.filter((i) => i?.tradeStatus === status);
+    if (!pool.length) return false;
+    const a = claim.anchor;
+    if (!a) return true;
+    const wide = status === SIMULATED;
+    const symOk = (i, s) => i.symbol === s || (i.symbols || []).includes(s) || (wide && !i.symbol && !(i.symbols || []).length);
+    const sideOk = (i) => wide || !a.side || !i.side || i.side === a.side || (a.side === 'BUY' && i.side === 'BASELINE');
+    return a.syms.length ? a.syms.every((s) => pool.some((i) => symOk(i, s) && sideOk(i))) : pool.some(sideOk);
+  });
+}
+
+// null when the sentence may stay; else why it goes ('broker' or 'record').
+function tradeProblem(sentence, items, ctx, { detail = false } = {}) {
+  if (brokerClaim(sentence)) return 'broker';
+  const c = tradeClaims(sentence, ctx);
+  if (!c) return null;
+  if (c.claims.some((x) => !backedBy(x, items))) return 'record';
+  if (detail && c.needsRecord && !items.some((i) => i?.tradeStatus)) return 'record';
+  return null;
+}
+
+// Replace the sentences of `text` that `problem` rejects with their notice.
+function dropSentences(text, problem, found) {
+  if (!text) return text;
+  let out = '', last = 0;
+  for (const [a, b] of sentenceSpans(text)) {
+    const seg = text.slice(a, b);
+    const why = problem(seg);
+    if (!why) continue;
+    found.push({ text: seg.trim(), reason: why });
+    out += text.slice(last, a) + seg.match(/^\s*/)[0] + `[${why === 'broker' ? BROKER_REMOVED : TRADE_REMOVED}]` + (seg.endsWith('\n') ? '\n' : '');
+    last = b;
+  }
+  return last ? out + text.slice(last) : text;
+}
+
 // `held` (tickers held) and `names` (ticker -> company names) come from the
-// records; without them only tickers are matched.
+// records; without them only tickers are matched. `unbacked` lists the
+// statements about trades removed because no record of their status backs them
+// (reason 'record') or because they say a broker confirmed a trade ('broker').
 export function validateAnswer(raw, ledger, { toolsRun = null, held = [], names = () => [] } = {}) {
   const named = (text, sym) => mentions(text, sym) || names(sym).some((n) => mentions(text, n));
   const issues = [];
   const notes = [];
   const removed = [];
+  const unbacked = [];
   const str = (x) => (x == null ? null : String(x).trim() || null);
   const guard = (t) => {
     const g = guardText(t);
     if (g.flagged) removed.push(...g.removed);
     return g.text;
   };
+  // Trade statements are checked against the trade records (tradeClaims above):
+  // the short answer against all of this turn's, a detail against those it cites.
+  const known = new Set([...ledger.items.flatMap((i) => [i.symbol, ...(i.symbols || [])]), ...held].filter(Boolean));
+  const tctx = {
+    isTicker: (w) => known.has(w) || (TICKER_SHAPE.test(w) && !NOT_TICKER.has(w)),
+    symbolsNamed: (text) => [...known].filter((sym) => names(sym).some((n) => mentions(text, n))),
+  };
+  const turnRecords = ledger.items.filter((i) => i.tradeStatus);
+  const checkTrades = (t) => dropSentences(t, (s) => tradeProblem(s, turnRecords, tctx), unbacked);
+  const checkBroker = (t) => dropSentences(t, (s) => (brokerClaim(s) ? 'broker' : null), unbacked);
   const a = {
-    short_answer: guard(String(raw?.short_answer || '').trim()),
+    short_answer: checkTrades(guard(String(raw?.short_answer || '').trim())),
     details: [],
-    horizon: str(raw?.horizon) && guard(str(raw.horizon)),
-    what_would_change_it: str(raw?.what_would_change_it) && guard(str(raw.what_would_change_it)),
+    horizon: str(raw?.horizon) && checkBroker(guard(str(raw.horizon))),
+    what_would_change_it: str(raw?.what_would_change_it) && checkBroker(guard(str(raw.what_would_change_it))),
     alternatives: (Array.isArray(raw?.alternatives) ? raw.alternatives : []).slice(0, 5).filter((x) => x && typeof x === 'object')
-      .map((alt) => ({ option: guard(String(alt.option || '')), case_for: guard(String(alt.case_for || '')), case_against: guard(String(alt.case_against || '')) })),
+      .map((alt) => ({ option: checkBroker(guard(String(alt.option || ''))), case_for: checkBroker(guard(String(alt.case_for || ''))), case_against: checkBroker(guard(String(alt.case_against || ''))) })),
     affected_symbols: (Array.isArray(raw?.affected_symbols) ? raw.affected_symbols : []).map((s) => String(s).toUpperCase().slice(0, 15)).slice(0, 20),
     follow_up_questions: [],
     confidence: ['low', 'moderate', 'high', 'not_applicable'].includes(raw?.confidence) ? raw.confidence : 'not_applicable',
@@ -179,7 +503,16 @@ export function validateAnswer(raw, ledger, { toolsRun = null, held = [], names 
       return false;
     });
     const text = guard(String(d.text || ''));
-    const out = { category, text, refs };
+    // A detail about a trade whose records do not back it is replaced by a notice.
+    const why = sentenceSpans(text).map(([s0, e0]) => tradeProblem(text.slice(s0, e0), refs.map((r) => ledger.get(r)), tctx, { detail: true })).filter(Boolean);
+    if (why.length) {
+      const reason = why.includes('broker') ? 'broker' : 'record';
+      unbacked.push({ text: text.trim(), reason });
+      a.details.push({ category: 'data_gap', text: reason === 'broker' ? BROKER_REMOVED : TRADE_REMOVED, refs: [], tradeStatuses: [], tradeStatementRemoved: reason });
+      continue;
+    }
+    // Trade statuses come from the cited records, never from the model.
+    const out = { category, text, refs, tradeStatuses: ledger.tradeStatuses(refs) };
     // A media report, rumour or archived briefing is not a verified fact, even
     // when it is cited next to a confirmed source.
     const reported = refs.filter((r) => isReported(ledger.get(r)));
@@ -215,13 +548,15 @@ export function validateAnswer(raw, ledger, { toolsRun = null, held = [], names 
     if (!state || !(cited.has(item.ref) || named(allText, item.symbol))) continue;
     if (state === 'not_updating') { notUpdating.push(item); continue; }
     if (gaps.some((d) => d.refs.includes(item.ref) || (named(d.text, item.symbol) && STALE_WORDS.test(d.text)))) continue;
-    a.details.push({ category: 'data_gap', refs: [item.ref], auto: true, text: `Possibly out of date: ${item.label} is ${state === 'stale' ? 'stale' : 'missing a reliable timestamp'}${item.asOf ? ` (as of ${formatNy(item.asOf)})` : ''}.` });
+    a.details.push({ category: 'data_gap', refs: [item.ref], tradeStatuses: ledger.tradeStatuses([item.ref]), auto: true, text: `Possibly out of date: ${item.label} is ${state === 'stale' ? 'stale' : 'missing a reliable timestamp'}${item.asOf ? ` (as of ${formatNy(item.asOf)})` : ''}.` });
   }
   if (notUpdating.length && !gaps.some((d) => /not (being )?(updated|refreshed)|no (market[- ]data )?provider|can(no|')t (be )?(update|refresh)/i.test(d.text))) {
     const latest = notUpdating.map((i) => i.asOf).filter(Boolean).sort().at(-1);
-    a.details.push({ category: 'data_gap', refs: notUpdating.slice(0, 6).map((i) => i.ref), auto: true, text: `Prices are not being updated: no market-data provider is configured, so the quotes used are the last ones stored${latest ? ` (latest ${formatNy(latest)})` : ''}.` });
+    a.details.push({ category: 'data_gap', refs: notUpdating.slice(0, 6).map((i) => i.ref), tradeStatuses: [], auto: true, text: `Prices are not being updated: no market-data provider is configured, so the quotes used are the last ones stored${latest ? ` (latest ${formatNy(latest)})` : ''}.` });
   }
   if (removed.length) issues.push('A statement claiming a trade or record change was removed.');
+  if (unbacked.some((u) => u.reason === 'record')) issues.push(TRADE_REMOVED);
+  if (unbacked.some((u) => u.reason === 'broker')) issues.push(BROKER_REMOVED);
   const uncited = a.details.filter((d) => d.uncited).length;
   if (uncited) issues.push(`${uncited} factual point(s) had no supporting reference and are marked uncited.`);
   if (!a.short_answer) issues.push('The model returned no short answer.');
@@ -232,7 +567,7 @@ export function validateAnswer(raw, ledger, { toolsRun = null, held = [], names 
     || a.affected_symbols.length || held.some((s) => named(facts, s)) || MARKET_TALK.test(facts))) {
     issues.push('No records were retrieved for this answer, so it may rest on earlier answers rather than current data.');
   }
-  return { answer: { ...a, executionClaimRemoved: removed.length > 0, notes }, issues, removed };
+  return { answer: { ...a, executionClaimRemoved: removed.length > 0, tradeStatementRemoved: unbacked.length > 0, notes }, issues, removed, unbacked };
 }
 
 // ---------- tool results ----------
@@ -434,11 +769,15 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
       if (submits.length && (calls.length === 1 || round === maxRounds)) {
         // Checked against what the model had seen when it wrote the answer.
         const v = validateAnswer(submits.at(-1).input, ledger, { toolsRun: toolLog.length, ...records() });
-        // One chance to rephrase sentences that read as a trade or record-change claim.
-        if (v.removed.length && !rephraseAsked && round < maxRounds) {
-          rephraseAsked = true;
+        // One chance to rephrase sentences that read as a trade or record-change
+        // claim, or that describe a trade no record of that status backs.
+        if ((v.removed.length || v.unbacked.length) && !rephraseAsked && round < maxRounds) {
+          rephraseAsked = { claims: v.removed.length > 0, trades: v.unbacked.length > 0 };
+          const parts = [];
+          if (v.removed.length) parts.push(`These sentences read as saying a trade was made or a record was changed, which Signal Desk cannot do: ${v.removed.map((x) => JSON.stringify(x)).join(' ')} Rephrase them so they cannot be read that way (for example "No order has been placed" or "The post claims…").`);
+          if (v.unbacked.length) parts.push(`These statements about trades are not backed by a record with the status they state: ${v.unbacked.map((x) => JSON.stringify(x.text)).join(' ')} Describe a specific trade only from its record and cite that record's own ref, with its status word: a transaction from get_transactions or get_position is USER-REPORTED (the owner's record: "you recorded…", "your records show…"), a propose_record_change result is PROPOSED ("proposed, not saved until you confirm"), a simulate_trade(s) or get_strategy_* result is SIMULATED ("hypothetical", "simulated"). What the owner told you in chat is not a record ("you said you sold…"). No record is ever confirmed or filled by a broker. Otherwise leave the statement out.`);
           messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: submits.at(-1).id, is_error: true,
-            content: `Not delivered. These sentences read as saying a trade was made or a record was changed, which Signal Desk cannot do: ${v.removed.map((x) => JSON.stringify(x)).join(' ')} Rephrase them so they cannot be read that way (for example "No order has been placed" or "The post claims…"), then call submit_answer again with the full answer.` }] });
+            content: `Not delivered. ${parts.join(' ')} Then call submit_answer again with the full answer.` }] });
           continue;
         }
         // Last round: the other calls (read-only tools or proposals) still run,
@@ -514,7 +853,8 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
       // Only tickers actually held get a link to their position.
       answer.held_symbols = answer.affected_symbols.filter((s) => held.includes(s));
       answer.portfolio_symbols = [...new Set(held)];
-      if (rephraseAsked && !answer.executionClaimRemoved) answer.notes.push('The first draft contained a sentence that read as a trade or record-change claim; the model rephrased it.');
+      if (rephraseAsked?.claims && !answer.executionClaimRemoved) answer.notes.push('The first draft contained a sentence that read as a trade or record-change claim; the model rephrased it.');
+      if (rephraseAsked?.trades && !answer.tradeStatementRemoved) answer.notes.push('The first draft described a trade without a record of the status it stated; the model rephrased it.');
     }
   } catch (e) {
     log.warn('chat', `answer check failed: ${e.message}`);

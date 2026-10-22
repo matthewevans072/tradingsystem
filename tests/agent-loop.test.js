@@ -27,15 +27,16 @@ test('last round: calls sent with submit_answer still run, and the answer says i
     () => [use('get_position', { symbol: 'VRT' })],
     () => [use('get_transactions', { symbol: 'VRT', since: null, limit: null })],
     // Last round (maxToolRounds 2): the proposal and the answer together; the
-    // answer guesses the proposal's ref (R1-R3 came from the earlier rounds).
-    () => [use('propose_record_change', sell), ...answer({ short_answer: 'I have prepared the sale record below; press Confirm to save it.', details: [{ category: 'portfolio_record', text: 'Proposed sale.', refs: ['R4'] }] })],
+    // answer guesses the proposal's ref (R1-R4 came from the earlier rounds: the
+    // position, its quote, its one transaction and the transaction list).
+    () => [use('propose_record_change', sell), ...answer({ short_answer: 'I have prepared the sale record below; press Confirm to save it.', details: [{ category: 'portfolio_record', text: 'Proposed sale.', refs: ['R5'] }] })],
   ], 2);
   assert.deepEqual(msg.tools.map((t) => t.tool), ['get_position', 'get_transactions', 'propose_record_change']);
   assert.equal(conv.proposals.length, 1, 'the card the answer mentions exists');
   assert.equal(conv.proposals[0].status, 'pending');
   assert.ok(msg.answer.notes.some((n) => /written before these requests ran.*propose_record_change/.test(n)));
-  assert.deepEqual(msg.ledger.map((i) => i.ref), ['R1', 'R2', 'R3']);
-  assert.ok(msg.answer.issues.includes('Unknown reference R4 removed'), 'refs the answer never saw are not citable');
+  assert.deepEqual(msg.ledger.map((i) => i.ref), ['R1', 'R2', 'R3', 'R4']);
+  assert.ok(msg.answer.issues.includes('Unknown reference R5 removed'), 'refs the answer never saw are not citable');
   assert.ok(!msg.ledger.some((i) => i.tool === 'propose_record_change'), 'Data used lists only what the answer saw');
   assert.equal(msg.answer.short_answer, 'I have prepared the sale record below; press Confirm to save it.');
 

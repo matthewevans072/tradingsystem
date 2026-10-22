@@ -1,0 +1,117 @@
+{
+  "name": "corporate-actions-v1",
+  "compiledAt": "2026-10-22",
+  "window": { "from": "2021-07-01", "to": "2026-06-30" },
+  "method": "Compiled from official-domain web-search summaries made on 2026-10-22 (not fetched pages, and no bar data had been downloaded). Nothing here was taken from price data. Status values: 'official search summary' = an issuer, fund or exchange page (or the issuer's own SEC filing) as the search summarised it; 'likely' = a third-party filing or an absence of results; 'none found, unverified' = no targeted official search was made for this symbol, so the absence of an action is a belief, not a finding. Every entry must also be checked against the data vendor's own corporate-actions record and the overnight-ratio scan in server/strategy/readiness.js before results are trusted.",
+  "adjustmentPolicy": "splits-v1 requires split-adjusted, NOT dividend-adjusted bars. Forward and reverse splits must therefore be adjusted (prices divided and volume multiplied by the cumulative ratio for bars before the first split-adjusted session). Cash dividends, ETF distributions and exchange offers are not adjusted, so ex-dividend drops stay in the bars by design.",
+  "statusValues": ["official search summary", "likely", "unverified", "none found, unverified"],
+  "symbols": {
+    "NVDA": {
+      "inWindowStatus": "official search summary",
+      "actions": [
+        {
+          "type": "forward_split", "ratio": 4, "label": "4-for-1 forward split (stock dividend)",
+          "recordDate": "2021-06-21", "distributedAfterClose": "2021-07-19", "firstAdjustedSession": "2021-07-20",
+          "status": "official search summary",
+          "firstAdjustedSessionStatus": "likely (NVIDIA said split-adjusted trading was 'expected' to begin 2021-07-20; a 2026 third-party SEC filing says the split became effective before the open on 2021-07-20)",
+          "source": "https://nvidianews.nvidia.com/news/nvidia-announces-four-for-one-stock-split-pending-stockholder-approval-at-annual-meeting-set-for-june-3",
+          "alsoSeen": ["https://www.sec.gov/Archives/edgar/data/1045810/000104581021000056/pr-may2021.htm", "https://www.sec.gov/Archives/edgar/data/0000886982/000119312526308989/nvdac287_prelim.htm"],
+          "note": "Inside the warm-up period. Split-only adjustment: bars before 2021-07-20 are divided by 40 in price (4 x 10) and multiplied by 40 in volume once the 2024 split is included; this factor is arithmetic from the two ratios, not a vendor statement."
+        },
+        {
+          "type": "forward_split", "ratio": 10, "label": "10-for-1 forward split",
+          "recordDate": "2024-06-06", "distributedAfterClose": "2024-06-07", "firstAdjustedSession": "2024-06-10",
+          "status": "official search summary",
+          "firstAdjustedSessionStatus": "likely (NVIDIA said split-adjusted trading was expected at the open on Monday 2024-06-10; the same 2026 third-party SEC filing confirms it)",
+          "source": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-first-quarter-fiscal-2025",
+          "alsoSeen": ["https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2025", "https://www.sec.gov/Archives/edgar/data/0000886982/000119312526308989/nvdac287_prelim.htm"],
+          "note": "Inside the validation period. Bars from 2021-07-20 to 2024-06-07 are divided by 10 in price and multiplied by 10 in volume in a split-adjusted series."
+        }
+      ],
+      "notes": "No other NVDA action was searched for."
+    },
+    "AMD": { "inWindowStatus": "none found, unverified", "actions": [], "notes": "Research belief only (unverified): the all-stock acquisition of Xilinx (about February 2022) needs no price adjustment for AMD as the acquirer." },
+    "MU": {
+      "inWindowStatus": "likely", "actions": [],
+      "lastKnownSplit": { "date": "2000-04-18", "label": "2-for-1 (holders of record)", "status": "likely", "source": "https://www.sec.gov/Archives/edgar/data/0000723125/000101287000001915/0001012870-00-001915.txt" },
+      "notes": "No split after 2000 was found; this rests on an absence of search results, not a split-history page."
+    },
+    "MSFT": {
+      "inWindowStatus": "official search summary", "actions": [],
+      "lastKnownSplit": { "date": "2003-02-18", "label": "2-for-1 (first split-adjusted session)", "status": "official search summary", "source": "https://www.microsoft.com/en-us/investor/faq" },
+      "notes": "Microsoft's investor FAQ lists the 2003 split as the most recent; the page shows no update date."
+    },
+    "VRT": {
+      "inWindowStatus": "likely", "actions": [],
+      "notes": "Vertiv's 2026 IR news and 8-Ks found by the search (dividends in March, June and September 2026, a May 2026 mini-tender response, a September 2026 acquisition 8-K) mention no split. Absence of evidence, not a split-history page.",
+      "source": "https://investors.vertiv.com/news/news-details/2026/Vertiv-Holdings-Recommends-Shareholders-Reject-the-Mini-Tender-Offer-by-Tutanota-LLC/"
+    },
+    "JPM": { "inWindowStatus": "none found, unverified", "actions": [] },
+    "XOM": { "inWindowStatus": "none found, unverified", "actions": [], "notes": "Research belief only (unverified): the Denbury (about November 2023) and Pioneer (all-stock, about May 2024) acquisitions need no price adjustment for XOM as the acquirer." },
+    "JNJ": {
+      "inWindowStatus": "official search summary",
+      "actions": [
+        {
+          "type": "split_off_exchange_offer", "label": "Kenvue split-off: voluntary exchange offer (not a pro-rata spin-off)",
+          "offerExpired": "2023-08-18", "resultsAnnounced": "2023-08-23", "ratio": "8.0324 Kenvue shares per J&J share, proration 23.231832%",
+          "priceAdjustmentExpected": false,
+          "status": "official search summary",
+          "source": "https://www.jnj.com/media-center/press-releases/johnson-johnson-announces-final-results-of-exchange-offer-and-finalizes-separation-of-kenvue-inc",
+          "alsoSeen": ["https://www.jnj.com/media-center/press-releases/johnson-johnson-announces-final-exchange-ratio-of-8-0324-in-split-off-of-kenvue-inc"],
+          "note": "A voluntary exchange offer works like a buyback for holders who do not tender, so a split-adjusted-only JNJ series should carry no factor here (research inference, unverified). Some vendors may still apply a spin-off factor: check the vendor's JNJ record and the overnight ratio around 2023-08-18 to 2023-08-23."
+        },
+        {
+          "type": "debt_for_equity_exchange", "label": "J&J exchanged its remaining 182,329,550 Kenvue shares for its commercial paper",
+          "date": "2024-05-17", "priceAdjustmentExpected": false,
+          "status": "official search summary",
+          "source": "https://www.sec.gov/Archives/edgar/data/200406/000020040625000038/jnj-20241229.htm",
+          "note": "JNJ shareholders received nothing; no JNJ price adjustment (research inference from J&J's own 10-K)."
+        }
+      ],
+      "notes": "No JNJ stock split was searched for specifically: 'none found, unverified' for splits."
+    },
+    "PG": { "inWindowStatus": "none found, unverified", "actions": [] },
+    "HD": { "inWindowStatus": "none found, unverified", "actions": [] },
+    "CAT": {
+      "inWindowStatus": "official search summary", "actions": [],
+      "lastKnownSplit": { "date": "2005-07-13", "label": "2-for-1 (distributed; record 2005-06-22)", "status": "official search summary", "source": "https://investors.caterpillar.com/stock-info/stock-split-history/default.aspx" },
+      "notes": "Caterpillar's stock-split history page lists 2005 as the most recent split; its last-updated date is not shown."
+    },
+    "NEE": {
+      "inWindowStatus": "none found, unverified", "actions": [],
+      "lastKnownSplit": { "date": "2020-10-27", "label": "4-for-1 (first split-adjusted session; effective 2020-10-26), before the window", "status": "official search summary", "source": "https://www.investor.nexteraenergy.com/news-and-events/news-releases/2020/09-14-2020-211533503" },
+      "notes": "The 2020 split is outside the window. No search was made for a NEE split from 2021 to 2026."
+    },
+    "FCX": { "inWindowStatus": "none found, unverified", "actions": [] },
+    "PLD": { "inWindowStatus": "none found, unverified", "actions": [], "notes": "Research belief only (unverified): the all-stock acquisition of Duke Realty (about October 2022) needs no price adjustment for PLD as the acquirer." },
+    "SPY": { "inWindowStatus": "none found, unverified", "actions": [], "notes": "Pays quarterly distributions (price-only bars show the ex-dividend drops). Now branded State Street SPDR S&P 500 ETF Trust; ticker unchanged." },
+    "IWM": { "inWindowStatus": "none found, unverified", "actions": [], "notes": "Pays quarterly distributions." },
+    "GLD": { "inWindowStatus": "none found, unverified", "actions": [], "notes": "Research belief (unverified): GLD makes no distributions, so dividend adjustment is moot. No GLD share split was searched for." }
+  },
+  "listings": {
+    "method": "Primary listing exchange from the same research. 'official search summary' counts as verified by research; anything else is not verified. Listing transfers in 2025-2026 found by the search (NYSE to Nasdaq) name none of the 17 symbols (likely; the list is not exhaustive).",
+    "symbols": {
+      "NVDA": { "exchange": "NASDAQ", "status": "unverified", "source": null, "note": "Prior belief only; no official page quoted the listing." },
+      "AMD": { "exchange": "NASDAQ", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "MU": { "exchange": "NASDAQ", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "MSFT": { "exchange": "NASDAQ", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "VRT": { "exchange": "NYSE", "status": "official search summary", "source": "https://www.vertiv.com/en-us/about/news-and-events/corporate-news/2020/vertiv-lists-on-the-new-york-stock-exchange/", "note": "Vertiv's own 2020 listing release; no current listing statement was quoted." },
+      "JPM": { "exchange": "NYSE", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "XOM": { "exchange": "NYSE", "status": "likely", "source": "https://www.sec.gov/Archives/edgar/data/0000019617/000089109206002517/e24924_fwp.htm", "note": "Old third-party structured-note filings (2006-2017)." },
+      "JNJ": { "exchange": "NYSE", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "PG": { "exchange": "NYSE", "status": "likely", "source": "https://www.sec.gov/Archives/edgar/data/0000019617/000089109206002517/e24924_fwp.htm", "note": "Old third-party structured-note filings (2006-2017)." },
+      "HD": { "exchange": "NYSE", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "CAT": { "exchange": "NYSE", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "NEE": { "exchange": "NYSE", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "FCX": { "exchange": "NYSE", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "PLD": { "exchange": "NYSE", "status": "unverified", "source": null, "note": "Prior belief only." },
+      "SPY": { "exchange": "NYSE ARCA", "status": "official search summary", "source": "https://www.ssga.com/us/en/intermediary/etfs/state-street-spdr-sp-500-etf-trust-spy", "note": "Listing table shows NYSE ARCA, CUSIP 78462F103; 1x S&P 500 objective (unlevered status inferred)." },
+      "IWM": { "exchange": "NYSE ARCA", "status": "likely", "source": "https://www.sec.gov/Archives/edgar/data/895421/000183988221003060/ms949_fwp-02143.htm", "note": "A 2021 third-party filing; the iShares fact sheet confirms the 1x Russell 2000 objective but no exchange was quoted from ishares.com." },
+      "GLD": { "exchange": "NYSE ARCA", "status": "official search summary", "source": "https://www.spdrgoldshares.com/media/GLD/file/GLD_Key_Info.pdf", "note": "Physically backed, no derivatives." }
+    }
+  },
+  "reviewedOvernightMoves": {
+    "note": "Owner-reviewed overnight moves that the readiness scan flagged as split-like but that are not splits (for example an earnings gap). Add { \"date\": \"YYYY-MM-DD\", \"reason\": \"...\", \"reviewedBy\": \"...\", \"reviewedAt\": \"YYYY-MM-DD\" } under the symbol; never add an entry without looking at the vendor's corporate-actions record.",
+    "symbols": {}
+  }
+}
