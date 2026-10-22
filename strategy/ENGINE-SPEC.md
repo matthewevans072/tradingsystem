@@ -111,6 +111,25 @@ With `A = ATR_j`, `k = (halfSpreadBps + slippageBps) / 10 000`:
 - Otherwise an entry order is placed: a buy limit at `L`, valid only for the
   next bar's open (an immediate-or-cancel limit). State `pending`.
 
+### 4a. cb-1.1.0: target from risk (`target.mode = risk_multiple`, engine-1.1.0)
+
+Everything in section 4 applies except the target and the limits that use it:
+
+- No target exists at the signal. `Q` (the reward/risk limit) is not used, so
+  `L = G` (the gap limit, rounded down to the tick) and `binding = gap`.
+- The "`c_j ≥ target`" rejection does not apply.
+- At the entry fill, with effective entry `E` (the fill price after spread and
+  slippage, including the stress `entryWorseAtr` when set):
+  `target = E + minRR × (E − stop)`, rounded **up** to the tick.
+- So the reward/risk at every fill is at least `minRR`, measured as in
+  section 4.
+- The target uses only the fill price, which is known at the open, so it uses
+  no later data.
+- Exits, the one-tick-through rule and everything else are unchanged.
+
+cb-1.0.0 (`target.mode` absent, meaning `box_height`) behaves exactly as
+before.
+
 ## 5. Fills (the next bars)
 
 Processing order at each timestamp: all symbols' opens (alphabetical), then

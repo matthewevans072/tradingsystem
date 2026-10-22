@@ -6,7 +6,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-export const ENGINE_VERSION = 'engine-1.0.1';
+export const ENGINE_VERSION = 'engine-1.1.0';
+export const TARGET_MODES = ['box_height', 'risk_multiple'];
 export const STRATEGY_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../strategy');
 export const DEFAULT_CONFIG_PATH = path.join(STRATEGY_DIR, 'configs', 'cb-1.0.0.json');
 
@@ -48,7 +49,8 @@ const SCHEMA = {
   'stop.atrBuffer': num({ min: 0 }),
   'stop.maxCostToRiskPct': num({ gt: 0 }),
   'stop.minStopAtr': num({ min: 0 }),
-  'target.boxHeightMultiple': num({ gt: 0 }),
+  'target.boxHeightMultiple': num({ gt: 0, optional: true, note: 'required unless target.mode is risk_multiple' }),
+  'target.mode': oneOf(TARGET_MODES, { optional: true }),
   'management.trailingStop': { type: 'boolean', values: [false], note: 'not supported in this baseline' },
   'management.partialExits': { type: 'boolean', values: [false], note: 'not supported in this baseline' },
   'management.breakevenMove': { type: 'boolean', values: [false], note: 'not supported in this baseline' },
@@ -113,6 +115,11 @@ export function validateConfig(cfg) {
       errors.push(`${p} must be ${s.values.map((x) => JSON.stringify(x)).join(' or ')}${s.note ? ` (${s.note})` : ''}`);
     }
   }
+  // box_height (the default, cb-1.0.0): target = ceiling + multiple x box height.
+  // risk_multiple (cb-1.1.0): target = effective entry + entry.minRewardRisk x risk, set at the fill.
+  const tMode = getPath(cfg, 'target.mode') ?? 'box_height';
+  if (tMode === 'box_height' && getPath(cfg, 'target.boxHeightMultiple') == null) errors.push('target.boxHeightMultiple is required');
+  if (tMode === 'risk_multiple' && getPath(cfg, 'target.boxHeightMultiple') != null) errors.push('target.boxHeightMultiple is not used when target.mode is risk_multiple; remove it');
   const minH = getPath(cfg, 'box.minHeightAtr'), maxH = getPath(cfg, 'box.maxHeightAtr');
   if (typeof minH === 'number' && typeof maxH === 'number' && minH > maxH) errors.push('box.minHeightAtr must not exceed box.maxHeightAtr');
   return errors;

@@ -120,15 +120,30 @@ strategy as profitable or live-ready without supporting results.
   - Report: `reports/2026-10-22-development-validation.md`.
 - **No rule changed.** No rule or parameter was changed after the results.
 
+## Update 2026-10-22 (fourth session): cb-1.1.0 screen failed
+
+- **cb-1.1.0 implemented.** It is Candidate B: the target is set from the
+  fill, swing only. It is in `configs/cb-1.1.0.json` with engine-1.1.0, and
+  is logged in `PARAMETER-LOG.md` before any run, with the screen and the
+  owner's limit.
+- **The screen failed.** Runs 9–12 cover development, validation, stress and
+  walk-forward.
+  - S1 fails: 58 validation trades.
+  - S2 fails: validation mean R −0.21.
+  - S3 fails: development mean R −0.02.
+  - S4 fails: 2 of 12 neighbours positive.
+  - S5 and S6 pass.
+  - Report: `reports/2026-10-22-v1.1-screen.md`.
+- **The owner's limit applies.** Failing the screen closes cb-1.0.0 with no
+  v1.2. The holdout was never run; `lab_holdout_runs` is empty.
+- **Tests.** `npm test`: 283 of 283.
+
 ## Next steps
 
-1. Owner decision. cb-1.0.0 cannot meet acceptance-v1: B8 fails, and
-   validation has 0 or 1 trades against the 60 needed. Any new rule version
-   would be designed with development and validation already seen, and must
-   be logged as such. Only the holdout and a forward test would then be
-   unseen data.
-2. Do not run the holdout for cb-1.0.0 unless the owner explicitly asks.
-3. Commit reports only (no bars, no keys).
+1. Owner decision. The limit recorded in `PARAMETER-LOG.md` closes the
+   consolidation-breakout line. Do not run the holdout, and do not make
+   cb-1.2.0, unless the owner explicitly asks.
+2. Commit reports only (no bars, no keys).
 
 ## Open items carried over
 

@@ -51,8 +51,15 @@ export function whySignal(tradeOrEvent) {
   }
   if (p) {
     pts.push(`Stop ${px4(p.stop)}: the breakout candle's low of ${px(s.low)} minus ${p.atrBuffer} × ATR (${px4(s.atr)}).`);
-    pts.push(`Target ${px(p.target)}: the ceiling ${px(box.resistance)} plus ${p.targetMultiple} × the box height of ${px(box.height)}.`);
-    pts.push(`Maximum entry ${px(p.maxEntry)}: the lower of the gap limit ${px4(p.gapLimit)} (close + ${p.maxGapAtr} × ATR) and the reward/risk limit ${px4(p.rrLimit)} (the highest open whose entry after spread and slippage still gives ${p.minRewardRisk}:1), rounded down to the tick; the ${p.binding === 'gap' ? 'gap' : 'reward/risk'} limit binds.`);
+    if (p.targetMode === 'risk_multiple') {
+      pts.push(fin(p.target)
+        ? `Target ${px(p.target)}: set at the fill, ${p.minRewardRisk} × the risk above the entry${entry && fin(entry.price) ? ` of ${px4(entry.price)}` : ''} (entry + ${p.minRewardRisk} × (entry − stop)), rounded up to the tick.`
+        : `Target: set at the fill, ${p.minRewardRisk} × the risk above the entry price; not known at the signal.`);
+      pts.push(`Maximum entry ${px(p.maxEntry)}: the gap limit ${px4(p.gapLimit)} (close + ${p.maxGapAtr} × ATR), rounded down to the tick. There is no separate reward/risk limit: the target is set from the fill, so every fill has ${p.minRewardRisk}:1.`);
+    } else {
+      pts.push(`Target ${px(p.target)}: the ceiling ${px(box.resistance)} plus ${p.targetMultiple} × the box height of ${px(box.height)}.`);
+      pts.push(`Maximum entry ${px(p.maxEntry)}: the lower of the gap limit ${px4(p.gapLimit)} (close + ${p.maxGapAtr} × ATR) and the reward/risk limit ${px4(p.rrLimit)} (the highest open whose entry after spread and slippage still gives ${p.minRewardRisk}:1), rounded down to the tick; the ${p.binding === 'gap' ? 'gap' : 'reward/risk'} limit binds.`);
+    }
     if (fin(p.rewardRiskAtMaxEntry)) pts.push(`Reward/risk at the maximum entry: ${px(p.rewardRiskAtMaxEntry)}:1${entry && fin(entry.rewardRisk) ? `; at the actual fill of ${px4(entry.price)} it was ${px(entry.rewardRisk)}:1` : ''}.`);
     if (fin(p.costToRiskPct)) pts.push(`Estimated round-trip costs of ${px4(p.costPerShare)} per share are ${px(p.costToRiskPct, 1)}% of the ${px4(p.referenceRisk)} risk per share (limit ${p.maxCostToRiskPct}%).`);
     const z = p.sizing;

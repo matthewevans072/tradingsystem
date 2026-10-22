@@ -350,7 +350,7 @@ test('forward tick: fake provider and clock, provider errors, sleep catch-up, re
   let lab = createLab(ctx, { clock });
   const on = lab.setForward({ mode: 'swing', enabled: true });
   assert.equal(on.forward.status, 'running');
-  assert.equal(on.forward.version, CONFIG.version);
+  assert.equal(on.forward.version, '1.1.0', 'the forward test uses the active (newest) config');
   assert.equal(on.simulated, true);
   const runId = on.forward.runId;
 
@@ -732,7 +732,7 @@ test('API: /api/lab routes through the real server, with the CSRF header require
     assert.equal(r.body.bars.length, 4 * 26);
     assert.equal(r.body.run.id, id);
     r = await s.api('GET', '/api/lab/versions');
-    assert.equal(r.body.active.version, '1.0.0');
+    assert.equal(r.body.active.version, '1.1.0');
     r = await s.api('GET', '/api/lab/versions/diff?from=1.0.0&to=cb-1.0.0');
     assert.equal(r.body.sameRules, true);
     r = await s.api('GET', '/api/lab/evaluation?mode=intraday');

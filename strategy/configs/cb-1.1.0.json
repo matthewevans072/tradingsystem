@@ -1,0 +1,85 @@
+{
+  "strategy": "consolidation-breakout",
+  "version": "1.1.0",
+  "label": "Consolidation breakout v1.1 — target from risk (Candidate B)",
+  "status": "research assumption; swing mode only (intraday closed by the owner); not a proven edge. Development and validation are in-sample for this version.",
+  "createdAt": "2026-10-22",
+  "bars": {
+    "timeframeMinutes": 15,
+    "session": "regular",
+    "chartType": "standard candlesticks",
+    "priceAdjustment": "split-adjusted, not dividend-adjusted",
+    "direction": "long_only"
+  },
+  "box": {
+    "lookbackBars": 20,
+    "atrLength": 14,
+    "maxHeightAtr": 3,
+    "minHeightAtr": 0,
+    "touchToleranceAtr": 0.2,
+    "minTouchesEach": 2,
+    "minBarsBetweenTouches": 2,
+    "setupExpiryBars": 10,
+    "invalidateOnCloseBelowSupport": true,
+    "allowWindowAcrossSessions": true
+  },
+  "entry": {
+    "volumeMultiple": 1.5,
+    "volumeLookbackBars": 20,
+    "maxGapAtr": 0.5,
+    "minRewardRisk": 2,
+    "orderType": "limit_at_next_open",
+    "noNewEntriesMinutesBeforeClose": 60
+  },
+  "stop": {
+    "atrBuffer": 0.1,
+    "interpretation": "below the breakout candle's low (its lower wick) minus an ATR buffer; the source video's wick-based stop is ambiguous and this is the chosen reading",
+    "maxCostToRiskPct": 20,
+    "minStopAtr": 0
+  },
+  "target": {
+    "mode": "risk_multiple",
+    "notes": "Target = effective entry + entry.minRewardRisk x (effective entry - stop), set at the simulated fill from the actual fill price and rounded up to the tick. Replaces cb-1.0.0 target = ceiling + 1 x box height (PARAMETER-LOG.md, 2026-10-22)."
+  },
+  "management": {
+    "trailingStop": false,
+    "partialExits": false,
+    "breakevenMove": false
+  },
+  "modes": {
+    "intraday": {
+      "flattenMinutesBeforeClose": 15
+    },
+    "swing": {
+      "maxHoldSessions": 10,
+      "flattenMinutesBeforeCloseOnLastSession": 15
+    }
+  },
+  "costs": {
+    "accountCurrency": "USD",
+    "commissionPerShare": 0.005,
+    "commissionMinPerOrder": 1,
+    "commissionMaxPctOfValue": 1,
+    "halfSpreadBps": 2,
+    "slippageBps": 2,
+    "limitFillTicksBeyond": 1,
+    "tickSize": 0.01,
+    "fxConversionPct": 0,
+    "notes": "Market and stop fills pay half the spread plus slippage; limit fills (target, entry at or below the limit) pay neither. Commission applies to every fill. Currency conversion applies only when the account currency differs from the instrument currency."
+  },
+  "risk": {
+    "hypotheticalStartingEquity": 100000,
+    "riskPerTradePct": 0.25,
+    "maxOpenRiskPct": 1,
+    "maxPositions": 3,
+    "allowMargin": false,
+    "allowShort": false,
+    "excludeLeveragedEtfs": true,
+    "notes": "Testing assumptions only. They are not the owner's approved live risk limits. Gaps can make a loss larger than the planned risk."
+  },
+  "simulation": {
+    "ambiguity": "stop_first",
+    "entryFill": "open_only",
+    "signalOrder": "symbol_alphabetical"
+  }
+}

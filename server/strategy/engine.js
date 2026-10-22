@@ -108,6 +108,7 @@ export function createEngine({ config, mode, symbols = [], tradeFrom = null, low
   const holdSessions = mode === 'intraday' ? 1 : config.modes.swing.maxHoldSessions;
   const timeExitReason = mode === 'intraday' ? 'flatten' : 'max_hold';
   const subBars = normLowerTf(lowerTf);
+  const riskTarget = config.target.mode === 'risk_multiple';
 
   const hist = { trades: [], events: [], equityCurve: [] };
   let S;
@@ -241,25 +242,28 @@ export function createEngine({ config, mode, symbols = [], tradeFrom = null, low
     const c = bar.c;
     // Orders rest at valid prices: the stop rounds down and the target up to the tick.
     const stop = floorTick(bar.l - config.stop.atrBuffer * A, tick);
-    const target = ceilTick(box.resistance + config.target.boxHeightMultiple * box.height, tick);
     const minRR = config.entry.minRewardRisk;
+    // risk_multiple (cb-1.1.0): the target is not known at the signal; it is set at
+    // the fill from the actual fill price (tryEntry), so reward/risk is minRR at
+    // every fill and only the gap limit caps the entry.
+    const target = riskTarget ? null : ceilTick(box.resistance + config.target.boxHeightMultiple * box.height, tick);
     const gapLimit = c + config.entry.maxGapAtr * A;
-    const rrLimit = ((target + minRR * stop) / (1 + minRR)) / (1 + k);
+    const rrLimit = riskTarget ? Infinity : ((target + minRR * stop) / (1 + minRR)) / (1 + k);
     const binding = gapLimit <= rrLimit ? 'gap' : 'reward_risk';
     const maxEntry = floorTick(Math.min(gapLimit, rrLimit), tick);
     const refEntry = c * (1 + k), riskRef = refEntry - stop;
     const costPerShare = roundTripCostPerShare(costs, c, stop, st.currency);
     const plan = {
-      stop, target, maxEntry, gapLimit, rrLimit, binding, minRewardRisk: minRR, atrBuffer: config.stop.atrBuffer, maxGapAtr: config.entry.maxGapAtr,
-      targetMultiple: config.target.boxHeightMultiple, k, referenceEntry: refEntry, referenceRisk: riskRef,
-      rewardRiskAtMaxEntry: maxEntry > stop ? (target - maxEntry * (1 + k)) / (maxEntry * (1 + k) - stop) : null,
+      stop, target, maxEntry, gapLimit, rrLimit: riskTarget ? null : rrLimit, binding, minRewardRisk: minRR, atrBuffer: config.stop.atrBuffer, maxGapAtr: config.entry.maxGapAtr,
+      targetMode: riskTarget ? 'risk_multiple' : 'box_height', targetMultiple: riskTarget ? null : config.target.boxHeightMultiple, k, referenceEntry: refEntry, referenceRisk: riskRef,
+      rewardRiskAtMaxEntry: riskTarget ? minRR : maxEntry > stop ? (target - maxEntry * (1 + k)) / (maxEntry * (1 + k) - stop) : null,
       costPerShare, costToRiskPct: riskRef > 0 ? (costPerShare / riskRef) * 100 : null, maxCostToRiskPct: config.stop.maxCostToRiskPct,
       shares: null, plannedRiskWorstCase: null,
     };
     // Checks in ENGINE-SPEC §4 order; the signal is journalled with its final plan, then the outcome.
     const limit = config.entry.noNewEntriesMinutesBeforeClose;
     let rej = null;
-    if (c >= target) rej = ['beyond_target', `closed at ${c}, at or beyond the target ${target.toFixed(2)}`];
+    if (!riskTarget && c >= target) rej = ['beyond_target', `closed at ${c}, at or beyond the target ${target.toFixed(2)}`];
     else if (maxEntry <= stop) rej = ['max_entry_below_stop', `the maximum entry ${maxEntry} is at or below the stop ${stop.toFixed(4)}`];
     else if (!(stop > 0)) rej = ['stop_not_positive', `the stop ${stop.toFixed(4)} is not positive`];
     else if (riskRef < config.stop.minStopAtr * A) rej = ['stop_too_close', `risk per share ${riskRef.toFixed(4)} is below ${config.stop.minStopAtr} × ATR`];
@@ -285,7 +289,7 @@ export function createEngine({ config, mode, symbols = [], tradeFrom = null, low
       atr: A, binding, box, signal, plan,
     };
     st.state = 'pending';
-    emit(ms, st.symbol, 'order_placed', `buy limit ${sz.shares} at ${maxEntry} for the next bar's open only`, { orderId: st.order.id, shares: sz.shares, maxEntry, stop, target, validFor: iso(expectedMs), plannedRiskWorstCase: sz.plannedRiskWorstCase, sizedBy: sz.sizedBy });
+    emit(ms, st.symbol, 'order_placed', `buy limit ${sz.shares} at ${maxEntry} for the next bar's open only${riskTarget ? `; target set at the fill (${minRR}:1)` : ''}`, { orderId: st.order.id, shares: sz.shares, maxEntry, stop, target, validFor: iso(expectedMs), plannedRiskWorstCase: sz.plannedRiskWorstCase, sizedBy: sz.sizedBy });
     return null;
   }
 
@@ -324,24 +328,26 @@ export function createEngine({ config, mode, symbols = [], tradeFrom = null, low
     if (worse > 0) flags.push('stress_entry_worse');
     S.cash += f.cash;
     const E = f.price;
+    // risk_multiple: the target comes from this fill (known at the open), rounded up to the tick.
+    const target = riskTarget ? ceilTick(E + config.entry.minRewardRisk * (E - o.stop), tick) : o.target;
     const exitAtStop = o.stop * (1 - k);
     const estExitCommission = commission(costs, shares, exitAtStop);
     const estExitFx = fxCost(costs, shares * exitAtStop, st.currency);
     const plannedRisk = shares * (E - exitAtStop) + f.commission + estExitCommission + f.fx + estExitFx;
     const entry = {
       at: iso(ms), raw, price: E, shares, commission: f.commission, spreadSlippage: f.spreadSlippage, fx: f.fx,
-      stressWorse: worse, kind, rewardRisk: (o.target - E) / (E - o.stop), plannedRisk, estExitCommission, flags,
+      stressWorse: worse, kind, rewardRisk: (target - E) / (E - o.stop), plannedRisk, estExitCommission, flags,
     };
     st.position = {
       id: o.id, entryMs: ms, entryDate: bi.date, entryIndex: st.i + 1, exitBy: addSessions(bi.date, holdSessions - 1, st.exchange),
-      stop: o.stop, target: o.target, shares, plannedRisk, entry, box: o.box, signal: o.signal,
-      plan: { ...o.plan, shares: o.shares, plannedRiskWorstCase: o.plannedRiskWorstCase }, exitOrder: null,
+      stop: o.stop, target, shares, plannedRisk, entry, box: o.box, signal: o.signal,
+      plan: { ...o.plan, target, shares: o.shares, plannedRiskWorstCase: o.plannedRiskWorstCase }, exitOrder: null,
     };
     st.order = null;
     st.state = 'in_position';
     emit(ms, st.symbol, 'entry_filled', `bought ${shares} at ${E.toFixed(4)} (${kind === 'limit' ? `limit fill at ${raw}` : `open ${raw} + spread and slippage`})`, {
       tradeId: o.id, raw, price: E, shares, commission: f.commission, spreadSlippage: f.spreadSlippage, fx: f.fx, rewardRisk: entry.rewardRisk,
-      plannedRisk, stop: o.stop, target: o.target, maxEntry: L, flags, exitBy: st.position.exitBy,
+      plannedRisk, stop: o.stop, target, maxEntry: L, flags, exitBy: st.position.exitBy,
     });
     return null;
   }

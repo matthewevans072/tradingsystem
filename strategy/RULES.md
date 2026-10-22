@@ -68,6 +68,21 @@ evidence of an edge. The exact engine behaviour is in `ENGINE-SPEC.md`.
 - No trailing stops, partial exits or moves to breakeven in this baseline.
   Stops and targets are never changed after the fact.
 
+## 4a. Version 1.1.0: target from risk (`configs/cb-1.1.0.json`)
+
+Version 1.1.0 changes only the target. Everything else above is unchanged:
+
+- **Target = entry + 2 × risk.** The entry is the simulated entry price after
+  spread and slippage, and the risk is entry − stop.
+- **Set at the fill.** The target is set when the entry fills, from that fill
+  price, and rounded up to the cent.
+- **Every fill gets 2 : 1**, so there is no separate reward/risk entry limit.
+- **The only entry limit is the gap limit**: the next open must be no more than
+  0.5 × ATR above the breakout close.
+- **Swing mode only.** The owner closed intraday for this version.
+- **Seen data.** Development and validation were seen before this version was
+  made (`PARAMETER-LOG.md`).
+
 ## 5. Time exits (two separate configurations, reported separately)
 
 - **Intraday**: any open position is closed at the open of the last 15-minute

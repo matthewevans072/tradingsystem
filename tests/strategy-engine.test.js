@@ -86,7 +86,7 @@ test('config loads deep-frozen, validates types, ranges and enums', () => {
     assert.ok(errs.some((e) => e.startsWith(p)), `${p} flagged: ${errs.join(' | ')}`);
   }
   assert.ok(validateConfig({ ...BASE, box: { ...BASE.box, minHeightAtr: 4 } }).some((e) => e.includes('minHeightAtr')));
-  assert.equal(ENGINE_VERSION, 'engine-1.0.1');
+  assert.equal(ENGINE_VERSION, 'engine-1.1.0'); // cb-1.1.0's target rule; cb-1.0.0 behaviour is unchanged (this file's hand-checked numbers)
 });
 
 test('config hash ignores descriptive fields and follows rule changes', () => {

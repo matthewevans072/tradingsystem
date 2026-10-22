@@ -181,7 +181,7 @@ test('get_strategy_lab: simulated account, open risk against its limit, setups, 
     assert.match(r.realPortfolio, /not buying power/);
     assert.match(r.reporting, /The simulated account bought/);
     assert.equal(r.status, 'ready');
-    assert.equal(r.version.version, '1.0.0');
+    assert.equal(r.version.version, '1.1.0', 'the newest valid config (cb-1.1.0) is active');
     assert.match(r.version.configHash, /^[0-9a-f]{64}$/);
     // Open planned risk against the limit, computed by the tool from the config.
     const a = r.account;
@@ -211,7 +211,7 @@ test('get_strategy_lab: simulated account, open risk against its limit, setups, 
   const ledger = assertLedger(msg, res);
   const acc = ledger.get(swing.account.ref);
   assert.match(acc.label, /^SYNTHETIC — Simulated swing account/);
-  assert.match(acc.note, /version 1\.0\.0/);
+  assert.match(acc.note, /version 1\.1\.0/);
   assert.match(acc.note, HASH12);
   assert.match(acc.note, /run \d+/);
   assert.ok(acc.asOf);
@@ -277,7 +277,7 @@ test('get_strategy_trades: why it triggered, what ended it, box, plan, costs; on
     const item = ledger.get(t.ref);
     assert.equal(item.symbol, t.symbol);
     assert.match(item.label, /^SYNTHETIC — Simulated backtest trade/);
-    assert.ok(item.note.includes(`run ${t.runId}`) && item.note.includes('version 1.0.0') && item.note.includes(`config ${t.configHash}`), item.note);
+    assert.ok(item.note.includes(`run ${t.runId}`) && item.note.includes('version 1.1.0') && item.note.includes(`config ${t.configHash}`), item.note);
     assert.ok(item.asOf);
   }
   // The marked simulated trade survives the trade-claim guard.
@@ -386,7 +386,7 @@ test('get_strategy_performance: sample sizes, by symbol/cluster/regime, outliers
   const ledger = assertLedger(msg, res);
   assert.equal(ledger.get(hold.ref).kind, 'status');
   const runItem = ledger.get(bt.run.ref);
-  assert.ok(runItem.note.includes(`run ${bt.run.id}`) && runItem.note.includes('version 1.0.0') && HASH12.test(runItem.note));
+  assert.ok(runItem.note.includes(`run ${bt.run.id}`) && runItem.note.includes('version 1.1.0') && HASH12.test(runItem.note));
   assert.match(runItem.label, /^SYNTHETIC — Simulated backtest/);
   assert.equal(msg.status, 'ok');
   assertNothingWritten(env, lab);
@@ -464,9 +464,12 @@ test('every lab tool on a real workspace with no data: status refs, nothing writ
   assert.equal(perf.available, false);
   assert.equal(fperf.available, false);
   assert.equal(perf.acceptance.outcome, 'inconclusive');
-  assert.match(versions.diffNote, /Only one valid version/);
+  // Two valid versions: by default the tool compares the active one (1.1.0) with the one before it.
+  assert.ok(!versions.diffNote);
+  assert.deepEqual([versions.diff.from.version, versions.diff.to.version, versions.diff.sameRules], ['1.0.0', '1.1.0', false]);
+  assert.ok(versions.diff.changes.some((c) => c.path === 'target.mode' && c.to === 'risk_multiple'));
   const ledger = assertLedger(msg, res);
-  for (const r of [trades.emptyRef, skips.emptyRef, tv.emptyRef, perf.ref, fperf.ref, versions.diffRef]) assert.equal(ledger.get(r).kind, 'status');
+  for (const r of [trades.emptyRef, skips.emptyRef, tv.emptyRef, perf.ref, fperf.ref]) assert.equal(ledger.get(r).kind, 'status');
   assert.equal(msg.status, 'ok');
   // Bad inputs are tool errors the model can correct, not crashes.
   const h = createToolbox(env.ctx, { ledger: new Ledger(), turn: { now: NOW, scenarios: [], priorScenarioCount: 0, proposals: [] } });
