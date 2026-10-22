@@ -11,6 +11,7 @@ machine.
 | 2 | 2026-10-22 ~17:00 | Listing checks for the owner's 9 stocks: first and latest daily bar, corporate actions (splits, name changes, dividend counts), NBIS around its 2022-2024 suspension | none | First 2 and last daily closes per stock; NBIS 2022-02-22 to 2024-10-25 daily closes and volumes | No rule outcome |
 | 3 | 2026-10-22 | Pre-registration written and committed: `PREREGISTRATION.md`, `ENGINE-SPEC.md`, `universe-hxr-v1.json`, `periods-hxr-v1.json`, `criteria-hxr-v1.json`, `configs/hxr-*-0.1.0.json` | hxr-prereg-1 | none | No |
 | 4 | 2026-10-22 | HXR code built and reviewed. Implementation details settled before any result (below) | hxr-prereg-1 | synthetic test data only | No |
+| 5 | 2026-10-22 19:00–19:13 | Real-data check of the download and readiness code in a throwaway cloud folder (not the owner's database): Alpaca daily bars, first 15-minute bars, corporate actions and opening-quote spread samples for MU, AMZN, META, TSLA, VST, HOOD, MUU, NBIS (SPCX skipped, unconfirmed); readiness checklist; page screenshots | hxr-prereg-1 | Data counts, split overnight ratios, listing dates; the page showed no prices | No: no rule, return or comparison was computed. The folder is discarded; the official runs happen once, in the owner's database |
 
 ## Implementation details settled before any result (entry 4)
 
