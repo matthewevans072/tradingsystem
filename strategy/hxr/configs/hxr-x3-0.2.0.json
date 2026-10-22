@@ -1,0 +1,50 @@
+{
+  "strategy": "hxr",
+  "version": "x3-0.2.0",
+  "label": "X3 give back 10% of the peak gain (owner comparison only, never selected)",
+  "createdAt": "2026-10-22",
+  "status": "experimental (hxr-prereg-2): labelled research assumptions, not the owner's approved preferences",
+  "account": {
+    "startingCash": 15000,
+    "currency": "USD",
+    "allocation": "equal_sleeves",
+    "wholeShares": true,
+    "allowMargin": false,
+    "allowShort": false
+  },
+  "execution": {
+    "decision": "after_close",
+    "fill": "next_open",
+    "delaySessions": 1,
+    "fillModel": "open"
+  },
+  "costs": {
+    "commissionPerOrder": 0,
+    "commissionPerShare": 0,
+    "secFeeRate": 0.0000206,
+    "tafPerShare": 0.000166,
+    "tafMaxPerTrade": 8.3,
+    "halfSpread": "calibrated",
+    "halfSpreadFloorBps": 2,
+    "slippageBps": 2,
+    "notes": "US$0 commission (Questrade US stocks, search summary 2026-10-22). Half-spread: median quoted half-spread in the first minute after the open on six sampled days per stock and year (PREREGISTRATION.md section 5)."
+  },
+  "dividends": {
+    "credit": true,
+    "creditOn": "pay_date",
+    "withholdingPct": 15,
+    "notes": "15% = Canadian resident outside an RRSP (experimental)."
+  },
+  "cash": {
+    "annualInterestPct": 0
+  },
+  "rule": {
+    "type": "giveback",
+    "volSessions": 20,
+    "givebackPct": 10,
+    "activationMultiple": 3,
+    "pivotSessions": 5,
+    "reboundMultiple": 1,
+    "afterMissedRebound": "stay_out"
+  }
+}
