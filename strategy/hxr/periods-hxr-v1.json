@@ -1,0 +1,22 @@
+{
+  "name": "periods-hxr-v1",
+  "definedAt": "2026-10-22",
+  "definedBefore": "any HXR backtest or result",
+  "timezone": "America/New_York",
+  "calendar": "NYSE (server/calendar.js)",
+  "dataFrom": "2016-01-04",
+  "periods": {
+    "selection": { "basket": "A", "start": "2017-10-02", "end": "2022-12-30", "warmupFrom": "2016-01-04", "use": "compare C1-C3 and the hold; pick one candidate (PREREGISTRATION.md section 8). In-sample." },
+    "evaluation": { "basket": "A", "start": "2023-01-03", "end": "2026-10-21", "warmupFrom": "2016-01-04", "use": "one run of the frozen candidate; criteria G1-G6. Overlaps the Strategy Lab's untouched holdout window for MU (disclosed)." },
+    "fullList": { "basket": "B", "start": "2025-03-18", "end": "2026-10-21", "warmupFrom": "2016-01-04", "use": "reported with the evaluation, not a gate" },
+    "prospective": { "basket": "prospective", "start": "the first session after the account is started", "use": "price rules with timestamped news recorded; criteria P1-P4" }
+  },
+  "excludedSessions": [
+    { "date": "2021-10-25", "reason": "Alpaca has almost no NYSE-listed (Tape A) trades this session; affects VST" },
+    { "date": "2022-01-24", "reason": "Alpaca NYSE trade gap 10:45-15:45 ET for several NYSE names" },
+    { "date": "2022-01-26", "reason": "Alpaca NYSE trade gap 15:00-15:45 ET for some NYSE names" },
+    { "date": "2022-03-08", "reason": "Alpaca has almost no NYSE-listed trades this session; affects VST" }
+  ],
+  "warmupSessions": 100,
+  "note": "Each period starts a fresh US$15,000 account for every arm. Warm-up data before 'start' feeds indicators only. Bars before a symbol's listedFrom (universe-hxr-v1.json) are never used."
+}

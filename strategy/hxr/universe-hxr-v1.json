@@ -1,0 +1,22 @@
+{
+  "name": "universe-hxr-v1",
+  "selectedAt": "2026-10-22",
+  "selectedBy": "the owner (current holdings named in chat on 2026-10-22)",
+  "selectedBefore": "any HXR backtest or result. Selection bias: these are the owner's current holdings, which favours stocks that did well; see PREREGISTRATION.md section 7.",
+  "symbols": [
+    { "symbol": "MU", "name": "Micron Technology", "exchange": "NASDAQ", "listedFrom": "2016-01-04", "kind": "stock", "baskets": ["A", "B"] },
+    { "symbol": "AMZN", "name": "Amazon.com", "exchange": "NASDAQ", "listedFrom": "2016-01-04", "kind": "stock", "baskets": ["A", "B"] },
+    { "symbol": "META", "name": "Meta Platforms (FB until 2022-06-09)", "exchange": "NASDAQ", "listedFrom": "2016-01-04", "kind": "stock", "baskets": ["A", "B"] },
+    { "symbol": "TSLA", "name": "Tesla", "exchange": "NASDAQ", "listedFrom": "2016-01-04", "kind": "stock", "baskets": ["A", "B"] },
+    { "symbol": "VST", "name": "Vistra", "exchange": "NYSE", "listedFrom": "2017-05-10", "kind": "stock", "baskets": ["A", "B"] },
+    { "symbol": "HOOD", "name": "Robinhood Markets", "exchange": "NASDAQ", "listedFrom": "2021-07-29", "kind": "stock", "baskets": ["B"] },
+    { "symbol": "MUU", "name": "Direxion Daily MU Bull 2X Shares", "exchange": "NASDAQ", "listedFrom": "2024-10-10", "kind": "leveraged_etf", "leverage": 2, "underlying": "MU", "baskets": ["B"] },
+    { "symbol": "NBIS", "name": "Nebius Group", "exchange": "NASDAQ", "listedFrom": "2024-10-21", "kind": "stock", "baskets": ["B"], "note": "Alpaca maps Yandex (YNDX, 2016-2022) and a 2022-02-28 to 2024-10-18 suspension of zero-volume bars to NBIS. Only bars from 2024-10-21, when Nebius resumed trading, are used." },
+    { "symbol": "SPCX", "name": "Space Exploration Technologies (SpaceX)", "exchange": "NASDAQ", "listedFrom": "2026-06-12", "kind": "stock", "baskets": ["prospective"], "identity": "pending_owner_confirmation", "note": "SPCX was an ETF (CUSIP 19423L672) renamed SPCK on 2026-04-07. SpaceX listed on Nasdaq as SPCX on 2026-06-12 (IPO reports; Alpaca name-change record). Not priced in HXR until the owner confirms. Too little history for any backtest." }
+  ],
+  "baskets": {
+    "A": { "label": "long history", "symbols": ["MU", "AMZN", "META", "TSLA", "VST"] },
+    "B": { "label": "the owner's list with enough history", "symbols": ["MU", "MUU", "NBIS", "HOOD", "AMZN", "META", "TSLA", "VST"] },
+    "prospective": { "label": "basket B plus SPCX once confirmed", "symbols": ["MU", "MUU", "NBIS", "HOOD", "AMZN", "META", "TSLA", "VST"], "addWhenConfirmed": ["SPCX"] }
+  }
+}
