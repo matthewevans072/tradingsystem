@@ -130,9 +130,64 @@ NVDA's 4:1 (2021-07-20) and 10:1 (2024-06-10) splits are adjusted correctly,
 in price and volume, from exactly those sessions. No other candidate appears
 in the scan.
 
-### 6. Adversarial review of the READY symbols
+### 6. Adversarial review and challenge
 
-See the addendum below.
+**The verdicts are correct.** An independent recomputation for the 7 READY
+symbols used its own hand-listed calendar and timezone handling. It matches
+the checklist exactly: no gaps, duplicates, bad prices, zero volume, off-grid
+or out-of-session bars, and all 20 sessions around daylight-saving changes
+are complete.
+
+**Provenance is clean.** All 551,592 rows are alpaca/sip/split, there are no
+synthetic rows, and no runs or holdout runs are recorded.
+
+**The gap finding holds up.** A second agent tried to refute it and could not.
+It reproduced all four sessions on symbols and controls the first agent had
+not used (NEE, PLD, HD, MMM, PFE), with raw and split adjustment, and across
+SIP, IEX, 1Min, 1Day and trades. Small corrections:
+
+- On 2022-03-08 Alpaca also lacks PLD's NYSE closing print, which strengthens
+  the vendor-gap reading.
+- The checklist did list 2022-01-26; only an earlier summary had omitted it.
+
+**Three properties of the data that the checklist cannot see.** All three
+need an owner decision; nothing has been changed:
+
+1. **Single off-market prints set some bar highs and lows.** For example, MSFT
+   2024-08-29 10:45 has a low of 410.60 from one 2,555-share print reported by
+   FINRA's trade-reporting facility; every other trade nearby was
+   421.60–421.65. These prints are on the consolidated tape (Alpaca does
+   exclude odd lots), but they can trigger a simulated stop, add to ATR and
+   widen a box.
+
+   A rough scan of bars whose extreme is more than 1% beyond both neighbours
+   and the bar's own body (outside the holdout) found NVDA 24, AMD 14, MU 6,
+   MSFT 4 and SPY/IWM/GLD 0. Only three were checked against trades, and one
+   of those was a genuine sweep. Filtering such prints would be a
+   data-handling change, logged as a new version.
+2. **The Nasdaq opening cross is counted twice in older 09:30 volume.** In
+   2022 and early-2023 data, Alpaca's trade history shows the Nasdaq-listed
+   symbols' opening cross twice (same trade id, reported as both Q and T), so
+   the stored 09:30 bar volume is about 5–12% too high. In 2024 data it
+   appears once.
+
+   Prices are unaffected. The volume rule (1.5 × the 20-bar average) can flip
+   on marginal 09:30 breakouts, and development and validation volume are
+   slightly inconsistent with each other. The changeover date has not been
+   established.
+3. **The closing auction is outside the stored bars.** Closing prints are
+   timestamped just after 16:00 and fall in Alpaca's dropped 16:00 bar. The
+   15:45 close is therefore the last continuous trade: a median 0.4–3.8 bps
+   from the official close, at most 10 bps. The auction's volume (1–45% of a
+   session) is also excluded.
+
+   This matches the frozen bar definition, `[t, t+15 min)`, and no simulated
+   fill uses the 15:45 close: time exits fill at the 15:45 bar's open. It
+   could still differ from TradingView or a forward-test feed if they put the
+   closing cross in the last bar (unverified).
+
+These do not change any READY verdict. They are recorded so they can be
+weighed before results exist, not explained away after.
 
 ## Decision needed (nothing has been changed)
 
@@ -149,6 +204,12 @@ Options:
 
 The VRT flag can be closed by recording the 2022-02-23 move as reviewed
 (`reviewedOvernightMoves`). That is also an owner decision.
+
+Separately, and only if the owner wants it: decide whether the 09:30
+double-counted opening cross (finding 6.2) should be corrected for all
+symbols, for example by removing duplicate trade ids. That would mean
+building bars from trades, which is a new data version. Leaving it is also a
+valid, documented choice.
 
 Recommendation: start with **A**, since it is free and changes nothing. If
 the owner wants to proceed without waiting, choose **C**, decided and logged
