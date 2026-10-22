@@ -1,0 +1,239 @@
+{
+  "name": "universe-hxr-v3",
+  "selectedAt": "2026-10-22",
+  "selectedBy": "the owner (holdings named in chat on 2026-10-22; GOOG added by the owner on 2026-10-22, before any HXR test)",
+  "selectedBefore": "any HXR backtest or result (hxr-prereg-3). Basket A is the owner's six (MU, AMZN, META, TSLA, VST, GOOG) plus four technology stocks chosen with hindsight because they lagged (INTC, CSCO, PYPL, SNAP), so the hold benchmark is deliberately weaker; neither half is a random sample. Basket R of universe-hxr-v2 is folded into A. techAi tags drive only the exposure cap (PREREGISTRATION-3.md section 6).",
+  "symbols": [
+    {
+      "symbol": "MU",
+      "name": "Micron Technology",
+      "exchange": "NASDAQ",
+      "listedFrom": "2016-01-04",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "techAi": true
+    },
+    {
+      "symbol": "AMZN",
+      "name": "Amazon.com",
+      "exchange": "NASDAQ",
+      "listedFrom": "2016-01-04",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "techAi": true
+    },
+    {
+      "symbol": "META",
+      "name": "Meta Platforms (FB until 2022-06-09)",
+      "exchange": "NASDAQ",
+      "listedFrom": "2016-01-04",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "techAi": true
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "exchange": "NASDAQ",
+      "listedFrom": "2016-01-04",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "techAi": true
+    },
+    {
+      "symbol": "VST",
+      "name": "Vistra",
+      "exchange": "NYSE",
+      "listedFrom": "2017-05-10",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "techAi": false,
+      "techAiNote": "Not tagged techAi: a power producer whose AI link is demand, not technology. The owner may change this before the first run."
+    },
+    {
+      "symbol": "GOOG",
+      "name": "Alphabet Inc. Class C",
+      "exchange": "NASDAQ",
+      "listedFrom": "2016-01-04",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "note": "Added at the owner's request on 2026-10-22, before any HXR test (EXPERIMENT-LOG.md entry 7). Class C shares (GOOG), not Class A (GOOGL). 20-for-1 split: distributed after the close on 2022-07-15, split-adjusted trading from 2022-07-18; the readiness check confirms the date against Alpaca's corporate actions.",
+      "techAi": true
+    },
+    {
+      "symbol": "HOOD",
+      "name": "Robinhood Markets",
+      "exchange": "NASDAQ",
+      "listedFrom": "2021-07-29",
+      "kind": "stock",
+      "baskets": [
+        "B"
+      ],
+      "techAi": true
+    },
+    {
+      "symbol": "MUU",
+      "name": "Direxion Daily MU Bull 2X Shares",
+      "exchange": "NASDAQ",
+      "listedFrom": "2024-10-10",
+      "kind": "leveraged_etf",
+      "leverage": 2,
+      "underlying": "MU",
+      "baskets": [
+        "B"
+      ],
+      "techAi": true
+    },
+    {
+      "symbol": "NBIS",
+      "name": "Nebius Group",
+      "exchange": "NASDAQ",
+      "listedFrom": "2024-10-21",
+      "kind": "stock",
+      "baskets": [
+        "B"
+      ],
+      "note": "Alpaca maps Yandex (YNDX, 2016-2022) and a 2022-02-28 to 2024-10-18 suspension of zero-volume bars to NBIS. Only bars from 2024-10-21, when Nebius resumed trading, are used.",
+      "techAi": true
+    },
+    {
+      "symbol": "SPCX",
+      "name": "Space Exploration Technologies (SpaceX)",
+      "exchange": "NASDAQ",
+      "listedFrom": "2026-06-12",
+      "kind": "stock",
+      "baskets": [
+        "prospective"
+      ],
+      "identity": "pending_owner_confirmation",
+      "note": "SPCX was an ETF (CUSIP 19423L672) renamed SPCK on 2026-04-07. SpaceX listed on Nasdaq as SPCX on 2026-06-12 (IPO reports; Alpaca name-change record). Not priced in HXR until the owner confirms. Too little history for any backtest.",
+      "techAi": true
+    },
+    {
+      "symbol": "INTC",
+      "name": "Intel",
+      "exchange": "NASDAQ",
+      "listedFrom": "2016-01-04",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "note": "In the main test list from hxr-prereg-3; chosen with hindsight as a technology stock that lagged. Listing date and corporate actions unverified until the readiness checklist runs.",
+      "techAi": true
+    },
+    {
+      "symbol": "CSCO",
+      "name": "Cisco Systems",
+      "exchange": "NASDAQ",
+      "listedFrom": "2016-01-04",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "note": "In the main test list from hxr-prereg-3; chosen with hindsight as a technology stock that lagged. Listing date and corporate actions unverified until the readiness checklist runs.",
+      "techAi": true
+    },
+    {
+      "symbol": "PYPL",
+      "name": "PayPal Holdings",
+      "exchange": "NASDAQ",
+      "listedFrom": "2016-01-04",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "note": "In the main test list from hxr-prereg-3; chosen with hindsight as a technology stock that lagged. Listing date and corporate actions unverified until the readiness checklist runs.",
+      "techAi": true
+    },
+    {
+      "symbol": "SNAP",
+      "name": "Snap Inc.",
+      "exchange": "NYSE",
+      "listedFrom": "2017-03-02",
+      "kind": "stock",
+      "baskets": [
+        "A",
+        "B"
+      ],
+      "note": "In the main test list from hxr-prereg-3; chosen with hindsight as a technology stock that lagged. Listing date and corporate actions unverified until the readiness checklist runs. IPO 2017-03-02; NYSE-listed, so the excluded sessions apply.",
+      "techAi": true
+    }
+  ],
+  "baskets": {
+    "A": {
+      "label": "main test list: the owner's six plus four laggards",
+      "symbols": [
+        "MU",
+        "AMZN",
+        "META",
+        "TSLA",
+        "VST",
+        "GOOG",
+        "INTC",
+        "CSCO",
+        "PYPL",
+        "SNAP"
+      ]
+    },
+    "B": {
+      "label": "full-list check: basket A plus MUU, NBIS, HOOD",
+      "symbols": [
+        "MU",
+        "AMZN",
+        "META",
+        "TSLA",
+        "VST",
+        "GOOG",
+        "INTC",
+        "CSCO",
+        "PYPL",
+        "SNAP",
+        "MUU",
+        "NBIS",
+        "HOOD"
+      ]
+    },
+    "prospective": {
+      "label": "basket B plus SPCX once confirmed",
+      "symbols": [
+        "MU",
+        "AMZN",
+        "META",
+        "TSLA",
+        "VST",
+        "GOOG",
+        "INTC",
+        "CSCO",
+        "PYPL",
+        "SNAP",
+        "MUU",
+        "NBIS",
+        "HOOD"
+      ],
+      "addWhenConfirmed": [
+        "SPCX"
+      ]
+    }
+  }
+}

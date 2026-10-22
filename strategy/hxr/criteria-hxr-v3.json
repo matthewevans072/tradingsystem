@@ -1,0 +1,115 @@
+{
+  "name": "criteria-hxr-v3",
+  "definedAt": "2026-10-22",
+  "definedBefore": "any HXR backtest or result (hxr-prereg-3). As criteria-hxr-v2 except: G6 restated for ten basket A stocks (9 of 10, at most one may fail) and the validation gate added.",
+  "judgedOn": "final period, basket A (ten stocks), the frozen candidate against the hold of the same stocks from the same US$15,000; only after the validation gate passes",
+  "outcomes": {
+    "FAIL": "G1 is met and at least one of G2-G6 fails",
+    "INSUFFICIENT_EVIDENCE": "G1 is not met",
+    "PASS": "every criterion passes. This means eligible for the owner's review only; it is never permission to trade and never connects anything"
+  },
+  "selection": {
+    "minRoundTrips": 10,
+    "metric": "annualised return / largest decline from a previous peak",
+    "tieBreak": "smaller largest decline",
+    "stopUnlessAtLeastTimesHold": 1.1
+  },
+  "criteria": [
+    {
+      "id": "G1",
+      "name": "Enough evidence",
+      "rule": "at least 500 sessions, at least 20 completed exit-and-buy-back round trips, and a hold decline of at least 20% from a previous peak",
+      "minSessions": 500,
+      "minRoundTrips": 20,
+      "minHoldDrawdownPct": 20,
+      "onFail": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "id": "G2",
+      "name": "Smaller worst decline",
+      "rule": "HXR largest decline <= 0.75 x the hold's",
+      "maxRatioToHold": 0.75
+    },
+    {
+      "id": "G3",
+      "name": "Better return per unit of decline",
+      "rule": "HXR annualised return / largest decline >= 1.10 x the hold's",
+      "minRatioToHold": 1.1
+    },
+    {
+      "id": "G4",
+      "name": "Limited return given up",
+      "rule": "HXR annualised return >= the hold's minus 5 percentage points",
+      "maxShortfallPctPoints": 5
+    },
+    {
+      "id": "G5",
+      "name": "Robust to costs and delay",
+      "rule": "G2 and G3 still pass with spread and slippage doubled, and separately with fills one session later",
+      "variants": [
+        "costs2x",
+        "delay2"
+      ]
+    },
+    {
+      "id": "G6",
+      "name": "Not one stock",
+      "rule": "G3 passes in at least 9 of the 10 leave-one-stock-out runs",
+      "minPassing": 9
+    }
+  ],
+  "prospective": [
+    {
+      "id": "P1",
+      "name": "Enough time and decisions",
+      "rule": "at least 6 months and at least 10 exit or buy-back decisions; otherwise insufficient evidence",
+      "minMonths": 6,
+      "minDecisions": 10
+    },
+    {
+      "id": "P2",
+      "name": "Operationally clean",
+      "rule": "at least 95% of sessions processed on time; no duplicate orders; every fill has a bar",
+      "minOnTimePct": 95
+    },
+    {
+      "id": "P3",
+      "name": "Fill realism",
+      "rule": "median absolute difference between assumed and realistic fills <= 25 bps",
+      "maxMedianBps": 25
+    },
+    {
+      "id": "P4",
+      "name": "Consistent with history",
+      "rule": "reported against the historical result; never called proof of the news-informed strategy"
+    }
+  ],
+  "reportedNotGated": [
+    "basket B full-list check",
+    "assumed vs realistic fills (first 15-minute VWAP)",
+    "0% withholding variant",
+    "per-stock results",
+    "missed rebounds and losses after buying back",
+    "costs and dividends",
+    "neighbouring settings (development only)",
+    "position sizes and the binding cap",
+    "signals lapsed for budget or pause",
+    "stocks never entered",
+    "open risk and tech/AI exposure over time",
+    "pause episodes",
+    "average invested fraction and return on average invested capital",
+    "initial-loss exits counted apart"
+  ],
+  "validation": {
+    "V1": {
+      "name": "Enough round trips in validation",
+      "rule": "at least 10 completed exit-and-buy-back round trips; otherwise insufficient evidence and HXR stops before the final period",
+      "minRoundTrips": 10
+    },
+    "V2": {
+      "name": "Still better than holding per unit of decline",
+      "rule": "annualised return / largest decline >= 1.10 x the hold's in the validation period; otherwise HXR stops before the final period (reported as did not validate)",
+      "minRatioToHold": 1.1
+    }
+  }
+}
