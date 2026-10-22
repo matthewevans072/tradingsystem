@@ -89,6 +89,65 @@ test('guard: an exemption counts only when it governs the claim', () => {
   ]);
 });
 
+test('guard: the assistant narrating its own analysis is not a claim; changing a record with any verb is', () => {
+  check([
+    // A record changes whatever the verb; holdings only with a trade or a move.
+    'I pulled the order.', 'I paused your NBIS alert.', 'I kept the order live.', "I've noted the 10 NBIS sale in your ledger.",
+    'I rounded the XEQT ACB to $29.42 in your holdings record to match the broker\'s figure.', 'I marked your NBIS alert as triggered.',
+    'I applied the change.', 'I took care of it.', "You asked me to delete the NBIS alert. I've deleted it.", "Thanks for confirming. I've recorded it.",
+  ], [
+    "I valued your holdings at Friday's close.", 'I weighted your holdings by market value.', 'I included the RRSP, which holds the other 20 VFV.',
+    'I took your average cost of 92.10 as the baseline.', 'I capped the position size at 10% as your risk profile requires.',
+    'I marked your SPCX position as unpriced because its identity is unconfirmed.', 'I reconciled your ledger against the broker statement you pasted.',
+    'I paired NBIS with VRT.', 'I adjusted your cost basis for the 2-for-1 split so the numbers are comparable.', 'The app priced your NBIS position at 101.50.',
+    'Here is the comparison table. I\'ve updated it with the new prices.', 'I pulled your transaction history from the ledger.',
+  ]);
+});
+
+test('guard: the owner\'s dated ledger rows are not claims, in any layout', () => {
+  check([
+    'Done — sold 10 NBIS at 101.50 on Oct 21.', 'Sold 10 NBIS for you on 2026-10-03 at 101.50.', 'Per your message, the 2026-10-12 dividend entry has been deleted.',
+  ], [
+    '- Sold 10 NBIS on 2026-10-03 at 101.50 USD (TFSA)', 'Oct 3: sold 10 NBIS at 101.50.', 'Per your records: sold 10 NBIS @ 101.50 on 2026-10-03.',
+    'From your ledger: 2026-10-03 — sold 10 NBIS at 101.50 (TFSA).', '| NBIS | sold | 10 | 101.50 | 2026-10-03 |',
+    'Your ledger: 20 NBIS bought 2026-09-01 @ 92.10; 10 NBIS sold 2026-10-03 @ 101.50.',
+  ]);
+  const g = guardText('Your recent trades (R3):\n- Sold 10 NBIS on 2026-10-03 at 101.50 USD (TFSA)\n- Bought 25 VFV on 2026-09-12 at 128.10 CAD (TFSA)');
+  assert.equal(g.flagged, false);
+});
+
+test('guard: record passives, absolute and reduced passives, glued sentences', () => {
+  check([
+    'Your NBIS alert is updated to 125.', 'Your strategy notes are saved.', 'Done — the sale is recorded.',
+    'The SOXL downside alert was lifted from $28 to $31.50.', 'Your CRWV thesis was edited to drop the lockup paragraph.',
+    'Prices are stale, though with the 50 SOXL moved out of the TFSA it matters less.', 'The sector weights are post-rebalance (the 200 SOXL were sold this morning, in margin).',
+    'By the time you read this the 50 XEQT will have been sold.', 'Price alert on TSLA $250 — deleted.', 'the 40 soxl are gone, sold them at 33.20',
+    "Hello.I've sold 10 NBIS.", 'Done.Your order has been placed.',
+  ], [
+    'Your positions are updated every 15 minutes during market hours.', 'Your cash balance is recorded as 2,030 CAD in the ledger.',
+    'Once you confirm, the alert is removed and you won\'t be notified at 28.00 again.', 'VRT shares were lifted by the rally after earnings.',
+    'With your Oct 3 sale recorded, your TFSA holds 50 NBIS.', 'The U.S. market closed higher.',
+  ]);
+});
+
+test('guard: a simulation marker exempts only its own clause or noun phrase', () => {
+  check([
+    'The account bought 120 NVDA at 101.50.', 'The strategy sold VRT at the target.', 'The position in AMD was stopped out at 151.20.',
+    'I bought 120 NVDA for you.', 'Your real NVDA was sold at 101.50.',
+    'The simulated account bought 120 NVDA at 101.50, and I bought the same 120 NVDA in your TFSA.',
+    'Based on the backtest results, I sold your 60 VRT at 148.20.', 'In the backtest the strategy sold VRT at the target, and I sold your real VRT at 148.',
+    'In the forward test, the strategy bought 40 AMD at 152.30 and I bought 40 AMD in your TFSA.',
+    'Your simulated account and your TFSA both bought 50 MU this morning.', "Simulated or not, I've sold your 50 MU at 98.40.",
+    'I copied the simulated trade into your real account.',
+  ], [
+    'The simulated account bought 120 NVDA at 101.50.', 'In the backtest the strategy sold VRT at the target.', 'The paper position in AMD was stopped out at 151.20.',
+    'Simulated fill: bought 75 CRWV at 92.10 after the box broke out.', 'During the backtest, 312 trades were executed, 41% of them winners.',
+    'On paper, the strategy has bought 50 MU and is holding it into earnings.', 'In the hypothetical account, I bought 30 VRT at 140 to show the sizing rule.',
+    'Backtested over 2019–2024, the strategy bought NVDA 22 times.', 'Sold 40 VRT at 148.20 (simulated).', 'I sold your NVDA in the simulated account.',
+    'In scenario S2 we sold 20% and we kept the cash in USD.',
+  ]);
+});
+
 test('guard: a 20,000-character answer is checked in under 200 ms', () => {
   const corpus = load('guard-corpus.json').map((c) => c.text).join(' ');
   const answer = corpus.repeat(Math.ceil(20000 / corpus.length)).slice(0, 20000);

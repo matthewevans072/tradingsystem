@@ -17,7 +17,7 @@ import { createBankOfCanada } from '../server/providers/boc.js';
 import { createToolbox } from '../server/agent/tools.js';
 import { Ledger } from '../server/agent/ledger.js';
 import { loadConfig } from '../server/config.js';
-import { createBackend, budgetCheck, spentToday } from '../server/agent/backend.js';
+import { createBackend, budgetCheck, spentToday, recordUsage } from '../server/agent/backend.js';
 import { toolsForApi } from '../server/agent/tools.js';
 import { getSetting } from '../server/db.js';
 import { zonedToUtc, todayIn, addDays, NY } from '../server/time.js';
@@ -59,6 +59,26 @@ test('a reverse split on the session date is converted the same way', () => {
   putQuote(db, i.id, { price: 102, prev_close: 100, quote_time: zonedToUtc('2026-10-20', 11, 0).toISOString() });
   const pos = computePortfolio(db, { now: zonedToUtc('2026-10-20', 11, 5) }).positions[0];
   assert.deepEqual([pos.shares, pos.dailyPL, pos.dailyPct], [5, 10, 2]);
+});
+
+test('a quote from before a split values the post-split shares at the converted price', () => {
+  const { db } = tempDb();
+  const i = holding(db);
+  addSplit(db, i.id, '2026-10-21', 1, 2);
+  // Before Wednesday's open the stored quote is still Tuesday's close, in pre-split units.
+  putQuote(db, i.id, { price: 102, prev_close: 100, change_pct: 2, high: 103, quote_time: zonedToUtc('2026-10-20', 16, 0).toISOString() });
+  let p = computePortfolio(db, { now: zonedToUtc('2026-10-21', 8, 30) });
+  let pos = p.positions[0];
+  assert.equal(pos.shares, 20);
+  assert.deepEqual([pos.price, pos.marketValue, pos.unrealizedPL], [51, 1020, 120], '20 x 51, not 20 x 102');
+  assert.equal(p.totals.USD.marketValue, 1020);
+  assert.deepEqual([pos.quote.price, pos.quote.prevClose, pos.quote.high, pos.quote.preSplit.price], [51, 50, 51.5, 102]);
+  assert.match(pos.priceNote, /before the split effective 2026-10-21 \(1:2\)/);
+  assert.deepEqual([pos.dailyPL, pos.dailyPct, pos.dailyPLNote], [20, 2, undefined], 'Tuesday\'s P/L in Tuesday\'s units, and no trade note for a split');
+  // A quote from the split's first session is already post-split.
+  putQuote(db, i.id, { price: 51.5, prev_close: 51, quote_time: zonedToUtc('2026-10-21', 10, 0).toISOString() });
+  pos = computePortfolio(db, { now: zonedToUtc('2026-10-21', 10, 5) }).positions[0];
+  assert.deepEqual([pos.price, pos.marketValue, pos.priceNote, pos.quote.preSplit], [51.5, 1030, undefined, undefined]);
 });
 
 test('position daily % uses the same denominator as the totals, including same-day buys', () => {
@@ -197,6 +217,60 @@ test('Twelve Data earnings: with Canadian rows, a TSX ticker gets its own row an
   assert.ok(getSetting(ctx.db, 'earningsCoverage').bySymbol.MG, 'Canada is covered, so MG was checked');
 });
 
+test('earnings by listing: one row per ticker and date, moved dates stay with their listing, uncovered dates go', async () => {
+  const td = (ctx, get) => { ctx.providers.earnings = createTwelveData({ apiKey: 'k', plan: { perMinute: 1000, perDay: 100000 }, fetchImpl: async () => ok(get()) }); };
+  // Both SHOP listings report the same date: one row, linked to the first listing, with no flip-flopping history.
+  {
+    const { ctx, own } = listingCtx();
+    const ny = own('SHOP', 'NYSE', 'USD');
+    own('SHOP', 'TSX', 'CAD');
+    const D = addDays(today, 10);
+    td(ctx, () => ({ earnings: { [D]: [{ symbol: 'SHOP', exchange: 'NYSE', country: 'United States', time: 'Pre Market', eps_estimate: 0.3 }, { symbol: 'SHOP', exchange: 'TSX', country: 'Canada', time: '', eps_estimate: 0.41 }] } }));
+    for (let n = 0; n < 3; n++) await refreshEarnings(ctx);
+    const rows = earningsRows(ctx, 'symbol, instrument_id, time_hint, details_json');
+    assert.equal(rows.length, 1);
+    assert.deepEqual([rows[0].instrument_id, rows[0].time_hint], [ny.id, 'bmo']);
+    assert.equal(JSON.parse(rows[0].details_json).changes, undefined, 'no timing or estimate changes recorded');
+  }
+  // AT&T (T, NYSE) moves its date; TELUS (T, TSX) keeps its own: only AT&T's new row remembers the old date.
+  {
+    const { ctx, own } = listingCtx();
+    const att = own('T', 'NYSE', 'USD');
+    const telus = own('T', 'TSX', 'CAD');
+    const D1 = addDays(today, 5), D2 = addDays(today, 7), D3 = addDays(today, 30);
+    let cal = { earnings: { [D1]: [{ symbol: 'T', exchange: 'NYSE', time: 'Pre Market' }], [D2]: [{ symbol: 'T', exchange: 'TSX', country: 'Canada', time: 'Pre Market' }] } };
+    td(ctx, () => cal);
+    await refreshEarnings(ctx);
+    cal = { earnings: { [D3]: [{ symbol: 'T', exchange: 'NYSE', time: 'Pre Market' }], [D2]: [{ symbol: 'T', exchange: 'TSX', country: 'Canada', time: 'Pre Market' }] } };
+    await refreshEarnings(ctx);
+    const rows = earningsRows(ctx, 'instrument_id, date, details_json').map((r) => [r.instrument_id, r.date, JSON.parse(r.details_json).previousDate ?? null]);
+    assert.deepEqual(rows, [[telus.id, D2, null], [att.id, D3, D1]]);
+  }
+  // TELUS is the only holding and Finnhub cannot check it: the stale AT&T date stored earlier goes, though nothing came back.
+  {
+    const { ctx, own } = listingCtx();
+    const telus = own('T', 'TSX', 'CAD');
+    ctx.db.prepare("INSERT INTO events (instrument_id, symbol, type, date, title, source, fetched_at) VALUES (?, 'T', 'earnings', ?, 'T earnings', 'Finnhub earnings calendar', ?)").run(telus.id, addDays(today, 1), new Date().toISOString());
+    ctx.db.prepare("INSERT INTO events (symbol, type, date, title, source, fetched_at) VALUES ('T', 'earnings', ?, 'T earnings', 'Entered manually', ?)").run(addDays(today, 2), new Date().toISOString());
+    ctx.providers.earnings = createFinnhub({ apiKey: 'k', plan: { perMinute: 1000 }, fetchImpl: async () => ok({ earningsCalendar: [] }) });
+    const r = await refreshEarnings(ctx);
+    assert.deepEqual(r.notCovered.map((n) => n.symbol), ['T']);
+    assert.deepEqual(earningsRows(ctx, 'symbol, source'), [{ symbol: 'T', source: 'Entered manually' }], 'only the user\'s own entry is kept');
+    assert.deepEqual((await eventsTool(ctx, ['T'])).events.map((e) => e.date), [addDays(today, 2)]);
+  }
+  // One US ticker under two exchange names is asked about once and keeps the held listing's link.
+  {
+    const { ctx, own, watch } = listingCtx();
+    const spy = own('SPY', 'NYSE Arca', 'USD');
+    watch('SPY', 'NYSE');
+    const asked = [];
+    ctx.providers.earnings = createFinnhub({ apiKey: 'k', plan: { perMinute: 1000 }, fetchImpl: async (url) => { asked.push(new URL(url).searchParams.get('symbol')); return ok({ earningsCalendar: [{ symbol: 'SPY', date: addDays(today, 3), hour: 'bmo' }] }); } });
+    await refreshEarnings(ctx);
+    assert.deepEqual(asked, ['SPY']);
+    assert.deepEqual(earningsRows(ctx), [{ symbol: 'SPY', instrument_id: spy.id }]);
+  }
+});
+
 // ---------- Bank of Canada ----------
 
 test('every Bank of Canada observation returned is stored, so a gap in refreshes leaves no hole', async () => {
@@ -275,6 +349,28 @@ test('backend: a dropped or aborted stream charges an estimate of the output alr
     const p = call(b, ac.signal);
     setTimeout(() => ac.abort(), 150);
     await assert.rejects(p, (e) => e.kind === 'aborted' && e.partial.usage.output_tokens === 1001);
+  } finally {
+    api.server.closeAllConnections?.();
+    api.server.close();
+  }
+});
+
+test('backend: the output estimate is priced when the interrupted message carries per-attempt iterations', async () => {
+  const api = await mockApi((body, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    const st = { ...start, message: { ...start.message, usage: { input_tokens: 2000, output_tokens: 1, iterations: [{ type: 'message', model: 'claude-opus-5-5', input_tokens: 2000, output_tokens: 1 }] } } };
+    res.write(sse([st, { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }, { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'x'.repeat(8000) } }]));
+    setTimeout(() => res.socket.destroy(), 100);
+  });
+  try {
+    const b = backendFor(api.url);
+    const e = await call(b).catch((x) => x);
+    assert.equal(e.kind, 'network');
+    assert.equal(e.partial.usage.output_tokens, 2000);
+    assert.equal(e.partial.usage.iterations.at(-1).output_tokens, 2000, 'the attempt in progress carries the estimate');
+    const rec = recordUsage(makeCtx(), e.partial, 'claude-opus-5-5');
+    assert.equal(rec.tokens.output_tokens, 2000);
+    assert.ok(Math.abs(rec.cost - (2000 * 4 + 2000 * 20) / 1e6) < 1e-9, 'the streamed output is charged');
   } finally {
     api.server.closeAllConnections?.();
     api.server.close();

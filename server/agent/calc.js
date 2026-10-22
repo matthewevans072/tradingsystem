@@ -98,16 +98,20 @@ export function simulateTrade(portfolio, req) {
       else if (side === 'buy') throw new Error(`Specify which account would buy ${symbol} (${accts.join(', ') || 'no accounts recorded'}).`);
     }
   }
-  const pos = sameSymbol.find((p) => p.account === account) || null;
-  if (side === 'sell' && !pos) throw new Error(`No open position in ${symbol}${account ? ` in ${account}` : ''} to sell.`);
-  // A ticker not held now is checked against the user's own instrument record, if any.
-  const identity = pos ? pos.identityStatus : req.identityStatus;
+  const onExchange = (p) => !req.exchange || String(p.exchange).toUpperCase() === String(req.exchange).toUpperCase();
+  const pos = sameSymbol.find((p) => p.account === account && onExchange(p)) || null;
+  if (side === 'sell' && !pos) throw new Error(`No open position in ${symbol}${req.exchange ? ` on ${req.exchange}` : ''}${account ? ` in ${account}` : ''} to sell.`);
+  // Not held in this account: the listing the request names (the account's own
+  // instrument record, or a leg's exchange) comes before the ticker held elsewhere.
+  const listing = pos || sameSymbol.find((p) => (req.exchange ? onExchange(p) : !req.currency || p.currency === req.currency)) || null;
+  const identity = pos ? pos.identityStatus : req.identityStatus ?? listing?.identityStatus;
   if (identity && identity !== 'confirmed' && req.price == null) {
     throw new Error(`${symbol}'s instrument identity is not confirmed, so it has no trusted quote. Confirm it first or give an assumed price.`);
   }
-  const currency = pos?.currency || sameSymbol[0]?.currency || req.currency;
+  const currency = listing?.currency || req.currency;
   if (!currency) throw new Error(`Not holding ${symbol}; its trading currency is unknown.`);
-  const quote = pos?.quote?.price != null ? pos.quote : sameSymbol.find((p) => p.quote?.price != null)?.quote || req.quote || null;
+  const quote = pos?.quote?.price != null ? pos.quote
+    : sameSymbol.find((p) => listing && p.exchange === listing.exchange && p.quote?.price != null)?.quote || req.quote || null;
   const px = resolvePrice({ price: req.price, quote });
   const fee = resolveFees(req.fees, req.typicalFee ?? null);
   const cash = cashFor(portfolio, account, currency);
@@ -227,7 +231,7 @@ export function simulateTrade(portfolio, req) {
   const addedValue = shares * valuePrice;
   const fx = portfolio.combined?.fxRate ?? null;
   return {
-    kind: 'hypothetical', side, symbol, exchange: pos?.exchange || sameSymbol[0]?.exchange || req.exchange || null, account, currency,
+    kind: 'hypothetical', side, symbol, exchange: listing?.exchange || req.exchange || null, account, currency,
     shares, sharesBefore: pos?.shares || 0, sharesAfter: newShares,
     price: round(px.price, 4), priceBasis: px.basis, priceUserSpecified: px.userSpecified,
     totalCost: fee.known ? round(cost) : null, costBeforeFees: fee.known ? null : round(cost), fees: fee.known ? round(fee.fees) : null, feesKnown: fee.known,
@@ -249,7 +253,7 @@ export function simulateTrade(portfolio, req) {
 function applyToPortfolio(p, sc) {
   const out = { ...p, positions: p.positions.map((x) => ({ ...x })), cash: (p.cash || []).map((c) => ({ ...c })), totals: JSON.parse(JSON.stringify(p.totals)), combined: p.combined ? { ...p.combined } : null };
   const rate = toCadRate(out, sc.currency);
-  const posIdx = out.positions.findIndex((x) => x.symbol === sc.symbol && x.account === sc.account);
+  const posIdx = out.positions.findIndex((x) => x.symbol === sc.symbol && x.account === sc.account && (!sc.exchange || x.exchange === sc.exchange));
   const valuePrice = posIdx >= 0 ? (out.positions[posIdx].price ?? sc.price) : sc.price;
   const deltaShares = sc.side === 'sell' ? -sc.shares : sc.shares;
   const deltaValue = deltaShares * valuePrice;
@@ -351,7 +355,8 @@ export function simulateTrades(portfolio, legs, extra = () => ({})) {
         if (leg.side !== 'buy') throw new Error('"proceeds" and "available_cash" apply to buy and convert legs.');
         const held = p.positions.filter((x) => x.symbol === String(leg.symbol || '').toUpperCase());
         const account = leg.account || (held.length === 1 ? held[0].account : accountsKnown(p).length === 1 ? accountsKnown(p)[0] : null);
-        const currency = held[0]?.currency || ex.currency;
+        const inAccount = held.find((x) => x.account === account && (!req.exchange || String(x.exchange).toUpperCase() === String(req.exchange).toUpperCase()));
+        const currency = inAccount?.currency || ex.currency || held[0]?.currency;
         if (!account || !currency) throw new Error('Name the account for this buy leg.');
         const f = fromPlan(leg.cash_amount, 'cash_amount', account, currency);
         req = { ...req, account, cash_amount: f.amount };
@@ -588,7 +593,9 @@ export function dailyAttribution(portfolio, { fxPrev, sessionDate } = {}) {
         quoteTime: p.quote?.quoteTime, quoteTimeET: p.quote?.quoteTime ? formatNy(p.quote.quoteTime) : null, freshness: p.quote?.freshness,
       })).sort((a, b) => a.dailyPL - b.dailyPL),
       staleInputs: ps.filter((p) => p.quote && p.quote.freshness !== 'fresh').map((p) => p.symbol),
-      noPreviousClose: portfolio.positions.filter((p) => p.currency === ccy && p.marketValue != null && p.dailyPL == null).map((p) => p.symbol),
+      noPreviousClose: portfolio.positions.filter((p) => p.currency === ccy && p.marketValue != null && p.dailyPL == null && p.quote?.prevClose == null).map((p) => p.symbol),
+      // Bought after the session the quote belongs to (e.g. before today's open): no change yet.
+      notHeldDuringSession: portfolio.positions.filter((p) => p.currency === ccy && p.marketValue != null && p.dailyPL == null && p.quote?.prevClose != null).map((p) => p.symbol),
       unpriced: portfolio.positions.filter((p) => p.currency === ccy && p.marketValue == null).map((p) => p.symbol),
     };
   }

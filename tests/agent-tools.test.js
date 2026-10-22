@@ -7,7 +7,7 @@ import { NOW, makeCtx, seed } from './agent-helpers.js';
 import { putQuote } from './helpers.js';
 import { addTransaction, findInstrument, updateInstrument, setCash, computePortfolio } from '../server/portfolio.js';
 import { createToolbox } from '../server/agent/tools.js';
-import { simulateTrades } from '../server/agent/calc.js';
+import { simulateTrades, dailyAttribution } from '../server/agent/calc.js';
 import { Ledger } from '../server/agent/ledger.js';
 import { storeNews } from '../server/news.js';
 import { zonedToUtc } from '../server/time.js';
@@ -56,6 +56,16 @@ test('a previously held instrument outside the catalog is simulated from the use
   assert.deepEqual([tfsa.exchange, tfsa.currency, tfsa.price], ['TSX', 'CAD', 150]);
   const rrsp = await h.simulate_trade({ ...noArgs, symbol: 'SHOP', side: 'buy', shares: 1, account: 'RRSP' });
   assert.deepEqual([rrsp.exchange, rrsp.currency, rrsp.price], ['NYSE', 'USD', 105]);
+  // Still so when another account holds the ticker on its other listing; a leg's exchange is respected.
+  addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-10-05', account: 'TFSA', symbol: 'SHOP', exchange: 'TSX', currency: 'CAD', quantity: 10, price: 140, fees: 0 });
+  setCash(ctx.db, { account: 'RRSP', currency: 'USD', amount: 1000, asOf: '2026-10-20', confirmed: true });
+  const held = await h.simulate_trade({ ...noArgs, symbol: 'SHOP', side: 'buy', shares: 1, account: 'RRSP' });
+  assert.deepEqual([held.exchange, held.currency, held.price, held.cashBefore, held.sharesBefore], ['NYSE', 'USD', 105, 1000, 0]);
+  const inTfsa = await h.simulate_trade({ ...noArgs, symbol: 'SHOP', side: 'buy', shares: 1, account: 'TFSA' });
+  assert.deepEqual([inTfsa.exchange, inTfsa.currency, inTfsa.price, inTfsa.sharesBefore], ['TSX', 'CAD', 150, 10]);
+  const legs = await h.simulate_trades({ legs: [{ side: 'buy', symbol: 'SHOP', shares: 1, account: 'RRSP', exchange: 'NYSE' }, { side: 'buy', symbol: 'SHOP', shares: 1, account: 'TFSA' }] });
+  assert.deepEqual(legs.legs.map((l) => [l.account, l.exchange, l.currency, l.price]), [['RRSP', 'NYSE', 'USD', 105], ['TFSA', 'TSX', 'CAD', 150]]);
+  await assert.rejects(h.simulate_trades({ legs: [{ side: 'sell', symbol: 'SHOP', shares: 1, account: 'TFSA', exchange: 'NYSE' }] }), /No open position in SHOP on NYSE in TFSA/);
 
   // An unconfirmed record is not priced from its stored quote.
   addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-08-03', account: 'TFSA', symbol: 'ZZQX', exchange: 'NASDAQ', currency: 'USD', quantity: 1, price: 10, fees: 0 });
@@ -246,4 +256,20 @@ test('the currency effect is shown only for consecutive Bank of Canada rates int
   assert.match(hol.note, /publishes no USD\/CAD rate for 2026-10-12/);
   const only = await move([['2026-10-21', 1.388]]);
   assert.match(only.note, /No USD\/CAD rate before 2026-10-21 is stored/);
+});
+
+test('a position bought after its quote\'s session is not listed as having no previous close', () => {
+  const ctx = makeCtx();
+  addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-10-21', account: 'TFSA', symbol: 'NBIS', exchange: 'NASDAQ', currency: 'USD', quantity: 10, price: 105, fees: 0 });
+  addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-10-01', account: 'TFSA', symbol: 'VRT', exchange: 'NYSE', currency: 'USD', quantity: 10, price: 100, fees: 0 });
+  addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-10-01', account: 'TFSA', symbol: 'AAPL', exchange: 'NASDAQ', currency: 'USD', quantity: 1, price: 200, fees: 0 });
+  putQuote(ctx.db, findInstrument(ctx.db, 'NBIS', 'NASDAQ').id, { price: 105, prev_close: 95, quote_time: zonedToUtc('2026-10-20', 16, 0).toISOString() });
+  putQuote(ctx.db, findInstrument(ctx.db, 'VRT', 'NYSE').id, { price: 130, prev_close: 128, quote_time: zonedToUtc('2026-10-20', 16, 0).toISOString() });
+  putQuote(ctx.db, findInstrument(ctx.db, 'AAPL', 'NASDAQ').id, { price: 240, quote_time: zonedToUtc('2026-10-20', 16, 0).toISOString() });
+  const p = computePortfolio(ctx.db, { now: zonedToUtc('2026-10-21', 8, 30) });
+  assert.match(p.positions.find((x) => x.symbol === 'NBIS').dailyPLNote, /Not held during the 2026-10-20 session/);
+  const a = dailyAttribution(p, { fxPrev: null, sessionDate: '2026-10-20' }).byCurrency.USD;
+  assert.deepEqual(a.noPreviousClose, ['AAPL']);
+  assert.deepEqual(a.notHeldDuringSession, ['NBIS']);
+  assert.deepEqual(a.contributions.map((c) => c.symbol), ['VRT']);
 });

@@ -206,8 +206,13 @@ export async function refreshEarnings(ctx, { days = 60, lookbackDays = 10, symbo
   const held = trackedInstruments(ctx.db).filter((i) => i.identity_status === 'confirmed');
   const watch = ctx.db.prepare(`SELECT w.symbol, w.exchange, i.id, i.provider_symbol FROM watchlist w
     LEFT JOIN instruments i ON i.symbol = w.symbol AND i.exchange = w.exchange`).all();
+  // Calendars match a ticker by market (US or Canada), so two US exchange names for
+  // one ticker are one listing: the first (held before watched, or one with a record).
   const listings = new Map();
-  for (const i of [...held, ...watch]) listings.set(`${i.symbol}|${i.exchange}`, { id: i.id ?? null, symbol: i.symbol, exchange: i.exchange, provider_symbol: i.provider_symbol ?? null });
+  for (const i of [...held, ...watch]) {
+    const k = `${i.symbol}|${exchangeGroup(i.exchange)}`;
+    if (!listings.has(k) || (listings.get(k).id == null && i.id != null)) listings.set(k, { id: i.id ?? null, symbol: i.symbol, exchange: i.exchange, provider_symbol: i.provider_symbol ?? null });
+  }
   let instruments = [...listings.values()];
   // A named ticker that is neither held nor watched is checked as a US listing.
   if (only?.length) instruments = instruments.filter((i) => only.includes(i.symbol)).concat(only.filter((s) => !instruments.some((i) => i.symbol === s)).map((s) => ({ id: null, symbol: s, exchange: null, provider_symbol: null })));
@@ -219,10 +224,22 @@ export async function refreshEarnings(ctx, { days = 60, lookbackDays = 10, symbo
   try {
     // Providers return { events, notCovered } (listings they cannot check); a plain list is events only.
     const res = await p.getEarnings(instruments, from, to);
-    const { events: list, notCovered = [] } = Array.isArray(res) ? { events: res } : res;
+    const { events: found, notCovered = [] } = Array.isArray(res) ? { events: res } : res;
     // Events are linked to the listing they were matched to, not to any instrument with that ticker.
-    const idFor = (e) => (e.instrument_id !== undefined ? e.instrument_id
-      : instruments.find((i) => i.symbol === e.symbol && (!e.exchange || exchangeGroup(i.exchange) === exchangeGroup(e.exchange)))?.id ?? null);
+    const idFor = (e) => e.instrument_id ?? instruments.find((i) => i.id != null && i.symbol === e.symbol && (!e.exchange || exchangeGroup(i.exchange) === exchangeGroup(e.exchange)))?.id ?? null;
+    // The events table keeps one row per ticker, date and source: when two listings of a ticker
+    // report the same date, the first listing asked about keeps it, so the row's history does
+    // not flip between them on every refresh.
+    const rank = (e) => { const n = instruments.findIndex((i) => i.id != null && i.id === idFor(e)); return n < 0 ? instruments.length : n; };
+    const byKey = new Map();
+    for (const e of found) {
+      const k = `${e.symbol}|${e.date}|${e.source}`;
+      if (!byKey.has(k) || rank(e) < rank(byKey.get(k))) byKey.set(k, e);
+    }
+    const list = [...byKey.values()];
+    // A listing without an instrument record does not unlink a row from one in the same market.
+    const exchangeOf = new Map(ctx.db.prepare('SELECT id, exchange FROM instruments').all().map((i) => [i.id, i.exchange]));
+    const linkFor = (e, row) => idFor(e) ?? (exchangeOf.has(row.instrument_id) && exchangeGroup(exchangeOf.get(row.instrument_id)) === exchangeGroup(e.exchange) ? row.instrument_id : null);
     const now = nowIso();
     const existing = ctx.db.prepare("SELECT * FROM events WHERE type = 'earnings' AND symbol = ? AND date = ? AND source = ?");
     const insert = ctx.db.prepare(`INSERT INTO events (instrument_id, symbol, type, date, time_hint, title, details_json, source, fetched_at, first_seen_at)
@@ -239,23 +256,34 @@ export async function refreshEarnings(ctx, { days = 60, lookbackDays = 10, symbo
       for (const k of ['epsEstimate', 'revenueEstimate', 'epsActual', 'revenueActual']) {
         if (details[k] != null && old[k] !== details[k]) changes.push({ field: k, from: old[k] ?? null, to: details[k], at: now });
       }
-      update.run(idFor(e), e.time_hint, JSON.stringify({ ...details, ...(old.previousDate ? { previousDate: old.previousDate, dateChangedAt: old.dateChangedAt } : {}), ...(changes.length ? { changes: changes.slice(-10) } : {}) }), now, row.id);
+      update.run(linkFor(e, row), e.time_hint, JSON.stringify({ ...details, ...(old.previousDate ? { previousDate: old.previousDate, dateChangedAt: old.dateChangedAt } : {}), ...(changes.length ? { changes: changes.slice(-10) } : {}) }), now, row.id);
     }
     // Future dates from this source that the provider no longer lists were superseded (a moved
-    // date): the new date remembers the old one. The same drops dates stored for a listing that
-    // is not covered (an earlier bare-ticker match), unless a covered listing still returns them.
+    // date): the new date of the same listing remembers the old one. The same drops dates stored
+    // for a listing that is not covered (an earlier bare-ticker match), unless a covered listing
+    // still returns them.
     const returned = new Set(list.map((e) => `${e.symbol}|${e.date}`));
     const sources = [...new Set(list.map((e) => e.source))];
+    const sameListing = (e, row) => row.instrument_id == null || idFor(e) == null || idFor(e) === row.instrument_id;
     for (const src of sources) {
-      for (const row of ctx.db.prepare("SELECT id, symbol, date FROM events WHERE type = 'earnings' AND source = ? AND date >= ? AND date <= ?").all(src, today, to)) {
+      for (const row of ctx.db.prepare("SELECT id, symbol, instrument_id, date FROM events WHERE type = 'earnings' AND source = ? AND date >= ? AND date <= ?").all(src, today, to)) {
         if (!symbols.includes(row.symbol) || returned.has(`${row.symbol}|${row.date}`)) continue;
-        const moved = list.filter((e) => e.symbol === row.symbol && e.source === src).sort((a, b) => Math.abs(Date.parse(a.date) - Date.parse(row.date)) - Math.abs(Date.parse(b.date) - Date.parse(row.date)))[0];
+        const moved = list.filter((e) => e.symbol === row.symbol && e.source === src && sameListing(e, row)).sort((a, b) => Math.abs(Date.parse(a.date) - Date.parse(row.date)) - Math.abs(Date.parse(b.date) - Date.parse(row.date)))[0];
         if (moved) {
           const target = existing.get(moved.symbol, moved.date, src);
           const det = target?.details_json ? JSON.parse(target.details_json) : {};
           if (target) ctx.db.prepare('UPDATE events SET details_json = ? WHERE id = ?').run(JSON.stringify({ ...det, previousDate: row.date, dateChangedAt: now }), target.id);
         }
         ctx.db.prepare('DELETE FROM events WHERE id = ?').run(row.id);
+      }
+    }
+    // A listing the provider cannot check keeps no future date from it, even when nothing else
+    // came back from the provider.
+    const providerSources = [...new Set([`${p.name} earnings calendar`, ...sources])];
+    for (const n of notCovered) {
+      const id = instruments.find((i) => i.symbol === n.symbol && i.exchange === n.exchange)?.id ?? null;
+      for (const row of ctx.db.prepare(`SELECT id, symbol, instrument_id, date FROM events WHERE type = 'earnings' AND symbol = ? AND date >= ? AND source IN (${providerSources.map(() => '?').join(',')})`).all(n.symbol, today, ...providerSources)) {
+        if (!returned.has(`${row.symbol}|${row.date}`) && (row.instrument_id == null || row.instrument_id === id)) ctx.db.prepare('DELETE FROM events WHERE id = ?').run(row.id);
       }
     }
     // Coverage is kept per ticker, so checking one ticker leaves the others' record intact.

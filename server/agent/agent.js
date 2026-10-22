@@ -73,7 +73,8 @@ function messageOut(m) {
 // Follow-up suggestions are sent as the user's own words when clicked, so one
 // phrased as an instruction ("Record that I sold 10 VRT at 98") would satisfy
 // the proposal intent check without the user having said it. Drop those.
-const ACTION_START = /^\W*(?:please\s+)?(?:record|log|add|set|update|change|remove|delete|save|enter|create|put|mark|note|sell|buy|trim|purchase|short|place|execute|exit|liquidate|confirm|apply|cancel)\b|\b(?:for me|on my behalf)\b/i;
+// A hyphenated word ("Short-term", "Sell-side", "Add-on") is not an instruction.
+const ACTION_START = /^\W*(?:please\s+)?(?:record|log|add|set|update|change|remove|delete|save|enter|create|put|mark|note|sell|buy|trim|purchase|short|place|execute|exit|liquidate|confirm|apply|cancel)\b(?!-)|\b(?:for me|on my behalf)\b/i;
 const CHANGE_TYPES = ['add_transaction', 'set_cash', 'add_price_alert', 'update_alert_threshold', 'set_strategy', 'remove_price_alert'];
 export function unsafeFollowUp(text) {
   const f = String(text || '');
@@ -95,25 +96,49 @@ function staleState(item) {
   return item.updating === false ? 'not_updating' : null;
 }
 const mentions = (text, sym) => !!sym && new RegExp(`(^|[^A-Za-z0-9])${sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^A-Za-z0-9]|$)`).test(text);
-// A model-written gap that says the data is out of date.
-const STALE_WORDS = /\bstale\b|out[- ]of[- ]date|\boutdated\b|\bdelayed\b|\bas of\b|\bnot (?:been )?(?:updated|refreshed)\b|\bundated\b|\btimestamp/i;
-// Statements about prices, holdings or the market rather than about the app.
-const MARKET_TALK = /\b(?:fell|rose|dropped|gained|rallied|slumped|surged|plunged|jumped|climbed|declined|tumbled|soared|sank|sell-?off|main drag|drag(?:ged|ging)|outperform\w*|underperform\w*|overweight|underweight|you (?:hold|own)|you(?:['’]re| are) (?:\w+ )?(?:up|down|long|short|concentrated|exposed)|your (?:\w+ ){0,2}(?:portfolio|positions?|holdings?|stakes?|cash|exposure|allocation) (?:is|are|was|were|has|have|looks?|seems?|remains?|leans?)|(?:market|stocks?|shares|index|sector) (?:is|are|was|were) (?:up|down|higher|lower|flat))\b/i;
+// A model-written gap about an instrument's data: it says the data is out of
+// date, or it is about the instrument's quote, price or market data.
+const STALE_WORDS = /\bstale\b|out[- ]of[- ]date|\boutdated\b|\bdelayed\b|\bas of\b|\bnot (?:been )?(?:updated|refreshed)\b|n['’]t (?:been )?(?:updated|refreshed)\b|\bundated\b|\btimestamp|\b(?:minutes?|hours?|days?) (?:old|ago|behind)\b|\bquotes?\b|\bprices?\b(?! targets?)|\bpricing\b|\b(?:market|price|quote|trading) data\b/i;
+// Statements about prices, holdings or the market rather than about the app
+// ("the Positions page lists everything you hold", "your portfolio is stored
+// locally" and "the model declined to answer" are about the app).
+const MARKET_TALK = /\b(?:fell|rose|(?<!\b(?:was|were|been|be|is|are|gets?|got) )dropped|gained|rallied|slumped|surged|plunged|jumped|climbed|declined(?! to\b)|tumbled|soared|sank|sell-?off|main drag|drag(?:ged|ging)|outperform\w*|underperform\w*|overweight|underweight|(?<!\b(?:everything|anything|what|whatever|all|which|that) )you (?:hold|own)|you(?:['’]re| are) (?:\w+ )?(?:up|down|long|short|concentrated|exposed)|your (?:\w+ ){0,2}(?:portfolio|positions?|holdings?|stakes?|cash|exposure|allocation) (?:is|are|was|were|has|have|looks?|seems?|remains?|leans?)(?! (?:(?:only|never|not|always|also) )?(?:stored|saved|kept|entered|shown|listed|computed|calculated|recorded|loaded|backed|exported|imported|encrypted|sent|edited|read|held locally|local)\b)|(?:market|stocks?|shares|index|sector) (?:is|are|was|were) (?:up|down|higher|lower|flat))\b/i;
+// Clarifying questions, refusals and what the app cannot do state no facts.
+const NOT_A_FACT = /\b(?:cannot|can['’]?t|can not|unable to|no brokerage|(?:is|are) not (?:tracked|supported|covered|available|stored))\b/i;
+const statements = (text) => text.split(/(?<=[.!?])\s+|\n+/).filter((s) => !/\?\W*$/.test(s))
+  .flatMap((s) => s.split(/;\s+|,?\s+(?:but|while|although|though|whereas|so|because|since)\s+|,\s+and\s+/i)).filter((c) => !NOT_A_FACT.test(c)).join('\n');
+// Numbered steps ("1. Open Positions", "Step 2: …") are not figures.
+const STEP_NUMBER = /(?:^|[\n.!?:;]\s*)\d{1,2}[.)]\s|\bstep \d+\b/gi;
 
 // Company names an answer may use instead of a ticker ("Vertiv" for VRT): the
-// first word of the stored or catalog name, or two when the first is generic
-// ("First Quantum", "Bank of Montreal").
-const GENERIC_WORD = /^(?:first|american|canadian|global|general|national|united|international|royal|bank|advanced|applied|digital|western|new|trade)$/i;
+// stored or catalog name without its legal suffix ("Capital One Financial"),
+// and its first word when that is distinctive ("Marvell"). An ordinary first
+// word takes the next with it ("Capital One", "First Quantum", "Bank of
+// Montreal"); a fund family never stands alone ("iShares"); and a name that
+// another instrument's name contains ("Vanguard S&P 500" in "Vanguard S&P 500
+// Index ETF") is not used.
+const NAME_SUFFIX = /\s+(?:inc|incorporated|corp|corporation|co|company|ltd|limited|plc|n\.?v|s\.?a|ag|se|llc|l\.?p|holdings?|group|trust|etf|fund|index|portfolio|shares|class [a-z])\.?$/i;
+const COMMON_WORD = /^(?:first|american|canadian|global|general|national|united|international|royal|bank|advanced|applied|digital|western|eastern|northern|southern|new|trade|open|capital|best|core|select|total|true|home|great|north|south|east|west|central|pacific|atlantic|energy|power|public|park|life|health|data|cash|market|check|block|target|simple|smart|real|prime|premier|golden|gold|silver|blue|green|red|black|white|sun|star|air|sky|live|liberty|summit|alpha|all|one|world|cross|key|main|peak|union|federal|state|city|standard|universal|super|ultra|daily|direct|service|intuitive|constellation|taiwan|china|japan|india|texas)$/i;
+const FUND_FAMILY = /^(?:ishares|vanguard|proshares|invesco|direxion|vaneck|spdr|schwab|fidelity|bmo|horizons|harvest|hamilton|evolve|purpose|wisdomtree|ark|franklin|jpmorgan|dimensional|cibc|td|rbc|mackenzie)$/i;
+function cleanName(n) {
+  let s = String(n || '').replace(/\([^)]*\)/g, ' ').split(',')[0].replace(/^the\s+/i, '').replace(/\s+/g, ' ').trim();
+  for (let prev = null; prev !== s;) { prev = s; s = s.replace(NAME_SUFFIX, '').trim(); }
+  return s;
+}
 function companyNames(ctx, sym) {
   if (!sym) return [];
-  const full = [
-    ...ctx.db.prepare('SELECT name, exchange FROM instruments WHERE symbol = ?').all(sym).flatMap((i) => [i.name, ctx.catalog?.lookup(sym, i.exchange)?.name]),
-    ...(ctx.catalog?.all() || []).filter((e) => e.symbol === sym).map((e) => e.name),
-  ];
-  return [...new Set(full.map((n) => {
-    const w = String(n || '').replace(/^the\s+/i, '').match(/[A-Za-z][\w&'-]*/g) || [];
-    return w.slice(0, GENERIC_WORD.test(w[0]) ? (w[1] === 'of' ? 3 : 2) : 1).join(' ');
-  }).filter((x) => x.length > 2 && x !== sym))];
+  const named = [
+    ...ctx.db.prepare('SELECT symbol, name, exchange FROM instruments').all().flatMap((i) => [[i.symbol, i.name], [i.symbol, ctx.catalog?.lookup(i.symbol, i.exchange)?.name]]),
+    ...(ctx.catalog?.all() || []).map((e) => [e.symbol, e.name]),
+  ].filter(([, n]) => n);
+  const others = named.filter(([s]) => s !== sym).map(([, n]) => n);
+  const own = named.filter(([s]) => s === sym).flatMap(([, n]) => {
+    const full = cleanName(n);
+    const w = full.split(' ');
+    if (w.length < 2 || FUND_FAMILY.test(w[0])) return [full];
+    return [full, COMMON_WORD.test(w[0]) ? w.slice(0, w[1] === 'of' ? 3 : 2).join(' ') : w[0]];
+  });
+  return [...new Set(own)].filter((x) => x.length > 2 && x !== sym && !others.some((o) => mentions(o, x)));
 }
 
 // `held` (tickers held) and `names` (ticker -> company names) come from the
@@ -179,7 +204,8 @@ export function validateAnswer(raw, ledger, { toolsRun = null, held = [], names 
   }
   // Stale, undated or no-longer-updating market data the answer relies on (cited,
   // or the ticker or company is mentioned anywhere) gets an explicit gap note,
-  // unless the model's own gap cites it or says it is out of date.
+  // unless the model's own gap cites it, or names the instrument and says its
+  // data is out of date or is about its quote, price or market data.
   const allText = [a.short_answer, a.horizon, a.what_would_change_it, ...a.details.map((d) => d.text), ...a.alternatives.flatMap((x) => [x.option, x.case_for, x.case_against])].filter(Boolean).join('\n');
   const cited = new Set(a.details.flatMap((d) => d.refs));
   const gaps = a.details.filter((d) => d.category === 'data_gap');
@@ -200,9 +226,10 @@ export function validateAnswer(raw, ledger, { toolsRun = null, held = [], names 
   if (uncited) issues.push(`${uncited} factual point(s) had no supporting reference and are marked uncited.`);
   if (!a.short_answer) issues.push('The model returned no short answer.');
   // Nothing retrieved: only an answer about using the app (no numbers, records,
-  // advice, holdings or market moves) is exempt.
-  if (toolsRun === 0 && (/\d/.test(allText) || a.details.some((d) => MUST_CITE.includes(d.category)) || a.alternatives.length || a.horizon || a.what_would_change_it
-    || a.affected_symbols.length || held.some((s) => named(allText, s)) || MARKET_TALK.test(allText))) {
+  // advice, or statements about holdings or market moves) is exempt.
+  const facts = statements(allText);
+  if (toolsRun === 0 && (/\d/.test(allText.replace(STEP_NUMBER, ' ')) || a.details.some((d) => MUST_CITE.includes(d.category)) || a.alternatives.length || a.horizon || a.what_would_change_it
+    || a.affected_symbols.length || held.some((s) => named(facts, s)) || MARKET_TALK.test(facts))) {
     issues.push('No records were retrieved for this answer, so it may rest on earlier answers rather than current data.');
   }
   return { answer: { ...a, executionClaimRemoved: removed.length > 0, notes }, issues, removed };
@@ -359,7 +386,9 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
   let rephraseAsked = false;
   let stopNote = null;
   let known = null; // held tickers and company names, for validateAnswer
-  const records = () => (known ||= { held: computePortfolio(db, { now, catalog: ctx.catalog }).positions.map((p) => p.symbol), names: (sym) => companyNames(ctx, sym) });
+  const nameCache = new Map();
+  const records = () => (known ||= { held: computePortfolio(db, { now, catalog: ctx.catalog }).positions.map((p) => p.symbol),
+    names: (sym) => (nameCache.has(sym) ? nameCache.get(sym) : nameCache.set(sym, companyNames(ctx, sym)).get(sym)) });
   // Run one tool call; returns its tool_result block.
   const runCall = async (call) => {
     if (signal?.aborted) throw new BackendError('aborted', ABORTED);
@@ -415,14 +444,24 @@ async function answerQuestion(ctx, { conv, conversationId, question, pageContext
         // Last round: the other calls (read-only tools or proposals) still run,
         // so a proposal the answer mentions exists, but the answer never saw
         // their results.
+        // A browser that disconnects meanwhile stops the remaining calls, but the
+        // answer already checked is still saved.
         const late = calls.filter((c) => c.name !== 'submit_answer');
         if (late.length) {
           const refsBefore = new Set(ledger.items.map((i) => i.ref));
           const logged = toolLog.length;
-          for (const call of late) await runCall(call);
+          const ran = [];
+          for (const call of late) {
+            if (signal?.aborted) break;
+            await runCall(call);
+            ran.push(call);
+          }
+          const skipped = late.slice(ran.length);
           ledger.remove(ledger.items.filter((i) => !refsBefore.has(i.ref)).map((i) => i.ref));
-          v.answer.notes.push(`The answer was written before these requests ran, so it does not reflect their results: ${late.map((c) => c.name).join(', ')}.`);
+          if (ran.length) v.answer.notes.push(`The answer was written before these requests ran, so it does not reflect their results: ${ran.map((c) => c.name).join(', ')}.`);
+          if (skipped.length) v.answer.notes.push(`The browser disconnected before these requests sent with the answer ran: ${skipped.map((c) => c.name).join(', ')}.`);
           if (toolLog.slice(logged).some((t) => t.tool === 'propose_record_change' && !t.ok)) v.issues.push('A record change sent with the answer was refused or failed, so there may be nothing to confirm.');
+          if (skipped.some((c) => c.name === 'propose_record_change')) v.issues.push('A record change sent with the answer was not prepared because the browser disconnected, so there is nothing to confirm.');
         }
         checked = v;
         break;

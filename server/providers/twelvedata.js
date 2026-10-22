@@ -6,6 +6,18 @@ import { zonedToUtc, NY, TORONTO } from '../time.js';
 import { exchangeGroup, sessionAt } from '../calendar.js';
 
 const BASE = 'https://api.twelvedata.com';
+const RANGE_PAGE = 5000; // Twelve Data's largest outputsize
+
+// time_series values (exchange-local datetimes) → UTC bars tagged by session.
+function intradayRows(d, inst) {
+  const tz = d.meta?.exchange_timezone || (exchangeGroup(inst.exchange) === 'TSX' ? TORONTO : NY);
+  return (d.values || []).map((v) => {
+    const [day, time] = v.datetime.split(' ');
+    const [hh, mm] = time.split(':').map(Number);
+    const at = zonedToUtc(day, hh, mm, tz);
+    return { ts: at.toISOString(), o: toNum(v.open), h: toNum(v.high), l: toNum(v.low), c: toNum(v.close), v: toNum(v.volume), session: sessionAt(at, inst.exchange).session };
+  });
+}
 
 export function createTwelveData({ apiKey, plan = {}, fetchImpl } = {}) {
   const limiter = new RateLimiter({ perMinute: plan.perMinute || 8, perDay: plan.perDay || 800 });
@@ -111,13 +123,27 @@ export function createTwelveData({ apiKey, plan = {}, fetchImpl } = {}) {
       const params = { ...symbolParams(inst), interval, start_date: `${date} 00:00:00`, end_date: `${date} 23:59:59`, order: 'ASC' };
       if (plan.extendedHours) params.prepost = 'true';
       const d = await call('/time_series', params, 1);
-      const tz = d.meta?.exchange_timezone || (exchangeGroup(inst.exchange) === 'TSX' ? TORONTO : NY);
-      return (d.values || []).map((v) => {
-        const [day, time] = v.datetime.split(' ');
-        const [hh, mm] = time.split(':').map(Number);
-        const at = zonedToUtc(day, hh, mm, tz);
-        return { ts: at.toISOString(), o: toNum(v.open), h: toNum(v.high), l: toNum(v.low), c: toNum(v.close), v: toNum(v.volume), session: sessionAt(at, inst.exchange).session };
-      });
+      return intradayRows(d, inst);
+    },
+
+    // Regular-session intraday bars between two exchange-local dates (Strategy
+    // Lab history), oldest first. A response at the 5,000-bar cap may cover
+    // either end of the range, so both uncovered sides are requested next; each
+    // page is one request through the rate limiter.
+    async getIntradayRange(inst, from, to, interval = '15min') {
+      const out = new Map();
+      const todo = [[`${from} 00:00:00`, `${to} 23:59:59`]];
+      for (let page = 0; todo.length && page < 100; page++) {
+        const [lo, hi] = todo.shift();
+        const d = await call('/time_series', { ...symbolParams(inst), interval, start_date: lo, end_date: hi, outputsize: String(RANGE_PAGE), order: 'ASC' }, 1);
+        const values = [...(d.values || [])].sort((a, b) => (a.datetime < b.datetime ? -1 : a.datetime > b.datetime ? 1 : 0));
+        for (const b of intradayRows({ ...d, values }, inst)) out.set(b.ts, b);
+        if (values.length < RANGE_PAGE) continue;
+        const first = values[0].datetime, last = values[values.length - 1].datetime;
+        if (first > lo && first < hi) todo.push([lo, first]);
+        if (last < hi && last > lo) todo.push([last, hi]);
+      }
+      return [...out.values()].sort((a, b) => (a.ts < b.ts ? -1 : 1));
     },
 
     // instruments: { id, symbol, exchange, provider_symbol }. Each calendar row

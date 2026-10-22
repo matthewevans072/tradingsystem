@@ -8,6 +8,7 @@ import { buildProviders, refreshQuotes, refreshDailyBars } from './marketdata.js
 import { computePortfolio } from './portfolio.js';
 import { runAssessments } from './assessments.js';
 import { seedDemo } from './providers/demo.js';
+import { attachLab } from './strategy/lab.js';
 
 export function dbFileFor(cfg, mode) {
   return path.join(cfg.dataDir, mode === 'demo' ? 'demo.sqlite' : 'signal-desk.sqlite');
@@ -20,6 +21,8 @@ export function createContext(cfg, mode = 'real', { fetchImpl, file } = {}) {
   ctx.providers = buildProviders(ctx);
   seedWatchlist(db, ctx.catalog);
   ctx.rebuildProviders = () => { ctx.providers = buildProviders(ctx); };
+  // Strategy Lab: its own database, opened on first use (the demo seeds synthetic data then).
+  attachLab(ctx);
   if (mode === 'demo') {
     seedDemo(db);
     ctx.ready = primeDemo(ctx);

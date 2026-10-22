@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { openDb, nowIso } from './db.js';
 import { createCatalog } from './catalog.js';
 import { log } from './log.js';
+import { labDbFile, backupLabDb } from './strategy/store.js';
 
 const KEEP_AUTO = 30;
 
@@ -21,12 +22,39 @@ function stamp() {
 
 export function createBackup(ctx, { reason = 'manual' } = {}) {
   const dir = backupDir(ctx.cfg);
-  const name = `signal-desk-${ctx.mode}-${stamp()}-${reason}.sqlite`;
+  const st = stamp();
+  const name = `signal-desk-${ctx.mode}-${st}-${reason}.sqlite`;
   const file = path.join(dir, name);
   ctx.db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
   log.info('backup', `created ${name}`);
   pruneAuto(ctx.cfg, ctx.mode);
-  return { name, size: fs.statSync(file).size, createdAt: nowIso() };
+  const lab = backupLab(ctx, st, reason);
+  return { name, size: fs.statSync(file).size, createdAt: nowIso(), ...(lab ? { lab } : {}) };
+}
+
+// The Strategy Lab database is copied into its own folder (backups/strategy-lab),
+// so the portfolio backup list, pruning and restore never see it. A failure
+// here never fails the portfolio backup.
+export function labBackupDir(cfg) {
+  return path.join(backupDir(cfg), 'strategy-lab');
+}
+
+function backupLab(ctx, st, reason) {
+  const src = labDbFile(ctx.cfg, ctx.mode);
+  if (!fs.existsSync(src)) return null;
+  try {
+    const dir = labBackupDir(ctx.cfg);
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `strategy-lab-${ctx.mode}-${st}-${reason}.sqlite`;
+    backupLabDb(src, path.join(dir, name));
+    const auto = fs.readdirSync(dir).filter((f) => f.startsWith(`strategy-lab-${ctx.mode}-`) && f.endsWith('-auto.sqlite')).sort().reverse();
+    for (const f of auto.slice(KEEP_AUTO)) fs.rmSync(path.join(dir, f), { force: true });
+    log.info('backup', `created ${name}`);
+    return { name, size: fs.statSync(path.join(dir, name)).size };
+  } catch (e) {
+    log.warn('backup', `Strategy Lab backup failed: ${e.message}`);
+    return { error: e.message };
+  }
 }
 
 function pruneAuto(cfg, mode) {

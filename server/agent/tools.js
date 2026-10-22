@@ -305,6 +305,11 @@ function findPositions(portfolio, symbol) {
   return portfolio.positions.filter((p) => p.symbol === String(symbol || '').toUpperCase());
 }
 
+// Held in that account (and on that exchange, when one is named)?
+function heldIn(portfolio, symbol, account, exchange) {
+  return findPositions(portfolio, symbol).some((p) => (!account || p.account === account) && (!exchange || String(p.exchange).toUpperCase() === String(exchange).toUpperCase()));
+}
+
 function catalogLookup(ctx, symbol, exchange) {
   const sym = String(symbol).toUpperCase();
   if (exchange) return ctx.catalog.lookup(sym, exchange);
@@ -1033,12 +1038,14 @@ export function createToolbox(ctx, { ledger, turn }) {
     async simulate_trade(args) {
       const p = portfolio();
       const a = Object.fromEntries(['symbol', 'side', 'shares', 'fraction', 'cash_amount', 'target_weight_pct', 'price', 'fees', 'account'].map((k) => [k, v(args[k])]));
-      const held = findPositions(p, a.symbol).length > 0;
+      const elsewhere = findPositions(p, a.symbol).length > 0;
       const acct = a.account || findPositions(p, a.symbol)[0]?.account || (p.accounts.length === 1 ? p.accounts[0] : null);
-      // Not held now: the user's own instrument record (e.g. sold earlier) comes before the catalog.
+      // Not held in that account: its own instrument record (e.g. sold earlier) comes
+      // before the same ticker held in another account, then the catalog.
+      const held = heldIn(p, a.symbol, acct);
       const own = held ? null : ownInstrument(db, a.symbol, { account: acct });
-      const quote = held || a.price != null ? null : own ? ownQuote(own, 'simulate_trade') : await quoteFor(a.symbol);
-      const cat = own ? null : catalogLookup(ctx, a.symbol, null);
+      const quote = held || a.price != null ? null : own ? ownQuote(own, 'simulate_trade') : elsewhere ? null : await quoteFor(a.symbol);
+      const cat = own || elsewhere ? null : catalogLookup(ctx, a.symbol, null);
       const scenario = simulateTrade(p, { ...a, quote, currency: own?.currency ?? cat?.currency, exchange: own?.exchange ?? cat?.exchange, identityStatus: own?.identity_status, typicalFee: acct ? typicalFee(db, acct) : null });
       return registerScenario(p, scenario, a);
     },
@@ -1048,18 +1055,20 @@ export function createToolbox(ctx, { ledger, turn }) {
       if (!Array.isArray(legs)) throw new Error('legs must be an array');
       const clean = legs.map((l) => (l && typeof l === 'object' ? Object.fromEntries(Object.entries(l).map(([k, x]) => [k, v(x)])) : {}));
       const acctOf = (leg) => leg.account || findPositions(p, leg.symbol)[0]?.account || (p.accounts.length === 1 ? p.accounts[0] : null);
-      // Tickers not held: the user's own instrument record, then the catalog; quotes
-      // for those bought (stored or fetched), like simulate_trade.
+      // Tickers not held in the leg's account (on the leg's exchange, when given): the
+      // account's own instrument record, then the same ticker held elsewhere, then the
+      // catalog; quotes for those bought (stored or fetched), like simulate_trade.
       const pre = new Map();
       for (const leg of clean) {
-        if (leg.side === 'convert' || !leg.symbol || findPositions(p, leg.symbol).length) continue;
+        if (leg.side === 'convert' || !leg.symbol || heldIn(p, leg.symbol, acctOf(leg), leg.exchange)) continue;
         const own = ownInstrument(db, leg.symbol, { account: acctOf(leg), exchange: leg.exchange });
-        pre.set(leg, { own, quote: leg.side === 'buy' && leg.price == null ? (own ? ownQuote(own, 'simulate_trades') : await quoteFor(leg.symbol)) : null });
+        const elsewhere = findPositions(p, leg.symbol).some((x) => !leg.exchange || String(x.exchange).toUpperCase() === String(leg.exchange).toUpperCase());
+        pre.set(leg, { own, quote: leg.side === 'buy' && leg.price == null ? (own ? ownQuote(own, 'simulate_trades') : elsewhere ? null : await quoteFor(leg.symbol)) : null });
       }
       const result = simulateTrades(p, clean, (leg) => {
         const acct = acctOf(leg);
         const { own, quote } = pre.get(leg) || {};
-        const cat = !own && leg.symbol ? catalogLookup(ctx, leg.symbol, leg.exchange || null) : null;
+        const cat = !own && leg.symbol && !findPositions(p, leg.symbol).length ? catalogLookup(ctx, leg.symbol, leg.exchange || null) : null;
         return { currency: own?.currency ?? cat?.currency, exchange: own?.exchange ?? cat?.exchange ?? leg.exchange, identityStatus: own?.identity_status, typicalFee: acct ? typicalFee(db, acct) : null, quote: quote || null };
       });
       const id = `S${turn.scenarios.length + turn.priorScenarioCount + 1}`;

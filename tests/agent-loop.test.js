@@ -7,6 +7,7 @@ import { Ledger } from '../server/agent/ledger.js';
 import { addTransaction, findInstrument, updateInstrument } from '../server/portfolio.js';
 
 import { NOW, makeCtx, seed, scripted, use, lastResults, answer } from './agent-helpers.js';
+import { putQuote } from './helpers.js';
 
 const NO_RECORDS = /No records were retrieved/;
 
@@ -110,6 +111,8 @@ test('a follow-up chip is dropped when any of its sentences reads as an instruct
   for (const f of [
     'What if I sold half of NBIS?', 'What changed with NBIS since yesterday?', 'Should I trim VRT?', 'Can you compare NBIS and VRT?',
     'Is my TFSA cash of 250 confirmed?', 'What would it cost to buy 10 more VRT at 130?', 'Why did NBIS fall? What changed for VRT?',
+    // A hyphenated word is not an instruction verb.
+    'Why did NBIS fall? Short-term, what matters?', 'Short-term outlook for VRT?', 'Sell-side estimates for NBIS?', 'Add-on risk from VRT?',
   ]) assert.equal(unsafeFollowUp(f), false, f);
 
   // End to end: the chip is never shown, so it cannot be clicked into a proposal.
@@ -150,4 +153,138 @@ test('stale quotes get a note unless the model says so; company names and horizo
   assert.equal(validateAnswer({ short_answer: 'x', horizon: 'VRT at 130' }, ledger).answer.details[0].refs[0], ref);
   assert.equal(validateAnswer({ short_answer: 'Vertiv at 130' }, ledger).answer.details.length, 0);
   assert.equal(validateAnswer({ short_answer: 'Vertiv at 130' }, ledger, { names: () => ['Vertiv'] }).answer.details.length, 1);
+});
+
+test('a model gap naming the stale instrument in its own words suppresses the automatic note', async () => {
+  const mk = () => {
+    const L = new Ledger();
+    return { L, ref: L.add({ kind: 'market_data', label: 'VRT quote 130', asOf: new Date(NOW - 3 * 3600000).toISOString(), freshness: 'stale', symbol: 'VRT' }) };
+  };
+  const autoNotes = (gap) => {
+    const { L, ref } = mk();
+    const raw = { short_answer: 'VRT is at 130.', details: [{ category: 'external_fact', text: 'VRT at 130.', refs: [ref] }, { category: 'data_gap', text: gap, refs: [] }] };
+    return validateAnswer(raw, L, { toolsRun: 1, names: () => ['Vertiv'] }).answer.details.filter((d) => d.auto).length;
+  };
+  for (const gap of ["The VRT quote hasn't updated since 11:00 ET.", 'The VRT quote is three hours old.', 'The VRT price is from 11:00 ET, before the latest move.',
+    'VRT quote: 15 minutes behind.', 'The VRT quote may not reflect the current price.', "Vertiv's market data is from late morning."]) assert.equal(autoNotes(gap), 0, gap);
+  // A gap about something else on the same ticker does not.
+  for (const gap of ['No VRT earnings date is stored.', 'No VRT price target is stored.', 'The NBIS quote is three hours old.']) assert.equal(autoNotes(gap), 1, gap);
+});
+
+test('company names: fund families and ordinary first words do not match other instruments or app text', async () => {
+  // Catalog ETFs: XIU and VFV fresh, SOXX and VOO stale; the answer is about XIU and VFV only.
+  {
+    const ctx = makeCtx();
+    seed(ctx);
+    const add = (symbol, exchange, currency, price, ageMin) => {
+      addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-10-01', account: 'TFSA', symbol, exchange, currency, quantity: 10, price: 20, fees: 0 });
+      const i = findInstrument(ctx.db, symbol, exchange);
+      updateInstrument(ctx.db, i.id, { identity_status: 'confirmed', identity_note: 't' });
+      putQuote(ctx.db, i.id, { price, prev_close: price - 1, quote_time: new Date(NOW - ageMin * 60000).toISOString() });
+    };
+    add('XIU', 'TSX', 'CAD', 40, 1);
+    add('SOXX', 'NASDAQ', 'USD', 250, 180);
+    add('VFV', 'TSX', 'CAD', 140, 1);
+    add('VOO', 'NYSE Arca', 'USD', 500, 180);
+    const { msg } = await turn(ctx, 'How are my index funds doing?', [
+      () => [use('get_portfolio', { include_closed: false })],
+      (m) => {
+        const refOf = (s) => lastResults(m)[0].positions.find((p) => p.symbol === s)?.quoteRef;
+        return answer({ short_answer: 'Your iShares S&P/TSX 60 ETF (XIU) is up 2.6% and the Vanguard S&P 500 Index ETF (VFV) is up 0.7%.',
+          details: [{ category: 'portfolio_record', text: 'XIU 40 and VFV 140 at the latest quotes.', refs: [refOf('XIU'), refOf('VFV')].filter(Boolean) }] });
+      },
+    ]);
+    assert.deepEqual(msg.answer.details.filter((d) => d.auto && /Possibly out of date/.test(d.text)).map((d) => d.text), []);
+    // The fund's own full name still counts.
+    const { msg: m2 } = await turn(ctx, 'And the chip fund?', [
+      () => [use('get_portfolio', { include_closed: false })],
+      () => answer({ short_answer: 'The iShares Semiconductor ETF is the laggard.' }),
+    ]);
+    assert.ok(m2.answer.details.some((d) => d.auto && /SOXX quote/.test(d.text)));
+  }
+  // User-named instruments whose names start with ordinary words, all with stale quotes.
+  {
+    const ctx = makeCtx();
+    seed(ctx);
+    for (const [symbol, exchange, currency, name] of [['OTEX', 'TSX', 'CAD', 'Open Text Corporation'], ['COF', 'NYSE', 'USD', 'Capital One Financial Corporation'], ['BBY', 'NYSE', 'USD', 'Best Buy Co., Inc.']]) {
+      addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-10-01', account: 'TFSA', symbol, exchange, currency, quantity: 10, price: 20, fees: 0 });
+      const i = findInstrument(ctx.db, symbol, exchange);
+      updateInstrument(ctx.db, i.id, { name, identity_status: 'confirmed', identity_note: 't' });
+      putQuote(ctx.db, i.id, { price: 50, prev_close: 49, quote_time: new Date(NOW - 3 * 3600000).toISOString() });
+    }
+    for (const t of ['Open Positions, click Add holding, and enter the ticker, shares and price.', 'Capital gains are not estimated by Signal Desk.', 'Best to confirm the instrument first: open Positions and press Confirm identity.']) {
+      const { msg } = await turn(ctx, 'How do I use this?', [() => answer({ short_answer: t })]);
+      assert.equal(msg.status, 'ok', t);
+    }
+    const { msg } = await turn(ctx, 'When is the next earnings call?', [
+      () => [use('get_portfolio', { include_closed: false })],
+      () => answer({ short_answer: 'The next earnings call is on Monday. Capital gains are not estimated. Best to check the Events page; Open Events from the menu.' }),
+    ]);
+    assert.deepEqual(msg.answer.details.filter((d) => d.auto && /Possibly out of date: (OTEX|COF|BBY)/.test(d.text)), []);
+    // The distinctive part of the name still counts.
+    assert.equal((await turn(ctx, 'Why am I down?', [() => answer({ short_answer: 'Capital One is the main reason.' })])).msg.status, 'partial');
+    const { msg: m3 } = await turn(ctx, 'Why am I down?', [
+      () => [use('get_portfolio', { include_closed: false })],
+      () => answer({ short_answer: 'Open Text and Best Buy are the main reasons.' }),
+    ]);
+    assert.equal(m3.answer.details.filter((d) => d.auto && /Possibly out of date: (OTEX|BBY)/.test(d.text)).length, 2);
+  }
+});
+
+test('with no records retrieved, app how-to answers, clarifying questions and refusals are not flagged', async () => {
+  for (const t of [
+    '1. Open Positions. 2. Click Add holding. 3. Enter the ticker, shares and price.',
+    'The Positions page lists everything you hold, with average cost and weight.',
+    'Your portfolio is stored locally in data/signal-desk.sqlite.',
+    'If the model declined to answer, ask again more narrowly.',
+  ]) assert.ok(!validateAnswer({ short_answer: t, details: [] }, new Ledger(), { toolsRun: 0 }).issues.some((i) => NO_RECORDS.test(i)), t);
+  const steps = { short_answer: 'Open Settings and set the cap.', details: [{ category: 'interpretation', text: 'Step 1: open .env. Step 2: set CHAT_DAILY_BUDGET_USD.', refs: [] }] };
+  assert.ok(!validateAnswer(steps, new Ledger(), { toolsRun: 0 }).issues.some((i) => NO_RECORDS.test(i)));
+  // Statements about holdings and moves are still flagged.
+  for (const t of ['You hold mostly chip stocks.', 'Your portfolio is heavily weighted to AI infrastructure.', 'Tech stocks declined today.', 'Shares dropped after the report.'])
+    assert.ok(validateAnswer({ short_answer: t, details: [] }, new Ledger(), { toolsRun: 0 }).issues.some((i) => NO_RECORDS.test(i)), t);
+
+  const ctx = makeCtx();
+  seed(ctx);
+  addTransaction(ctx.db, { type: 'BUY', trade_date: '2026-10-01', account: 'TFSA', symbol: 'IT', exchange: 'NYSE', currency: 'USD', quantity: 10, price: 20, fees: 0 });
+  updateInstrument(ctx.db, findInstrument(ctx.db, 'IT', 'NYSE').id, { name: 'Gartner, Inc.', identity_status: 'confirmed', identity_note: 't' });
+  for (const t of [
+    'Do you mean the NBIS lot in your TFSA or the one in your RRSP?',
+    'Did you mean Vertiv (VRT) or Vistra (VST)?',
+    'I cannot sell NBIS or anything else; Signal Desk has no brokerage link.',
+    'IT spending trends are not tracked by the app.',
+  ]) {
+    const { msg } = await turn(ctx, 'How is my portfolio doing today?', [() => answer({ short_answer: t })]);
+    assert.equal(msg.status, 'ok', t);
+  }
+  for (const t of ['I cannot sell anything, but NBIS is the main drag today.', 'Which account? NBIS is your largest holding.', 'NBIS slid, so I cannot say more without fresh data.']) {
+    const { msg } = await turn(ctx, 'How is my portfolio doing today?', [() => answer({ short_answer: t })]);
+    assert.equal(msg.status, 'partial', t);
+  }
+});
+
+test('last round: a browser disconnect while the bundled calls run keeps the checked answer', async () => {
+  const ctx = makeCtx();
+  seed(ctx);
+  const run = async (late) => {
+    const ac = new AbortController();
+    const conv = createConversation(ctx.db);
+    const b = scripted([
+      () => [use('get_position', { symbol: 'VRT' })],
+      () => { ac.abort(); return [...late, ...answer({ short_answer: 'You hold 10 VRT.' })]; },
+    ]);
+    b.config = { ...b.config, maxToolRounds: 1 };
+    return runChatTurn(ctx, { conversationId: conv, userText: 'Please record that I sold 2 VRT at 125 on 2026-10-20 in TFSA.', backend: b, now: NOW, signal: ac.signal });
+  };
+  const msg = await run([use('get_position', { symbol: 'VRT' })]);
+  assert.equal(msg.status, 'ok');
+  assert.equal(msg.text, 'You hold 10 VRT.');
+  assert.deepEqual(msg.tools.map((t) => t.tool), ['get_position'], 'the late call did not run');
+  assert.ok(msg.answer.notes.some((n) => /disconnected before these requests sent with the answer ran: get_position/.test(n)));
+  // A proposal that was never prepared leaves nothing to confirm.
+  const sell = { change_type: 'add_transaction', details: { type: 'SELL', symbol: 'VRT', exchange: 'NYSE', currency: 'USD', quantity: 2, price: 125, fees: 0, account: 'TFSA', trade_date: '2026-10-20' }, user_request_quote: 'record that I sold 2 VRT at 125 on 2026-10-20 in TFSA' };
+  const p = await run([use('propose_record_change', sell)]);
+  assert.equal(p.status, 'partial');
+  assert.ok(p.answer.issues.some((i) => /not prepared because the browser disconnected/.test(i)));
+  assert.equal(ctx.db.prepare('SELECT COUNT(*) n FROM chat_proposals').get().n, 0);
 });

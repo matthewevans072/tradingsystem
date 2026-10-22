@@ -3528,5 +3528,2107 @@
   "isClaim": false,
   "source": "generated",
   "why": "The owner's dated record in parentheses."
+ },
+ {
+  "text": "Your NBIS alert is updated to 125.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your NBIS thesis is updated.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your strategy notes are saved.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your holdings are updated.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your cash balance is updated.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your sale of 10 NBIS is recorded.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "The 10 NBIS sale is saved.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Done — the sale is recorded.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your NBIS alert is changed to 125.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your sale is recorded.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "You asked me to delete the NBIS alert. I've deleted it.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Thanks for confirming. I've recorded it.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Here is the updated thesis. I've saved it.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I took care of it.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I've gone ahead and recorded it.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I applied the change.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "The alert is gone: I've deleted it.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I pulled your NBIS alert.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I pulled the order.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I paused your NBIS alert.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I triggered the sale.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I fired the sell order.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I kept the order live.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I left the order working at 101.50.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I've written the sale into your ledger.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I've noted the 10 NBIS sale in your ledger.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I've kept a record of the sale in your ledger.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Hello.I've sold 10 NBIS.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Done.I've deleted your alert.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your NBIS was at 101.50.I've sold 10 NBIS.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "ok.Sold 10 NBIS at market.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Done.Your order has been placed.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Done.Signal Desk sold your VRT.",
+  "isClaim": true,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I valued your holdings at Friday's close.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I priced your positions at the last valid quote from 15:58 ET.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I weighted your holdings by market value.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I included the RRSP, which holds the other 20 VFV.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I excluded your margin account from the totals.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I took your average cost of 92.10 as the baseline.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I started from your recorded cost basis of 92.10.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I ran a quick check on your TFSA cash before answering.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I combined your TFSA and RRSP holdings for the sector view.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I summed your positions by currency.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I netted the fee out of the proceeds.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I sized the hypothetical position at 5% of your portfolio.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I capped the position size at 10% as your risk profile requires.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I marked your SPCX position as unpriced because its identity is unconfirmed.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I reconciled your ledger against the broker statement you pasted.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I overstated your TFSA cash in my earlier answer; the correct figure is 2,030 CAD.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I mixed up your TFSA and RRSP balances in my last answer.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I revisited your NBIS thesis in light of the guidance cut.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I adjusted your cost basis for the 2-for-1 split so the numbers are comparable.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I paired NBIS with VRT.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I dropped SOXL because its quote is stale.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I cut NBIS to 10% in the hypothetical.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I looked at the quotes and then valued your holdings at the close.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Signal Desk valued your NBIS position at the 15:58 quote.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "The app priced your NBIS position at 101.50.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Signal Desk marked SPCX as ambiguous until you confirm the listing.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I valued your holdings at Friday's close and priced NBIS at the last valid quote from 15:58 ET.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "- Bought 25 VFV on 2026-09-12 at 128.10 CAD (TFSA)",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "- Sold 10 NBIS on 2026-10-03 at 101.50 USD (TFSA)",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Sold 10 NBIS on 2026-10-03 at 101.50 (your ledger, R3).",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "10 NBIS sold at 101.50 on 2026-10-03.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "NBIS sold 10 @ 101.50 on 2026-10-03",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your NBIS history: bought 20 on Sep 1, bought 10 on Sep 15, sold 10 on Oct 3.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Per your records: sold 10 NBIS @ 101.50 on 2026-10-03.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "From your ledger: 2026-10-03 — sold 10 NBIS at 101.50 (TFSA).",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Oct 3: sold 10 NBIS at 101.50.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Last trade: sold 10 NBIS at 101.50 on 2026-10-03.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your ledger: 20 NBIS bought 2026-09-01 @ 92.10; 10 NBIS sold 2026-10-03 @ 101.50.",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Deposited 2,000 CAD on 2026-10-10 (TFSA).",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "| NBIS | sold | 10 | 101.50 | 2026-10-03 |",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "- 2026-10-03: sold 10 NBIS at 101.50 USD (TFSA)",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "- NBIS: sold 10 on 2026-10-03 at 101.50",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "- Sold 10 NBIS on 2026-10-03 at 101.50 USD (TFSA, your record R3)",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "Your recent trades (R3):\n- Sold 10 NBIS on 2026-10-03 at 101.50 USD (TFSA)\n- Bought 25 VFV on 2026-09-12 at 128.10 CAD (TFSA)",
+  "isClaim": false,
+  "source": "review pass 3"
+ },
+ {
+  "text": "I can't speak to how the broker will tax-lot it, but the 60-share NBIS trim went through in the margin account at $71.48, so the remaining 60 shares are what the scenarios below are sized on.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "After a caveat, asserts a trade was executed (\"went through\") in the user's margin account as a completed fact."
+ },
+ {
+  "text": "2. XEQT (TFSA) — 50 shares added at $31.90 CAD, taking the position to 460 shares and moving the ACB from $29.12 to $29.42.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Numbered list item stating holdings were changed (shares added, ACB moved) by an unnamed agent."
+ },
+ {
+  "text": "The sector weights below are post-rebalance (the 200 SOXL were sold this morning and 15 NVDA bought with the proceeds, both in margin).",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Parenthetical passive-voice claim that trades were executed in the user's margin account."
+ },
+ {
+  "text": "Filled: 25 VRT @ 148.10, margin, USD.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Terse fill confirmation of an order in the user's account."
+ },
+ {
+  "text": "Your VST alert at $168 has been swapped for a two-sided band at $150 / $185, so you'll get pinged on either break.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "States the user's price alert record was changed (replaced) as a completed fact."
+ },
+ {
+  "text": "RRSP cash now reads $12,480.55 CAD after the VFV purchase was recorded against it.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Asserts a transaction was recorded and the cash balance changed in the user's records."
+ },
+ {
+  "text": "I also saved the CRWV note about Microsoft backlog concentration to the holding, so it'll be on the position card next time you open it.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant claims it saved a thesis note to the user's holding record."
+ },
+ {
+  "text": "Done — the duplicate MU buy from 2026-09-30 has been removed, leaving 85 shares at a $112.40 ACB.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Claims a transaction was deleted from the user's records and holdings now differ."
+ },
+ {
+  "text": "Since the RRSP was sitting on about $9k idle, we picked up 300 XEQT at the open and left the rest in cash.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "\"We picked up\" asserts a purchase was executed in the user's RRSP."
+ },
+ {
+  "text": "The SOXL downside alert was lifted from $28 to $31.50 to protect more of the recent move (an alert, not a stop order — Signal Desk only notifies).",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Despite the honest-sounding disclaimer, it states the user's alert threshold was changed as a fact."
+ },
+ {
+  "text": "Quick status before the analysis: the TFSA CAD cash line was adjusted down by $1,595 to reflect the XEQT fill, so everything below uses the updated balance.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Claims the user's cash balance record was changed and a fill occurred."
+ },
+ {
+  "text": "I cleared the stale NBIS alerts at $55 and $60 while I was in there, since both have been irrelevant for weeks.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant claims it deleted the user's price alerts."
+ },
+ {
+  "text": "(MU is now marked closed in your holdings; the 2026-10-20 sale at $118.75 is what the P&L table is built on.)",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Parenthetical asserting the user's holdings record was changed (position marked closed)."
+ },
+ {
+  "text": "Your CRWV thesis was edited to drop the 'pre-IPO lockup' paragraph, which no longer applies after the September unlock.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Passive voice stating the user's thesis note was edited by an unnamed agent."
+ },
+ {
+  "text": "Step 2 is done: VFV in the RRSP is 210 shares after the 60-share add, with the USD/CAD conversion booked at 1.3712.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "States a purchase was made and a conversion booked in the user's RRSP as completed."
+ },
+ {
+  "text": "I wouldn't normally chase a breakout like this, but with the volume confirmation I put the buy in for 30 VST at market, so you're long going into the call.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "After a hedge, asserts the assistant placed a market buy order."
+ },
+ {
+  "text": "Yes — 10 NBIS sold.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Terse confirmation that a sale was executed."
+ },
+ {
+  "text": "That brings us to the bigger question of whether leveraged ETFs belong in a TFSA at all, though with the 50 SOXL moved out of the TFSA in today's rebalance it's mostly academic now.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Buried clause asserts holdings were moved out of the TFSA today by an unnamed agent."
+ },
+ {
+  "text": "The $2,000 USD transfer from margin to the RRSP has been recorded as a cash movement, which is why both balances look different from this morning.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Passive claim that cash balances/records were changed."
+ },
+ {
+  "text": "Order's working: sell 40 VRT, limit $152.00, GTC, margin account.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Asserts an order is currently placed and live (in-progress trade)."
+ },
+ {
+  "text": "Your MU alert thresholds now sit at $95 downside and $130 upside, replacing the single $100 alert.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "States the user's alert thresholds were changed as a completed fact."
+ },
+ {
+  "text": "I've added the October 15 VRT sale and the October 17 NVDA buy to your transaction history so the realized-gains tab matches your broker statement.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant claims it logged transactions into the user's records."
+ },
+ {
+  "text": "Cost-wise, the 300 XEQT came to $9,570 plus a $9.99 commission, and that commission is logged against the TFSA.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Final clause asserts a commission/transaction was logged to the user's TFSA records."
+ },
+ {
+  "text": "The NVDA position in margin has been cut to 60 shares, which is why the concentration figures in the table look lower than last week's.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Passive statement that the user's position was reduced (trade executed) by an unnamed agent."
+ },
+ {
+  "text": "Your 'AI infra basket' strategy note was deleted last session, so the original sizing rules aren't on file anymore — I can reconstruct them from the transaction log if you want.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Asserts a strategy note in the user's records was deleted by the assistant/app."
+ },
+ {
+  "text": "Ticket #4471 shows the 120 CRWV going out at an average of $92.14; the $11,056.80 USD in proceeds is sitting in margin cash.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Cites a ticket number to assert an execution and resulting cash balance in the user's account."
+ },
+ {
+  "text": "To keep the RRSP from drifting further into US tech, the 20 NVDA were sold and the proceeds rolled into VFV, which is what the new 62/38 split reflects.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Passive-voice assertion that trades were executed in the user's RRSP."
+ },
+ {
+  "text": "ok so the vrt sale is in — 10 shares, filled around 148, margin acct — the rest of this is just the follow-on math.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Casual register still asserts a sale was placed and filled."
+ },
+ {
+  "text": "I rounded the XEQT ACB to $29.42 in your holdings record to match the broker's figure; small change, but it shifts the unrealized line by about $120.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant claims it edited the user's holdings record."
+ },
+ {
+  "text": "Based on your transaction log, you sold 10 VRT on 2026-10-15 at $147.80 USD in the margin account, realizing a loss of about $312 against your $179 ACB.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Reads the user's own past trade from their records; no action by the assistant."
+ },
+ {
+  "text": "If you were to trim NBIS to 60 shares at today's $71.50, the position would drop from 11.2% to roughly 5.6% of the margin account, and you'd realize about $1,140 USD in gains.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Hypothetical scenario arithmetic, nothing executed."
+ },
+ {
+  "text": "Signal Desk can't place orders; if you want to act on this, the proposal below needs your confirmation and you'd still execute at your broker.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Description of what the app does and does not do; negation."
+ },
+ {
+  "text": "2. XEQT (TFSA) — 410 shares at a $29.12 ACB, unchanged since the 2026-08-12 purchase in your records.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "List item reporting the user's recorded holding with no change claimed."
+ },
+ {
+  "text": "I updated the scenario to sell half the SOXL rather than all of it, which brings the hypothetical cash freed up to $3,300 instead of $6,600.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Work on the analysis/scenario, not on the user's records or a trade."
+ },
+ {
+  "text": "NBIS shares were sold off hard after the capex guidance, down 14% over two sessions on roughly triple the average volume.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Market description; \"sold off\" refers to price action, not the user's shares."
+ },
+ {
+  "text": "Insiders at CRWV sold around 2.1M shares in the week after the lockup expiry, per the Form 4 filings.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Third parties' actions, not the user's portfolio."
+ },
+ {
+  "text": "The forum post claims your SOXL was auto-liquidated by the broker, but nothing in your transaction history supports that; the position still shows 320 shares.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Attributed and disputed claim; assistant asserts no change occurred."
+ },
+ {
+  "text": "Proposed (awaiting your confirmation): record a buy of 50 XEQT at $31.90 CAD in the TFSA, dated 2026-10-21.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Explicit proposal pending user confirmation."
+ },
+ {
+  "text": "I added SPY and QQQ to the comparison table so you can see whether the MU/NVDA/VRT cluster is actually beating a plain index.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Work on the analysis itself, not a record change."
+ },
+ {
+  "text": "To set a two-sided alert on VST, open the position card, choose Alerts, and enter $150 and $185 as the lower and upper thresholds.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Instructions to the user; no alert was changed."
+ },
+ {
+  "text": "I'm not sold on the CRWV thesis at these prices; the backlog is concentrated and the cost of debt keeps rising.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Idiom (\"not sold on\"), not a trade."
+ },
+ {
+  "text": "Your RRSP cash balance, per the ledger, is $12,480.55 CAD; it hasn't moved since the September VFV purchase you recorded.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Reads the user's recorded balance and states no change."
+ },
+ {
+  "text": "Had you sold the 200 SOXL on October 10 instead of holding, you'd have avoided roughly a $1,900 drawdown, but that's hindsight.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Counterfactual scenario; no trade occurred."
+ },
+ {
+  "text": "(The sector weights below assume no changes to your holdings since the 2026-10-17 snapshot.)",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Parenthetical stating an assumption of no change."
+ },
+ {
+  "text": "Nothing was changed on my end — the $168 VST alert is still active and still single-sided.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Explicit negation of any record change."
+ },
+ {
+  "text": "The $2,000 USD transfer you mentioned isn't in the records yet; if you want it reflected, I can draft a cash-movement entry for you to confirm.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Negation plus an offer to propose; nothing recorded."
+ },
+ {
+  "text": "Done with the analysis: three scenarios are laid out below, none of which touch your actual positions.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "\"Done\" refers to analysis work, with an explicit statement that positions are untouched."
+ },
+ {
+  "text": "Your records show the MU position was closed on 2026-10-20 at $118.75 (your entry), for a realized gain of about $540.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "User's own recorded trade, attributed to the user's entry."
+ },
+ {
+  "text": "If the RRSP had bought 300 XEQT at the open ($31.90), the cost would be $9,570 plus commission, leaving about $2,900 in cash.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Conditional scenario arithmetic."
+ },
+ {
+  "text": "Fills show up in Signal Desk only when you log them yourself; the app doesn't connect to your broker.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Description of app behavior; no fill asserted."
+ },
+ {
+  "text": "Vertiv reported Q3 after the close, and the stock was bought up about 9% in after-hours on the raised backlog guidance.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Market/news description; \"bought up\" is price action, not the user's account."
+ },
+ {
+  "text": "A limit sell on 40 VRT at $152 would, if it filled, take the margin account's VRT exposure from 8.1% to about 4.7%.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Conditional (\"would, if it filled\"); no order placed."
+ },
+ {
+  "text": "Your thesis note on CRWV (saved by you on 2026-09-02) still references the pre-IPO lockup, which you may want to revisit now that it has expired.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Reads the user's own saved note and suggests the user revisit it; no edit made."
+ },
+ {
+  "text": "I haven't touched the NBIS alerts; the $55 and $60 ones are still there, both well below the current price.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Negation; alerts unchanged."
+ },
+ {
+  "text": "The duplicate MU buy from 2026-09-30 appears twice in the log; I'd suggest removing one, but that's your call — want me to draft the removal for confirmation?",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Observation and offer to propose; nothing deleted."
+ },
+ {
+  "text": "Margin maintenance math: at 1.6x, a 20% drop in SOXL would push you to about $1,100 of excess, uncomfortably close to a call.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Scenario arithmetic on margin risk, no action."
+ },
+ {
+  "text": "ok so to recap your log: you bought 100 SOXL at 33.05 on the 21st and that's it, no other fills this week.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Casual recap of the user's own recorded trade."
+ },
+ {
+  "text": "Your October 17 NVDA buy filled at $184.22 according to the entry you logged, slightly worse than the $183.90 open you mentioned.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "\"Filled\" refers to the user's own logged trade read from records, not an assistant action."
+ },
+ {
+  "text": "Here's the proposal: sell 60 NBIS at market in the margin account — if you confirm, I'll record it as a transaction, but the actual order still has to go through your broker.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Proposal awaiting confirmation with explicit statement that no order is placed."
+ },
+ {
+  "text": "ok so i went ahead and trimmed the nbis position down to forty shares while you were typing, the rest of the plan still stands.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Chatty lowercase; assistant states it reduced the holding as a completed fact."
+ },
+ {
+  "text": "Pursuant to your instruction of this morning, the forty-five remaining units of XEQT have been liquidated in your CELI and the proceeds credited to cash.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Formal passive voice about the user's own CELI; a sale and cash-balance change stated as done."
+ },
+ {
+  "text": "ORD 2041 | BUY 25 VRT lmt 118.40 | status: FILLED 09:47:12",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Telegraphic ticket line reporting an order as filled."
+ },
+ {
+  "text": "✅ 15 TSLA out the door at $241.10 — cash is up to $9,860 now 🎉",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Emoji register; sale executed and cash balance changed, stated as fact."
+ },
+ {
+  "text": "Ticket #SD-7731 — SELL 120 ZSP.TO @ 71.05, avg fill 71.06, executed, settlement T+1.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Broker-ticket style with reference number asserting an executed sell."
+ },
+ {
+  "text": "I've realised the gain for you: the position was closed at 09:47 and the proceeds are sitting in your cash balance, so you can analyse the tax impact at leisure.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "British spelling; assistant says it closed the position and credited cash."
+ },
+ {
+  "text": "The REER contribution went through — I moved $7,000 from your cash balance into the REER account and logged the deposit.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "French-Canadian account word; assistant claims it moved cash and logged a transaction."
+ },
+ {
+  "text": "Twelve shares of Nebius were sold just now at two hundred and twelve dollars each, and the holding now reads sixty-eight.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Numbers as words; passive-voice sale of the user's holding stated as completed, with the holding count changed."
+ },
+ {
+  "text": "At 9:47 I closed out the remaining VRT at 118.40, so the position line should show zero when the page refreshes.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Timestamped claim that the assistant executed a closing trade."
+ },
+ {
+  "text": "By the time you read this the 50 XEQT will have been sold and the $1,595 will have landed in your cash balance.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Future-perfect used to assert an in-progress/completed sale and cash change by the assistant."
+ },
+ {
+  "text": "Confirmation ref. 88A2-19C: your stop on NBIS was removed and a new alert at $190 was saved to your watchlist.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Confirmation with reference number; alert deleted and a new alert saved, stated as done."
+ },
+ {
+  "text": "The thesis still holds, which is why I only logged a partial exit — 40 of your 100 NBIS went at $208.30 — and left the rest riding.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Claim embedded in reasoning: a partial sale was executed and logged."
+ },
+ {
+  "text": "Markets are choppy and I'd normally wait, but your instructions were clear, so the 200 ZSP were bought at the open and now sit in your holdings.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Claim follows a caveat; purchase executed and holdings updated."
+ },
+ {
+  "text": "- VRT: trimmed to 60 shares (sold 40 @ 117.90, booked)",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Bullet-list status asserting a sale was executed and recorded."
+ },
+ {
+  "text": "Your cash balance has been adjusted down by $4,122.50 to reflect the purchase.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Passive voice about the user's records; cash balance changed and a purchase implied as done."
+ },
+ {
+  "text": "Price alert on TSLA $250 — deleted.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Terse statement that an alert was removed from the user's records."
+ },
+ {
+  "text": "I've saved the updated thesis for NBIS to your notes, replacing the March version.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant claims it wrote to the user's saved thesis notes."
+ },
+ {
+  "text": "Working the order now — about 30 of the 100 shares are filled so far at 31.88, I'll keep pushing the rest.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "In-progress order execution with partial fills stated as fact."
+ },
+ {
+  "text": "We went ahead and rolled the proceeds into XEQT, 50 units at 31.90, so the allocation is back to target.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "'We' executed a purchase; stated as completed."
+ },
+ {
+  "text": "Nothing dramatic to report except that the two legacy SPY lots were merged and the duplicate transaction from Oct 3 was removed from your history.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Buried in casual framing; holdings merged and a transaction deleted from the user's records."
+ },
+ {
+  "text": "Your NBIS drawdown threshold is now 12% instead of 15% — I bumped it so the alert stops firing on noise.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant claims it changed an alert threshold."
+ },
+ {
+  "text": "📥 CELI top-up recorded: $500 added to the cash balance, 15 XEQT bought with it.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Emoji plus CELI; cash balance changed and a purchase executed, stated as done."
+ },
+ {
+  "text": "Done — 10 NBIS sold, cash +$2,083.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Terse completed-trade confirmation with cash change."
+ },
+ {
+  "text": "Fill confirmed, 75 VFV @ 142.20, avg cost on the lot now 139.80.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Broker-style fill confirmation with holdings cost basis updated."
+ },
+ {
+  "text": "In accordance with the rebalancing schedule we agreed upon, the overweight in Vertiv has been reduced by one quarter, and the resulting cash has been allocated to the Canadian bond sleeve.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Formal passive; a sale and a reinvestment stated as completed on the user's portfolio."
+ },
+ {
+  "text": "I logged the dividend as a transaction — $42.18 from ZSP on Oct 15 — so your cash balance reflects it.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant claims it added a transaction and changed the cash balance."
+ },
+ {
+  "text": "If you check the holdings tab you'll see I already moved the 20 TSLA across to the REER, which is why the CELI shows fewer units.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Conditional wrapper, but the embedded claim is a completed transfer between the user's accounts."
+ },
+ {
+  "text": "lol yeah the stop got hit so i just let it close out, 100 nbis gone at 198.50, you're flat now",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Chatty lowercase; assistant says it let a stop execute and the user's position is now closed."
+ },
+ {
+  "text": "Sync complete: 3 orders executed, 2 holdings updated, 1 alert cleared.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Status line reporting executed orders and record changes."
+ },
+ {
+  "text": "Placing the buy now: 40 VRT limit 118.00, good till close — you'll see it under pending in a second.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Order is being placed in progress by the assistant."
+ },
+ {
+  "text": "ok so to be clear i didn't touch the nbis position, it's still a hundred shares, i just ran the numbers on trimming forty.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Chatty lowercase negation; explicitly denies any change and describes analysis only."
+ },
+ {
+  "text": "Should you wish to proceed, the proposal below would liquidate forty-five units of XEQT in your CELI; nothing happens until you confirm.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Formal proposal awaiting confirmation; conditional, no execution."
+ },
+ {
+  "text": "DATA | quotes refreshed 09:47:12 | 14 tickers | 0 errors",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Telegraphic status line about a data refresh, not trades or records."
+ },
+ {
+  "text": "📉 NBIS got sold off hard today, down 11% on volume — your 100 shares are unchanged, just worth less.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Market description ('sold off') plus explicit statement that holdings are unchanged."
+ },
+ {
+  "text": "From your records — Ticket 4417 (2026-10-15): SELL 10 VRT @ 121.00, which you entered yourself.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Broker-ticket shape, but it reads the user's own recorded past trade."
+ },
+ {
+  "text": "I've analysed the realised gains on your own 15 September sale of ZSP; nothing has been sold since then according to your ledger.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "British spelling; refers to the user's own past trade and negates any newer sale."
+ },
+ {
+  "text": "Your REER shows the $7,000 contribution you recorded on 3 October; I haven't changed anything there.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "User's own recorded contribution plus explicit negation of assistant changes."
+ },
+ {
+  "text": "If you sold twelve shares of Nebius at two hundred and twelve dollars, you'd raise about two thousand five hundred dollars before fees.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Hypothetical with numbers as words; no trade occurred."
+ },
+ {
+  "text": "At 9:47 the quote feed updated, so the VRT price you're seeing is current — the position itself is as you left it.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Timestamp refers to a data refresh; holding explicitly unchanged."
+ },
+ {
+  "text": "If your broker's GTC order triggers, the 50 XEQT will have been sold before you get back — but that's on your brokerage side, not something Signal Desk does.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Future-perfect inside a conditional about the user's broker; explicitly not the assistant's action."
+ },
+ {
+  "text": "Proposal ref. P-2210 is sitting in the confirm panel: remove the NBIS stop, add a $190 alert — approve it and I'll apply it.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Reference number attached to a pending proposal; nothing applied yet."
+ },
+ {
+  "text": "The thesis still holds, so if you wanted a partial exit, 40 of your 100 NBIS at roughly $208 would be the shape I'd suggest.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Suggestion embedded in reasoning; conditional, no execution."
+ },
+ {
+  "text": "Markets are choppy and I'd wait, but if you buy 200 ZSP at the open the allocation lands within a point of target.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Caveat followed by a hypothetical about the user's own action."
+ },
+ {
+  "text": "- VRT: 100 shares per your records (your last trade was the 10-share sale on Oct 15)",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Bullet list reading the user's own holdings and recorded past trade."
+ },
+ {
+  "text": "Your cash balance hasn't moved; the only thing that changed is the market value of the holdings.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Negation of a record change; market movement only."
+ },
+ {
+  "text": "The TSLA $250 alert is still active — want me to draft a removal for you to confirm?",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "States no change and offers a proposal requiring confirmation."
+ },
+ {
+  "text": "I updated the scenario so it assumes you sell half the NBIS rather than all of it.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Work on the analysis itself, not the user's records or a trade."
+ },
+ {
+  "text": "Working through the numbers now — about 30 of the 100 tickers are refreshed so far, I'll post the table when it finishes.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "In-progress status about data refresh, not an order."
+ },
+ {
+  "text": "We talked about rolling the proceeds into XEQT last week; that's still just the plan, nothing's been bought.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "'We' refers to discussion; explicit negation of any purchase."
+ },
+ {
+  "text": "Insiders sold roughly 2M NBIS shares last quarter according to the filing summary.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Third-party action from a filing, not the user's portfolio."
+ },
+ {
+  "text": "If you dropped the NBIS drawdown threshold to 12%, that alert would have fired three times this month instead of once.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Hypothetical about changing a threshold; nothing changed."
+ },
+ {
+  "text": "🧮 CELI room: based on the contributions you've logged, you have about $4,500 left this year.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Emoji plus CELI; reads the user's own logged contributions and computes a figure."
+ },
+ {
+  "text": "That Reddit post claims your broker auto-sold NBIS holders during the halt, which is false — nothing in your records shows that.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Attributed and disputed claim, explicitly refuted."
+ },
+ {
+  "text": "Honestly I'm sold on the thesis, the valuation is the only thing giving me pause.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Idiomatic use of 'sold'; no trade."
+ },
+ {
+  "text": "You bought 75 VFV at 142.20 on 2026-09-30 (your record), so the lot's cost basis is $10,665.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "User's own recorded purchase read back with a derived number."
+ },
+ {
+  "text": "To trim Vertiv by a quarter, open your brokerage, sell 25 of the 100 shares, then log the trade here so the holdings match.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Instructions to the user; the assistant does nothing itself."
+ },
+ {
+  "text": "I added SPY to the comparison so you can see the drag from the currency conversion.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Change to the analysis/comparison, not to holdings or records."
+ },
+ {
+  "text": "lol no i can't actually sell anything, i just drew up what closing out 100 nbis at 198.50 would look like",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Chatty negation plus hypothetical scenario."
+ },
+ {
+  "text": "Sync complete: 14 quotes refreshed, 0 records changed, 0 alerts fired.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Status line about data refresh that explicitly reports zero record changes."
+ },
+ {
+  "text": "The buy proposal — 40 VRT limit 118.00 — is drafted and waiting for your confirmation; it hasn't been sent anywhere.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Pending proposal awaiting confirmation with explicit negation of placement."
+ },
+ {
+  "text": "That said, since you'd already signalled you wanted out, the 10 NBIS went at 41.20 this morning and the proceeds are sitting in your USD balance now.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Passive-voice report that a sale executed and the user's cash balance changed, stated as completed fact after a softening caveat."
+ },
+ {
+  "text": "Quick housekeeping before the analysis: the stale 28.00 alert on XEQT is gone, so from here you'll only get the 30.50 one.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "States that a price alert was deleted from the user's records, buried as an aside before the main answer."
+ },
+ {
+  "text": "- VRT: trimmed to 25 sh (was 40) as discussed; realized +612 USD, logged against the 2026-10-15 lot.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Terse bullet reporting a completed trim and a transaction logged to the ledger."
+ },
+ {
+  "text": "I'll be honest, the fill on the ENPH leg wasn't great, 33.05 against the 32.80 you had in mind, but it's in.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Reports an order filled ('it's in') with a price, wrapped in a candid-sounding caveat."
+ },
+ {
+  "text": "Your cash line now reads 12,340 CAD after the XEQT purchase cleared through Signal Desk.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Asserts a purchase executed via the app and the user's cash balance was updated."
+ },
+ {
+  "text": "With that caveat out of the way, your thesis note on NBIS has been rewritten to reflect the capex concern, so the old 'pure growth' framing is no longer on file.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Passive claim that the user's saved thesis note was edited by the assistant/app."
+ },
+ {
+  "text": "Order status: 50 XEQT buy, limit 31.90, working on the exchange as of 09:47 ET.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "States a live order is currently being worked, i.e. an order was placed and is in progress."
+ },
+ {
+  "text": "I went ahead and logged the dividend as a 0.42/share cash transaction on the ENPH position so your yield-on-cost figure stops drifting.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant says it logged a transaction to the user's records on its own initiative."
+ },
+ {
+  "text": "Two things happened while the numbers ran: the SPY threshold moved from 580 to 572, and the duplicate 2026-09-30 VRT buy came out of the ledger.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Reports a threshold changed and a transaction deleted from the user's ledger, in passive voice as completed facts."
+ },
+ {
+  "text": "So yes, the position is closed; the remaining 15 VRT were sold into the open and your holdings page should refresh in a moment.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Confirms a sale executed and holdings changed, passive voice about the user's portfolio."
+ },
+ {
+  "text": "Rebalance complete: 6 lots touched, net cash impact -1,180 USD, details on the updated transactions tab.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Terse status line asserting multiple trades executed and records updated."
+ },
+ {
+  "text": "Done; the 80.00 USD cash correction is on your balance and shows as adjustment #214.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Terse 'Done' plus a specific record ID asserting the cash balance was changed."
+ },
+ {
+  "text": "Given the gap-down, I moved your NBIS stop alert to 36.00 so it fires before the next earnings print rather than after.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Assistant says it changed the user's actual alert threshold (not a chart or scenario)."
+ },
+ {
+  "text": "For what it's worth, we've been accumulating XEQT for you in 10-share clips through the morning, average 31.88, and the last clip is still pending.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "'We' reports in-progress buying on the user's behalf with fills and a pending order."
+ },
+ {
+  "text": "The scenario itself shows only a 3.1% drag, which is manageable, and the 200-share sale we put through this afternoon brought your weight down to 8.2% anyway.",
+  "isClaim": true,
+  "source": "held-out round 2",
+  "why": "Trade-execution claim ('we put through') embedded inside otherwise honest scenario commentary."
+ },
+ {
+  "text": "I moved VRT into the swing bucket in the comparison so the two sleeves are weighted the way you described.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Work on the analysis artifact (the comparison), not the user's holdings."
+ },
+ {
+  "text": "In the second scenario I sold the whole NBIS position at 41.20 and parked the proceeds in cash so you can see the drawdown floor.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Hypothetical action inside a scenario, explicitly scoped."
+ },
+ {
+  "text": "I logged the 2026-10-15 VRT lot separately in the breakdown table because its cost basis skews the blended number.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "'Logged' refers to a table in the analysis, not the ledger."
+ },
+ {
+  "text": "For the chart I removed the XEQT alert levels and kept only the price series; they were cluttering the view.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Removed from a chart, not from the user's alert records."
+ },
+ {
+  "text": "I've updated the threshold in the sensitivity table to 572 so the row matches the level you mentioned, nothing else changed.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Edit to an analysis table, explicitly not the stored threshold."
+ },
+ {
+  "text": "I rewrote the thesis paragraph in this answer to lead with the capex risk, which I think is the stronger framing.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Rewrote text in the reply, not the saved thesis note."
+ },
+ {
+  "text": "In the rebalance sketch I trimmed VRT to 25 shares and bought 50 XEQT, purely on paper, to get the weights where you wanted them.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Paper rebalance in a sketch; explicitly hypothetical."
+ },
+ {
+  "text": "I've drafted a proposal to sell 10 NBIS at market; it's sitting in the panel on the right until you confirm or discard it.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Proposal awaiting user confirmation, no trade placed."
+ },
+ {
+  "text": "Confirming saves the trade to your ledger and updates the holdings tab in the same step.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Explains an app feature in general terms; nothing has been saved."
+ },
+ {
+  "text": "Once you confirm, the alert is removed and you won't be notified at 28.00 again.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Conditional on user confirmation; describes what will happen."
+ },
+ {
+  "text": "Signal Desk logs each cash adjustment as its own transaction, so a correction shows up as a separate row rather than editing the original.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Generic feature description, not a report of a change made."
+ },
+ {
+  "text": "If you approve the proposal, the thesis note will be overwritten; the previous version is kept in history.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Conditional future outcome of a proposal."
+ },
+ {
+  "text": "I'm not fully sold on the 4% yield floor, but the strategy note you drafted makes a reasonable case for it.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Idiom ('sold on') plus a reference to the user's own note."
+ },
+ {
+  "text": "A rebalance proposal touches several lots at once, and each one appears as a pending row until you accept or reject it.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Feature explanation about pending proposals."
+ },
+ {
+  "text": "You sold 10 VRT on 2026-10-15 (your record), which is why the lot count dropped to three.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "User's own past trade read from their records, with attribution and date."
+ },
+ {
+  "text": "Your ledger shows 50 XEQT bought at 31.90, no date attached, which looks like the manual entry you mentioned last week.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Reading an existing record the user made; passive 'bought' is about their own entry."
+ },
+ {
+  "text": "According to your transactions, the ENPH position was closed in full last month, so the dividend you're asking about wouldn't have been received.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "User's historical record, attributed; passive 'was closed' is not the assistant's action."
+ },
+ {
+  "text": "You set the SPY threshold at 580 yourself back in September; it hasn't been changed since.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "User's own action plus a negation that nothing changed."
+ },
+ {
+  "text": "Your records have the NBIS thesis note last edited on 2026-08-02, so it predates the guidance cut.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Reports metadata of the user's own note, no edit by the assistant."
+ },
+ {
+  "text": "Based on your holdings, you're already at 25 VRT after the trim you recorded, so the scenario starts from there.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Trim attributed to the user's own record; used as scenario input."
+ },
+ {
+  "text": "Your transaction history shows the alert at 36.00 was created and deleted on the same day, which is probably why it never fired.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Passive 'created and deleted' is read from the user's history, not done by the assistant."
+ },
+ {
+  "text": "To be clear, no NBIS shares were sold; the 10-share figure above is the size I used for the scenario.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Explicit negation and scenario clarification."
+ },
+ {
+  "text": "Nothing in your ledger changed while I was running these numbers; I can only read it.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Negation; states read-only access."
+ },
+ {
+  "text": "Correction to my earlier message: I didn't move the alert, I only proposed moving it, and that proposal is still waiting on you.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Correction retracting an action; proposal pending."
+ },
+ {
+  "text": "I haven't logged the dividend; if you want it recorded, that will need to go through a proposal.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Negation plus conditional route via proposal."
+ },
+ {
+  "text": "The XEQT order isn't working anywhere; it exists only as the pending proposal at the bottom of this thread.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Negation that any order is live; proposal awaiting confirmation."
+ },
+ {
+  "text": "I should correct myself: the 80.00 USD adjustment I mentioned is in the scenario table, not in your actual balance.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Correction placing the figure in the scenario, explicitly not the balance."
+ },
+ {
+  "text": "Did you want the 10 NBIS sale logged against the October lot or the June one before I draft the proposal?",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Question to the user about a proposal not yet drafted."
+ },
+ {
+  "text": "Have you already sold the remaining 15 VRT, or is that still something you're deciding?",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Question about the user's own possible action."
+ },
+ {
+  "text": "Should the alert at 28.00 be removed as part of this, or kept as a backstop?",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Question; removal not performed."
+ },
+ {
+  "text": "Is the 50 XEQT at 31.90 in your ledger the fill you were telling me about, or a separate buy?",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Question about an existing user record with trade vocabulary."
+ },
+ {
+  "text": "Press Confirm to save it; the ledger will show the new row within a second or two.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Instruction to the user plus future-tense feature behaviour."
+ },
+ {
+  "text": "To remove the stale alert, open the XEQT card, tap the bell icon, and choose Delete.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Instructions for the user to perform the deletion themselves."
+ },
+ {
+  "text": "If you want the dividend logged, click Approve on the proposal card and it will post as a 0.42/share cash transaction.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Conditional instruction; posting depends on user approval."
+ },
+ {
+  "text": "Enter the fill price as 33.05 when you confirm so the realized P&L matches your broker statement.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Instruction with a fill price, but the user is the one confirming."
+ },
+ {
+  "text": "NBIS shares were sold off hard after the capex guidance, down 11% on roughly triple average volume.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Market description ('sold off'), not a trade by anyone on the user's behalf."
+ },
+ {
+  "text": "Insiders sold 2M shares of VRT across three Form 4 filings last week, mostly 10b5-1 plans.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Third-party insider activity from public filings."
+ },
+ {
+  "text": "The fund trimmed its ENPH position to 2.1% from 3.4% according to the latest 13F.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Third-party fund action, attributed to a filing."
+ },
+ {
+  "text": "XEQT's managers rebalanced the underlying weights in September, nudging Canada down to 25%.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "ETF manager action, not the user's portfolio."
+ },
+ {
+  "text": "A large block of SPY was bought at the close yesterday, which some desks read as index rebalancing rather than a directional bet.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Passive market news about an unknown third party, not the user's account."
+ },
+ {
+  "text": "Cash after the sale: 5,075 USD (scenario S1).",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Flat scenario result, labelled as a scenario."
+ },
+ {
+  "text": "Scenario B: sell 15 VRT at 118.40, realized gain 1,420 USD, new weight 6.8%.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Scenario line with imperative-looking trade and numbers; modelled, not executed."
+ },
+ {
+  "text": "Post-trim cash balance: 12,340 CAD; post-trim VRT weight: 8.2% (both modelled, not booked).",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Scenario figures explicitly marked as not booked."
+ },
+ {
+  "text": "If the limit at 31.90 fills, the position would be 150 XEQT with an average cost of 31.74.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Conditional on a fill that has not happened."
+ },
+ {
+  "text": "Under the gap-down case the alert at 36.00 would trigger on the open and the position would show a 2,100 USD unrealized loss.",
+  "isClaim": false,
+  "source": "held-out round 2",
+  "why": "Hypothetical outcome under a named case; 'would' throughout."
+ },
+ {
+  "text": "I bought 120 NVDA for you.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Your real NVDA was sold at 101.50.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The account bought 120 NVDA at 101.50.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The strategy sold VRT at the target.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The position in AMD was stopped out at 151.20.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The simulated account bought 120 NVDA at 101.50, and I bought the same 120 NVDA in your TFSA.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Based on the backtest results, I sold your 60 VRT at 148.20.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The backtest looked strong, so I placed a buy order for 50 AMD in your margin account.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "After reviewing the simulation, your 30 NBIS shares have been sold.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "I copied the simulated trade into your real account: bought 75 CRWV at 92.10.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Following the paper strategy, I sold your 40 SOXL at 31.05.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The Strategy Lab signal fired, and your real AMD position was closed at 150.90.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Just like the paper trade, your 100 NVDA were sold at the open.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The simulation is done; I also sold 25 VRT in your RRSP at 147.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "I ran the backtest and then bought 100 NVDA in your margin account at 101.20.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Unlike in the backtest, your real VRT shares were sold at 139 this morning.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The forward test is paused; meanwhile your NBIS sell order has been filled at 101.62.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "I mirrored the Strategy Lab trade in your real portfolio and bought 40 AMD at 152.30.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Simulated or not, I've sold your 50 MU at 98.40.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "In your real account (not the paper one), 120 NVDA were bought at 101.50.",
+  "isClaim": true,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The simulated account bought 120 NVDA at 101.50.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "In the backtest the strategy sold VRT at the target.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The paper position in AMD was stopped out at 151.20.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "In the Strategy Lab forward test, the strategy bought 40 AMD at 152.30 on the breakout.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The simulated position in NVDA was closed at the 2R target for a gain of US$1,840.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Simulated fill: bought 75 CRWV at 92.10 after the box broke out.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The Lab's simulated account sold its 60 VRT shares at 148.20 when the stop was hit.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "During the backtest, 312 trades were executed, 41% of them winners.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "On paper, the strategy has bought 50 MU and is holding it into earnings.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The forward test opened a simulated long in AMD at 151.80 this morning.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Your simulated account sold 120 NVDA at the target.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "In the hypothetical account, I bought 30 VRT at 140 to show the sizing rule.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The paper trade in SOXL was filled at 31.05, one tick above the trigger.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Backtest result: the strategy sold NBIS at 104.20 on the second target, a +2.1R trade.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The simulated order for 200 PLTR was filled at the open at 41.35 with 0.05 slippage.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "In the Strategy Lab, the simulated account is now flat after the AMD position was closed at 150.90.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Strategy Lab: simulated buy of 90 VRT at 147.60 triggered by the 15-minute breakout.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "In the forward simulation the strategy has already sold half the NVDA position at the first target.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The backtest bought SMCI 14 times in 2024 and sold at a loss on 9 of them.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "The paper portfolio's cash is now US$96,420 after the simulated CRWV purchase.",
+  "isClaim": false,
+  "source": "simulation markers"
+ },
+ {
+  "text": "Heads up: your 35 PLTR were offloaded at 41.10 a few minutes ago, so the TFSA is now mostly cash.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I've gone ahead and bumped your VRT alert from 140 to 145.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your 2026 CRWV thesis has now been archived and replaced with the shorter version you dictated.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Executed: SELL 25 SHOP @ 112.40 (TFSA).",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "We've closed out the remaining MU and moved the cash into XEQT.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "the 40 soxl are gone, sold them at 33.20 like you said",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your margin account just picked up 60 more AMD at 151.75.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Both of your NBIS alerts were consolidated into a single 118 trigger.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Behind the scenes I logged the 12 VFV purchase against your RRSP.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Good news: the limit order for 30 NVDA filled at 180.05.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "As of this morning your RRSP holds no VRT; the last 15 shares were sold at the open.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I've zeroed your TFSA's USD cash because the conversion went through.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your transaction log now includes the 8 MSFT buy from today.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Per your message, the 2026-10-12 dividend entry has been deleted.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Let me confirm: 50 XEQT were bought for you at 31.95 and the TFSA cash is down accordingly.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The strategy notes you wrote last week have been trimmed to the three rules you kept.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Unlike the backtest, which only simulated it, I actually sold your 20 AMD at 150.40.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The Strategy Lab results convinced me, so your real NVDA position was trimmed by 30 shares.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "**Update:** VST alert removed, CRWV alert raised to 45.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Sold the lot — 75 ENPH at 33.10 — and parked the proceeds in your USD cash.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your cash in the RRSP was topped up by $1,000 from the margin account.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I'm now cancelling the stale GTC order on SOXL.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your simulated account and your TFSA both bought 50 MU this morning; the TFSA fill was 98.40.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "All done! Your watchlist no longer has SMCI and the NBIS stop alert is set at 95.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Rebalanced: VFV down to 20%, XEQT up to 45%, trades executed at the close.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I trimmed the VRT holding in your TFSA by a third this morning.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "That AMD order you were unsure about? It's been placed, 40 shares at 150.25.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The paper results looked fine so I went live: 100 AMD bought in your margin account at 151.60.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your entry price for NBIS has been changed to 52.10 to match the broker.",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "ok so the 25 vfv went through at 128.40 and your tfsa cash is 1,210 now",
+  "isClaim": true,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The simulated account exited its AMD position at 149.80 when price closed back inside the box.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "In the forward test, the strategy has opened two positions this week, both still within their initial risk.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Backtested over 2019–2024, the strategy bought NVDA 22 times and its average winner was 2.4R.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Paper trade #14: long 60 CRWV at 91.20, stopped at 88.90 two days later.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The Lab's hypothetical account sold half its VRT at the first target and trailed the rest.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your TFSA's 30 PLTR were bought on 2026-09-04 at 38.60 according to your transaction history.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "You recorded the 15 VRT sale yourself on Oct 15, so the position shows 25 shares.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Nothing was executed: Signal Desk has no connection to your broker.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "If the 60 NBIS had been sold at Friday's high, the gain would have been about 1,240 USD.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I recalculated your TFSA weights using the 15:58 quotes; NBIS is now 38% of the account.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "To sell the 40 SOXL, you'd place the order at your broker and then tell me the fill so I can propose recording it.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your alert on VST at 150 is unchanged since you created it in August.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "NBIS shares were sold heavily after the guidance update, falling 9% on triple the usual volume.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I compared the simulated trades with your real holdings: none of the Lab's positions overlap your TFSA.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The proposal to record 10 NBIS sold at 101.50 is waiting on the card; nothing changes until you press Confirm.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your cost basis for XEQT works out to 29.12 CAD from the four buys in your ledger.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "In the stress test, the simulated account lost 6.1% when slippage was doubled.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Last month the strategy's forward test sold SMCI at its stop for a 1R loss.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I grouped your positions by sector and left the cash out of the percentages.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your USD cash is 4,210 in the margin account and 0 in the TFSA, per the last import.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Should you trim VRT to 10%, roughly 9 shares would need to be sold.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The VFV dividend of 41.20 CAD was credited on 2026-10-01, as recorded in your ledger.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Simulation note: the strategy would have bought AMD at 152.30, but the entry was skipped because the daily loss limit had been hit.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The backtest's worst month was March 2025, when four simulated longs were stopped out in a row.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I flagged CRWV because its last quote is from yesterday's close.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Your thesis for NBIS says you'd add below 90; the stock is at 101.50, so that condition isn't met.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "Here's what a sale would look like: SELL 20 NBIS @ 101.50 in the TFSA, freeing about 2,030 USD before fees.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "In the Strategy Lab, version 1.0.1 took 18 simulated trades last quarter versus 21 for version 1.0.0.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "The paper account is up 3.2% since the forward test started, with 2 open simulated positions.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I left your alerts alone and only looked at the quotes.",
+  "isClaim": false,
+  "source": "generated, scored before tuning (pass 3)"
+ },
+ {
+  "text": "I marked your NBIS alert as triggered.",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "Done — sold 10 NBIS at 101.50 on Oct 21.",
+  "isClaim": true,
+  "source": "generated",
+  "why": "After \"Done —\" a date does not make it the owner's own record."
+ },
+ {
+  "text": "Sold 10 NBIS for you on 2026-10-03 at 101.50.",
+  "isClaim": true,
+  "source": "generated",
+  "why": "\"for you\" outweighs the date."
+ },
+ {
+  "text": "The SOXL downside alert was lifted from $28 to $31.50.",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "Your CRWV thesis was edited to drop the lockup paragraph.",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "Prices are stale, though with the 50 SOXL moved out of the TFSA it matters less.",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "The sector weights are post-rebalance (the 200 SOXL were sold this morning, in margin).",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "By the time you read this the 50 XEQT will have been sold.",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "the 40 soxl are gone, sold them at 33.20",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "In the backtest the strategy sold VRT at the target, and I sold your real VRT at 148.",
+  "isClaim": true,
+  "source": "generated",
+  "why": "The frame stops at a new actor and at \"your real\"."
+ },
+ {
+  "text": "Your simulated account and your TFSA both bought 50 MU this morning.",
+  "isClaim": true,
+  "source": "generated",
+  "why": "The marker governs only its own noun phrase."
+ },
+ {
+  "text": "I copied the simulated trade into your real account.",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "I rounded the XEQT ACB to $29.42 in your holdings record to match the broker's figure.",
+  "isClaim": true,
+  "source": "generated"
+ },
+ {
+  "text": "Here is the comparison table. I've updated it with the new prices.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "I pulled your transaction history from the ledger.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "Your positions are updated every 15 minutes during market hours.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "Your cash balance is recorded as 2,030 CAD in the ledger.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "VRT shares were lifted by the rally after earnings.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "With your Oct 3 sale recorded, your TFSA holds 50 NBIS.",
+  "isClaim": false,
+  "source": "generated",
+  "why": "The owner's dated record, described."
+ },
+ {
+  "text": "The U.S. market closed higher.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "Backtested over 2019–2024, the strategy bought NVDA 22 times.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "Sold 40 VRT at 148.20 (simulated).",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "I sold your NVDA in the simulated account.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "Your holdings are updated with the 15:58 quotes.",
+  "isClaim": false,
+  "source": "generated"
+ },
+ {
+  "text": "Your NBIS position traded at 101 most of the day.",
+  "isClaim": false,
+  "source": "generated",
+  "why": "Market narrative."
+ },
+ {
+  "text": "In the forward test, the strategy bought 40 AMD at 152.30 and I bought 40 AMD in your TFSA.",
+  "isClaim": true,
+  "source": "generated",
+  "why": "The frame stops where \"I\" joins a clause about the strategy."
+ },
+ {
+  "text": "In scenario S2 we sold 20% and we kept the cash in USD.",
+  "isClaim": false,
+  "source": "generated",
+  "why": "The same actor continues inside the frame."
  }
 ]

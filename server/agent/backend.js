@@ -208,12 +208,21 @@ function countStreamed(ev, s) {
   else if (ev.type === 'content_block_delta') s.chars += (ev.delta?.text || ev.delta?.partial_json || ev.delta?.thinking || '').length;
 }
 
+// When usage carries per-attempt `iterations` (which responseCost prices), the
+// last attempt takes whatever the estimate exceeds their reported total.
 function partialUsage(stream, s) {
   const m = stream?.currentMessage;
   if (!m?.usage) return null;
   if (s.final) return m;
   const estimate = s.thinking ? MAX_TOKENS : Math.min(MAX_TOKENS, Math.ceil(s.chars / 4));
-  return { ...m, usage: { ...m.usage, output_tokens: Math.max(m.usage.output_tokens || 0, estimate) } };
+  const usage = { ...m.usage, output_tokens: Math.max(m.usage.output_tokens || 0, estimate) };
+  if (Array.isArray(m.usage.iterations) && m.usage.iterations.length) {
+    const its = m.usage.iterations.map((it) => ({ ...it }));
+    const reported = its.reduce((sum, it) => sum + (it.output_tokens || 0), 0);
+    its.at(-1).output_tokens = (its.at(-1).output_tokens || 0) + Math.max(0, estimate - reported);
+    usage.iterations = its;
+  }
+  return { ...m, usage };
 }
 
 // Drop the parts of a response that must not be echoed back or acted on.

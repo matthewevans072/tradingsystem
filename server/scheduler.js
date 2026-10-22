@@ -157,12 +157,26 @@ export function createScheduler(ctx, { tickMs = 30000, clock = () => new Date() 
       log.warn('scheduler', `resumed after ${gapMin} min gap`);
     }
     state.lastTick = now;
+    labTick(now);
     try {
       await handleSlots(now);
       await maintenance(now);
       await monitor(now);
     } catch (e) {
       log.error('scheduler', 'tick failed', e);
+    }
+  }
+
+  // Strategy Lab forward test (simulated): never awaited, so a slow provider
+  // cannot delay a briefing, and its provider requests pause while one runs.
+  function labTick(now) {
+    try {
+      const lab = ctx.lab;
+      if (!lab?.tick) return;
+      lab.tick({ now, shouldPause: () => [...state.running].some((n) => n.startsWith('briefing:')) })
+        .catch((e) => log.error('scheduler', 'strategy lab tick failed', e));
+    } catch (e) {
+      log.error('scheduler', 'strategy lab tick failed', e);
     }
   }
 

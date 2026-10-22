@@ -344,6 +344,7 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
   };
   const tradesOn = db.prepare(`SELECT * FROM transactions WHERE voided_at IS NULL AND trade_date = ? AND account_id = ? AND instrument_id = ? AND type IN ('BUY','SELL','BASELINE')`);
   const splitsOn = db.prepare("SELECT ratio_from, ratio_to FROM corporate_actions WHERE type = 'SPLIT' AND instrument_id = ? AND effective_date = ?");
+  const splitsAfter = db.prepare("SELECT ratio_from, ratio_to, effective_date FROM corporate_actions WHERE type = 'SPLIT' AND instrument_id = ? AND effective_date > ? ORDER BY effective_date");
   const instruments = new Map(db.prepare('SELECT * FROM instruments').all().map((i) => [i.id, i]));
   const quotes = new Map(db.prepare('SELECT * FROM quotes').all().map((q) => [q.instrument_id, q]));
   const meta = new Map(db.prepare('SELECT * FROM position_meta').all().map((m) => [`${m.account_id}:${m.instrument_id}`, m]));
@@ -368,18 +369,23 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
     const avgCost = l.cost / l.shares;
     const pos = { ...base, shares: round(l.shares, 6), avgCost: round(avgCost, 4), avgCostExact: avgCost, costBasis: round(l.cost) };
     if (q && q.price != null) {
-      const mv = l.shares * q.price;
-      pos.price = q.price;
+      const sessionDate = q.quote_time ? zonedParts(new Date(q.quote_time), exchangeGroup(inst.exchange) === 'TSX' ? TORONTO : NY).date : today;
+      // A quote from a session before a split (e.g. the last close before the
+      // split's first session) is in pre-split units: valuing the post-split
+      // shares converts its prices by the split ratio, and says so.
+      const later = splitsAfter.all(l.instrument_id, sessionDate);
+      const k = later.reduce((f, s) => (f * s.ratio_from) / s.ratio_to, 1);
+      const mv = l.shares * q.price * k;
+      pos.price = later.length ? round(q.price * k, 4) : q.price;
       pos.marketValue = round(mv);
       pos.unrealizedPL = round(mv - l.cost);
       pos.unrealizedPct = l.cost > 0 ? round(((mv - l.cost) / l.cost) * 100) : null;
       if (q.prev_close != null) {
-        const sessionDate = q.quote_time ? zonedParts(new Date(q.quote_time), exchangeGroup(inst.exchange) === 'TSX' ? TORONTO : NY).date : today;
         // Quote feeds adjust the previous close on a split's effective date, so
         // the start shares are counted in post-split units.
         let sStart = sharesAt(ledgerAsOf(prevDate(sessionDate)), key);
         for (const s of splitsOn.all(l.instrument_id, sessionDate)) sStart *= s.ratio_to / s.ratio_from;
-        const sEnd = sessionDate >= today ? l.shares : sharesAt(ledgerAsOf(sessionDate), key);
+        const sEnd = sessionDate >= today && !later.length ? l.shares : sharesAt(ledgerAsOf(sessionDate), key);
         // A BASELINE dated the session records shares already held, so it counts as
         // held at the start of the session (at the previous close), not as a buy.
         const dated = tradesOn.all(sessionDate, l.account_id, l.instrument_id);
@@ -401,11 +407,17 @@ export function computePortfolio(db, { now = new Date(), catalog = null } = {}) 
           pos.dailyPLSession = sessionDate;
           // Same denominator as the totals: start value plus what was bought that session.
           pos.dailyPLStartValue = sStart * q.prev_close + bought;
-          if (Math.abs(sEnd - l.shares) > EPS) pos.dailyPLNote = `Trades dated after the ${sessionDate} session are not part of that session's P/L.`;
+          if (Math.abs(sEnd / k - l.shares) > EPS) pos.dailyPLNote = `Trades dated after the ${sessionDate} session are not part of that session's P/L.`;
           pos.dailyPct = pos.dailyPLStartValue > 0 ? round((daily / pos.dailyPLStartValue) * 100) : null;
         }
       }
       pos.quote = publicQuote(q, now, inst.exchange);
+      if (later.length) {
+        for (const f of ['price', 'prevClose', 'change', 'open', 'high', 'low']) if (pos.quote[f] != null) pos.quote[f] = round(pos.quote[f] * k, 4);
+        if (pos.quote.ext) pos.quote.ext.price = round(pos.quote.ext.price * k, 4);
+        pos.quote.preSplit = { price: q.price, factor: k, splits: later.map((s) => ({ date: s.effective_date, ratio: `${s.ratio_from}:${s.ratio_to}` })) };
+        pos.priceNote = `The latest quote (${q.price}, ${sessionDate} session) is from before the split${later.length > 1 ? 's' : ''} effective ${later.map((s) => `${s.effective_date} (${s.ratio_from}:${s.ratio_to})`).join(', ')}; its prices are converted to post-split shares until a newer quote is fetched.`;
+      }
     } else {
       pos.price = null; pos.marketValue = null; pos.unrealizedPL = null; pos.unrealizedPct = null; pos.dailyPL = null;
       pos.quote = q ? publicQuote(q, now, inst.exchange) : null;

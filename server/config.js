@@ -49,6 +49,8 @@ export function loadConfig(overrides = {}) {
       ANTHROPIC_API_KEY: get('ANTHROPIC_API_KEY'),
       SMTP_PASSWORD: get('SMTP_PASSWORD'),
       NTFY_TOKEN: get('NTFY_TOKEN'),
+      // Optional TradingView alert receiver for the Strategy Lab (simulation journal only).
+      LAB_WEBHOOK_SECRET: get('LAB_WEBHOOK_SECRET'),
     },
     secContactEmail: get('SEC_CONTACT_EMAIL'),
     anthropicModel: get('ANTHROPIC_MODEL', 'claude-opus-5-5'),
@@ -70,6 +72,10 @@ export function loadConfig(overrides = {}) {
     },
     ntfy: {
       url: get('NTFY_URL'),
+    },
+    lab: {
+      webhookPort: get('LAB_WEBHOOK_PORT', '') === '' ? null : Number(get('LAB_WEBHOOK_PORT')),
+      maxSignalDelayMin: get('LAB_MAX_SIGNAL_DELAY_MIN', '') === '' ? 5 : Number(get('LAB_MAX_SIGNAL_DELAY_MIN')),
     },
   };
   return cfg;
@@ -105,6 +111,7 @@ export function publicConfigStatus(cfg) {
       secEdgar: !!cfg.secContactEmail,
       email: !!(cfg.smtp.host && cfg.smtp.user && cfg.secrets.SMTP_PASSWORD && cfg.smtp.to),
       ntfy: !!cfg.ntfy.url,
+      labWebhook: !!(cfg.secrets.LAB_WEBHOOK_SECRET && cfg.lab?.webhookPort),
     },
   };
 }

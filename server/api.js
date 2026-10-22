@@ -524,3 +524,8 @@ const proposalConv = (body) => {
 };
 r('POST', '/api/chat/proposals/:id/confirm', (ctx, { params, body }) => confirmProposal(ctx, Number(params.id), { conversationId: proposalConv(body) }));
 r('POST', '/api/chat/proposals/:id/reject', (ctx, { params, body }) => rejectProposal(ctx, Number(params.id), { conversationId: proposalConv(body) }));
+
+// ---------- Strategy Lab (simulation only; server/strategy/api.js) ----------
+
+import { registerLabRoutes } from './strategy/api.js';
+registerLabRoutes(r, HttpError);

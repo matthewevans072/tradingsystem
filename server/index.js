@@ -9,6 +9,7 @@ import { matchRoute, HttpError } from './api.js';
 import { createScheduler } from './scheduler.js';
 import { autoBackupIfDue } from './backup.js';
 import { refreshFx } from './marketdata.js';
+import { startLabWebhook } from './strategy/webhook.js';
 
 const PUBLIC = path.join(ROOT, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
@@ -154,10 +155,13 @@ async function main() {
     if (scheduler) scheduler.start();
     else log.warn('startup', 'Scheduler disabled (SIGNAL_DESK_SCHEDULER=false)');
     if (!scheduler) refreshFx(real).catch(() => {});
+    webhook = startLabWebhook(cfg, () => real.lab);
   });
+  let webhook = null;
   const shutdown = () => {
     log.info('shutdown', 'stopping');
     scheduler?.stop();
+    webhook?.close();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000).unref();
   };
