@@ -40,9 +40,9 @@ const FLAT = [101.2, 101.3, 101.0, 101.2, 1000];
 // Hand-computed (ENGINE-SPEC §2, §4, §6) for BOX + BREAKOUT:
 const ATR = [null, null, 4.9 / 3, 1.6555555555555558, 1.5370370370370374, 1.3580246913580247, 1.1886831275720193];
 const A6 = ATR[6];
-const STOP = 100.35 - 0.1 * A6; // 100.23113168724280
+const STOP = 100.23; // 100.35 - 0.1 × ATR = 100.23113…, rounded down to the tick
 const K = 0.0004;
-const L = 101.11; // min(gap limit 101.6943, reward/risk limit 101.1136) rounded down to the tick
+const L = 101.11; // min(gap limit 101.6943, reward/risk limit 101.1129) rounded down to the tick
 const SHARES = 257;
 const E = 101.1 * (1 + K); // entry at the next open 101.10 plus spread and slippage
 const PLANNED = SHARES * (E - STOP * (1 - K)) + 1.285 + 1.285;
@@ -86,7 +86,7 @@ test('config loads deep-frozen, validates types, ranges and enums', () => {
     assert.ok(errs.some((e) => e.startsWith(p)), `${p} flagged: ${errs.join(' | ')}`);
   }
   assert.ok(validateConfig({ ...BASE, box: { ...BASE.box, minHeightAtr: 4 } }).some((e) => e.includes('minHeightAtr')));
-  assert.equal(ENGINE_VERSION, 'engine-1.0.0');
+  assert.equal(ENGINE_VERSION, 'engine-1.0.1');
 });
 
 test('config hash ignores descriptive fields and follows rule changes', () => {
@@ -315,7 +315,7 @@ test('skips: gap limit, reward/risk limit, opened at or below the stop; reject b
   const rr = run([...BOX, BREAKOUT, [101.2, 101.3, 101.0, 101.2]]);
   const s1 = ofType(rr, 'entry_skipped')[0];
   assert.equal(s1.details.code, 'above_max_entry');
-  assert.match(s1.reason, /^opened at 101\.2, above the maximum entry 101\.11 \(reward\/risk limit 101\.1136 binding\)$/);
+  assert.match(s1.reason, /^opened at 101\.2, above the maximum entry 101\.11 \(reward\/risk limit 101\.1129 binding\)$/);
   const gapCfg = cfgWith({ 'entry.maxGapAtr': 0 });
   const gp = run([...BOX, BREAKOUT, [101.11, 101.3, 101.0, 101.2]], { config: gapCfg });
   const s2 = ofType(gp, 'entry_skipped')[0];
@@ -352,7 +352,7 @@ test('stop fill; gap through the stop fills at the open (loss beyond 1R)', () =>
   assert.equal(t.exit.gapThrough, false);
   near(t.exit.raw, STOP);
   near(t.exit.price, STOP * (1 - K));
-  near(t.pnl.net, -246.56599671604667, 'net', 1e-7);
+  near(t.pnl.net, -PLANNED, 'net', 1e-7);
   near(t.pnl.r, -1, 'a normal stop loses exactly the planned risk', 1e-9);
   assert.equal(t.exit.at, '2024-03-05T16:30:00.000Z');
   assert.equal(t.holdBars, 2);
@@ -362,10 +362,10 @@ test('stop fill; gap through the stop fills at the open (loss beyond 1R)', () =>
   assert.equal(tg.exit.gapThrough, true);
   assert.equal(tg.exit.raw, 99.9);
   near(tg.exit.price, 99.9 * (1 - K));
-  near(tg.pnl.net, -331.6327999999928, 'net', 1e-7);
-  near(tg.pnl.r, -1.345006223148895, 'R', 1e-9);
+  near(tg.pnl.net, SHARES * (99.9 * (1 - K) - E) - 2.57, 'net', 1e-7); // -331.6328
+  near(tg.pnl.r, (SHARES * (99.9 * (1 - K) - E) - 2.57) / PLANNED, 'R', 1e-9); // -1.3434
   assert.equal(g.summary.gapThroughStops, 1);
-  assert.match(whatEnded(tg).text, /opened at 99\.90, below the stop of 100\.2311: .*The loss of 1\.35R is 0\.35R more than the planned risk/);
+  assert.match(whatEnded(tg).text, /opened at 99\.90, below the stop of 100\.2300: .*The loss of 1\.34R is 0\.34R more than the planned risk/);
 });
 
 test('target needs one tick through; gap through the target fills at the open; exits on the entry bar', () => {
@@ -375,8 +375,8 @@ test('target needs one tick through; gap through the target fills at the open; e
   assert.equal(t.exit.at, '2024-03-05T16:45:00.000Z', 'the 103.00 high is not enough; 103.01 is');
   assert.equal(t.exit.price, 103);
   assert.equal(t.exit.spreadSlippage, 0);
-  near(t.pnl.net, 475.3369200000041, 'net', 1e-7);
-  near(t.pnl.r, 1.9278283556163562);
+  near(t.pnl.net, SHARES * (103 - E) - 2.57, 'net', 1e-7); // 475.3369
+  near(t.pnl.r, (SHARES * (103 - E) - 2.57) / PLANNED); // 1.9256
   const g = run([...ENTERED, [103.2, 103.5, 103.1, 103.3], FLAT]);
   assert.equal(g.trades[0].exit.gapThrough, true);
   assert.equal(g.trades[0].exit.raw, 103.2);
@@ -519,10 +519,11 @@ test('open-risk limit across symbols: the room left sizes the next signal; none 
   const r = multi([['BBB', rows], ['AAA', rows]], cfgWith({ 'risk.riskPerTradePct': 0.5, 'risk.maxOpenRiskPct': 0.75 }));
   const plans = Object.fromEntries(ofType(r, 'signal').map((e) => [e.symbol, e.details.plan]));
   assert.equal(plans.AAA.shares, 515);
-  near(plans.AAA.plannedRiskWorstCase, 499.2434541975301, 'AAA worst case', 1e-7);
+  const AAA_WORST = 515 * (L * (1 + K) - STOP * (1 - K)) + 2 * 2.575; // 499.8260
+  near(plans.AAA.plannedRiskWorstCase, AAA_WORST, 'AAA worst case', 1e-7);
   assert.equal(plans.BBB.sizing.sizedBy, 'open_risk');
-  near(plans.BBB.sizing.budget, 750 - 499.2434541975301, 'BBB budget', 1e-7);
-  assert.equal(plans.BBB.shares, 258);
+  near(plans.BBB.sizing.budget, 750 - AAA_WORST, 'BBB budget', 1e-7);
+  assert.equal(plans.BBB.shares, 257, '258 shares would need 250.40 of a 250.17 budget');
   // BBB and CCC fill at their limit (101.11) and drift lower; DDD's later signal finds no room left
   const filledAtLimit = [...BOX, BREAKOUT, [101.11, 101.2, 100.4, 100.4], [100.4, 100.5, 100.35, 100.4], [100.4, 100.5, 100.35, 100.4], FLAT];
   const r2 = multi([['BBB', filledAtLimit], ['CCC', filledAtLimit], ['DDD', [...BOX, BREAKOUT, FLAT], 3]], cfgWith({ 'risk.maxOpenRiskPct': 0.5 }));
@@ -550,7 +551,10 @@ test('limit_intrabar entry (TradingView parity) and the stress entry', () => {
   assert.equal(t.entry.raw, L);
   assert.equal(t.entry.price, L, 'a limit fill pays no spread or slippage');
   assert.deepEqual(t.entry.flags, ['intrabar_limit_entry']);
-  near(t.entry.plannedRisk, 238.74291671605064, 'planned risk', 1e-7);
+  near(t.entry.plannedRisk, SHARES * (L - STOP * (1 - K)) + 2.57, 'planned risk', 1e-7); // 239.0336
+  // As TradingView's limit verification: a low exactly at the limit is not a fill; one tick through is.
+  assert.equal(run([...BOX, BREAKOUT, [101.2, 101.3, 101.11, 101.2], FLAT], { overrides: { entryFill: 'limit_intrabar' } }).trades.length, 0);
+  assert.equal(run([...BOX, BREAKOUT, [101.2, 101.3, 101.10, 101.2], FLAT], { overrides: { entryFill: 'limit_intrabar' } }).trades.length, 1);
   const s = run([...ENTERED, FLAT], { overrides: { entryWorseAtr: 0.1 } }).trades[0];
   near(s.entry.price, E + 0.1 * A6, 'entry 0.1 ATR worse');
   assert.ok(s.entry.flags.includes('stress_entry_worse'));
@@ -623,10 +627,10 @@ test('explanations carry the numbers', () => {
   assert.match(q.text, /ceiling was touched 2 times \(03-05 09:30 ET, 03-05 10:00 ET\) and the floor 2 times \(03-05 09:45 ET, 03-05 10:15 ET\)/);
   assert.match(whySignal(t).text, /closed at 101\.10, 0\.10 above the frozen ceiling of 101\.00/);
   assert.match(whySignal(t).text, /volume of 2,000 shares was 2\.00× the average of the previous 4 bars \(1,000\)/);
-  assert.match(whatEnded(t).text, /The stop at 100\.2311 was hit \(the bar's low was 100\.10\); it filled at 100\.1910/);
-  assert.match(whatEnded(t).text, /-1\.00R on a planned risk of \$246\.57/);
+  assert.match(whatEnded(t).text, /The stop at 100\.2300 was hit \(the bar's low was 100\.10\); it filled at 100\.1899/);
+  assert.match(whatEnded(t).text, /-1\.00R on a planned risk of \$246\.86/);
   const amb = run([...ENTERED, [101.5, 103.05, 100.2, 101.0]]).trades[0];
-  assert.match(whatEnded(amb).text, /reached both the stop \(low 100\.20 at or below 100\.2311\) and the target \(high 103\.05 at or above 103\.01\).*conservative stop-first assumption/);
+  assert.match(whatEnded(amb).text, /reached both the stop \(low 100\.20 at or below 100\.2300\) and the target \(high 103\.05 at or above 103\.01\).*conservative stop-first assumption/);
 });
 
 // ---------- whole-engine properties (synthetic data: code checks only) ----------

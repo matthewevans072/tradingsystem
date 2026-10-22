@@ -579,8 +579,10 @@ if confirmed
             // The breakout candle. The box is consumed whatever happens next.
             cntConsumed += 1
             nextWindowStartMin := math.max(bEnd + 1, bar_index + 1)
-            float stopPx = low - stopBufAtr * atrNow
-            float targetPx = bR + targetMult * bH
+            // Orders rest at valid prices: the stop rounds down and the target up to
+            // the tick, as in the engine (engine-1.0.1).
+            float stopPx = math.round_to_mintick(math.floor((low - stopBufAtr * atrNow) / syminfo.mintick + PX_EPS) * syminfo.mintick)
+            float targetPx = math.round_to_mintick(math.ceil((bR + targetMult * bH) / syminfo.mintick - PX_EPS) * syminfo.mintick)
             float gapLim = close + maxGapAtr * atrNow
             float rrLim = ((targetPx + minRR * stopPx) / (1 + minRR)) / (1 + kCost)
             float rawMax = math.min(gapLim, rrLim)
@@ -780,6 +782,13 @@ plot(avgVolPrev, "CB average volume of previous bars", color = color.gray, displ
 plot(st == ST_ARMED ? bR : na, "CB armed ceiling", color = C_ARMED, style = plot.style_linebr, display = display.data_window)
 plot(st == ST_ARMED ? bS : na, "CB armed floor", color = C_ARMED, style = plot.style_linebr, display = display.data_window)
 plot(st, "CB state (0 scan, 1 armed, 2 pending, 3 position)", color = color.gray, display = display.data_window)
+// The frozen order plan while an order is pending or a position is open, and
+// the strategy's own equity, so trades can be reconciled with the engine.
+plot(st >= ST_PENDING ? pStop : na, "CB stop", color = color.gray, style = plot.style_linebr, display = display.data_window)
+plot(st >= ST_PENDING ? pTarget : na, "CB target", color = color.gray, style = plot.style_linebr, display = display.data_window)
+plot(st >= ST_PENDING ? pMaxEntry : na, "CB max entry", color = color.gray, style = plot.style_linebr, display = display.data_window)
+plot(st >= ST_PENDING ? pQty : na, "CB planned qty", color = color.gray, style = plot.style_linebr, display = display.data_window)
+plot(strategy.equity, "CB strategy equity", color = color.gray, display = display.data_window)
 
 // --------------------------------------------------------------- the table
 var table tbl = na

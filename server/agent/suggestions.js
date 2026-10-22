@@ -26,6 +26,15 @@ export function suggestQuestions(ctx, { page, symbol } = {}) {
       add(`Is there recent news or a filing for ${sym}?`);
     }
   }
+  // The Strategy Lab is a simulation; its questions don't depend on real holdings.
+  if (page === 'lab') {
+    add('How much simulated capital is at risk right now?');
+    add('Why did the latest simulated trade trigger, and what ended it?');
+    add('Is the backtest result coming from one stock or a broad pattern?');
+    add('What does the pre-registered acceptance outcome say, and how many trades is it based on?');
+    add('What changed between strategy versions?');
+    return out;
+  }
   if (!p.positions.length) {
     add('What do I need to set up before you can analyse my portfolio?');
     add('What does NVDA actually do?');

@@ -8,6 +8,7 @@ import { renderIntelligence } from './views/intelligence.js';
 import { renderWatchlist } from './views/watchlist.js';
 import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
+import { renderLab } from './views/lab.js';
 
 const VIEWS = {
   overview: { title: 'Overview', render: renderOverview },
@@ -15,6 +16,7 @@ const VIEWS = {
   intelligence: { title: 'Intelligence', render: renderIntelligence },
   watchlist: { title: 'AI Watchlist', render: renderWatchlist },
   reports: { title: 'Reports', render: renderReports },
+  lab: { title: 'Strategy Lab', render: renderLab },
   settings: { title: 'Settings', render: renderSettings },
 };
 

@@ -13,6 +13,8 @@ export const REF_KINDS = {
   archived_report: 'Saved briefing (archived)',
   assessment: 'Saved assessment',
   calculation: 'Calculation by Signal Desk',
+  // Strategy Lab results: a hypothetical account, never the owner's records or money.
+  simulation: 'Strategy Lab (simulated)',
   status: 'Data status',
 };
 

@@ -92,3 +92,159 @@ export function sparkline(values, { width = 90, height = 26 } = {}) {
   svg.append(s('polyline', { points: pts, fill: 'none', class: v[v.length - 1] >= v[0] ? 'up' : 'down' }));
   return svg;
 }
+
+// ---------- Strategy Lab ----------
+
+// New York date and time of an instant (bars are stored as UTC ISO times).
+const NY_PARTS = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+function nyParts(t) {
+  const p = Object.fromEntries(NY_PARTS.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, hm: `${p.hour}:${p.minute}` };
+}
+const shortDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const priceText = (v) => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(v >= 1000 ? 1 : 2));
+
+// 15-minute candlesticks with the Lab's overlays. Only the bars given are
+// drawn: a missing bar inside a session leaves an empty slot (it is never
+// filled in), and sessions are separated by a gap and a dated divider.
+// boxes: [{ windowStart, endedAt|null, resistance, support, outcome }]
+// trades: [{ entryAt, exitAt, entryPrice, stop, target, exitPrice, r, symbol }]
+// markers: [{ at, type, reason }]
+export function candles(bars, { width = 760, height = 340, boxes = [], trades = [], markers = [], intervalMin = 15 } = {}) {
+  const svg = s('svg', { viewBox: `0 0 ${width} ${height}`, width: '100%', class: 'candles', role: 'img', 'aria-label': `Candlestick chart, ${bars.length} bars`, preserveAspectRatio: 'xMinYMin meet' });
+  if (!bars.length) return svg;
+  const step = intervalMin * 60000;
+  // Slots: one per bar, empty slots for missing bars, one blank slot between sessions.
+  const slots = [], sessions = [];
+  let slot = 0, prev = null;
+  for (const b of bars) {
+    const ms = Date.parse(b.t), p = nyParts(ms);
+    if (prev) {
+      if (p.date !== prev.date) { slot += 2; sessions.push({ date: p.date, slot }); }
+      else slot += Math.max(1, Math.round((ms - prev.ms) / step));
+    } else sessions.push({ date: p.date, slot });
+    slots.push({ ...b, ms, slot, date: p.date, hm: p.hm });
+    prev = { ms, date: p.date };
+  }
+  const nSlots = slot + 1;
+  const padL = 6, padR = 58, padT = 14, padB = 22, volH = Math.round(height * 0.16), gap = 8;
+  const plotW = width - padL - padR, priceH = height - padT - padB - volH - gap;
+  const slotW = plotW / nSlots;
+  const X = (k) => padL + (k + 0.5) * slotW;
+  const firstMs = slots[0].ms, lastMs = slots[slots.length - 1].ms;
+  // Slot of an instant: the last bar at or before it, clamped to the drawn range.
+  const toMs = (t) => (typeof t === 'number' ? t : Date.parse(t));
+  const slotAt = (t) => {
+    const ms = toMs(t);
+    if (!Number.isFinite(ms) || ms <= firstMs) return slots[0].slot;
+    if (ms >= lastMs) return slots[slots.length - 1].slot;
+    let lo = 0, hi = slots.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (slots[mid].ms <= ms) lo = mid; else hi = mid - 1; }
+    return slots[lo].slot;
+  };
+  const inView = (from, to) => toMs(to ?? lastMs) >= firstMs && toMs(from) <= lastMs + step;
+  const vBoxes = boxes.filter((b) => inView(b.windowStart, b.endedAt));
+  const vTrades = trades.filter((t) => t.entryAt && inView(t.entryAt, t.exitAt));
+  const levels = [...slots.flatMap((b) => [b.h, b.l]), ...vBoxes.flatMap((b) => [b.resistance, b.support]), ...vTrades.flatMap((t) => [t.stop, t.target, t.entryPrice])].filter(Number.isFinite);
+  let min = Math.min(...levels), max = Math.max(...levels);
+  const pad = (max - min) * 0.06 || 1;
+  min -= pad; max += pad;
+  const Y = (v) => padT + (1 - (v - min) / (max - min)) * priceH;
+  // Grid and price axis.
+  for (let k = 0; k <= 4; k++) {
+    const v = min + ((max - min) * k) / 4;
+    svg.append(s('line', { x1: padL, x2: width - padR, y1: Y(v), y2: Y(v), class: 'grid' }));
+    svg.append(s('text', { x: width - padR + 6, y: Y(v) + 4, class: 'axis' }, priceText(v)));
+  }
+  // Session dividers and dates.
+  let lastLabel = -Infinity;
+  sessions.forEach((x, i) => {
+    const sx = padL + x.slot * slotW;
+    if (i > 0) svg.append(s('line', { x1: sx - slotW / 2, x2: sx - slotW / 2, y1: padT, y2: height - padB, class: 'session-div' }));
+    if (sx - lastLabel >= 44 && sx < width - padR - 20) { svg.append(s('text', { x: sx + 2, y: height - 6, class: 'axis' }, shortDate(x.date))); lastLabel = sx; }
+  });
+  // Boxes (frozen ceiling and floor), behind the candles.
+  for (const b of vBoxes) {
+    const x0 = padL + slotAt(b.windowStart) * slotW, x1 = padL + (slotAt(b.endedAt ?? lastMs) + 1) * slotW;
+    const clipped = Date.parse(b.windowStart) < firstMs;
+    svg.append(s('rect', { x: x0, y: Y(b.resistance), width: Math.max(2, x1 - x0), height: Math.max(1, Y(b.support) - Y(b.resistance)), class: `box box-${b.outcome || 'open'}${clipped ? ' clipped' : ''}` },
+      s('title', {}, `Box ${priceText(b.support)}–${priceText(b.resistance)} (${b.outcome || 'open'})${clipped ? '; its window starts before the first bar shown' : ''}`)));
+  }
+  // Trade levels: entry, stop and target over the time the trade was open.
+  for (const t of vTrades) {
+    const x0 = X(slotAt(t.entryAt)) - slotW / 2, x1 = X(slotAt(t.exitAt ?? lastMs)) + slotW / 2;
+    for (const [v, cls, label] of [[t.target, 'lvl-target', 'Target'], [t.stop, 'lvl-stop', 'Stop'], [t.entryPrice, 'lvl-entry', 'Entry']]) {
+      if (!Number.isFinite(v)) continue;
+      svg.append(s('line', { x1: x0, x2: x1, y1: Y(v), y2: Y(v), class: `lvl ${cls}` }, s('title', {}, `${label} ${priceText(v)}`)));
+    }
+  }
+  // Volume pane (missing volume is left blank).
+  const vols = slots.map((b) => b.v).filter((v) => Number.isFinite(v) && v >= 0);
+  const vMax = Math.max(1, ...vols);
+  const vTop = padT + priceH + gap;
+  svg.append(s('line', { x1: padL, x2: width - padR, y1: vTop + volH, y2: vTop + volH, class: 'grid' }));
+  const bw = Math.max(1, Math.min(9, slotW * 0.7));
+  for (const b of slots) {
+    const up = b.c >= b.o;
+    if (Number.isFinite(b.v) && b.v >= 0) {
+      const vh = (b.v / vMax) * volH;
+      svg.append(s('rect', { x: X(b.slot) - bw / 2, y: vTop + volH - vh, width: bw, height: Math.max(0.5, vh), class: `vol ${up ? 'up' : 'down'}` }));
+    }
+    const yo = Y(b.o), yc = Y(b.c);
+    svg.append(s('g', { class: `candle ${up ? 'up' : 'down'}` },
+      s('title', {}, `${b.date} ${b.hm} ET  O ${priceText(b.o)}  H ${priceText(b.h)}  L ${priceText(b.l)}  C ${priceText(b.c)}  V ${Number.isFinite(b.v) ? b.v.toLocaleString('en-US') : 'missing'}`),
+      s('line', { x1: X(b.slot), x2: X(b.slot), y1: Y(b.h), y2: Y(b.l), class: 'wick' }),
+      s('rect', { x: X(b.slot) - bw / 2, y: Math.min(yo, yc), width: bw, height: Math.max(1, Math.abs(yc - yo)), class: 'body' })));
+  }
+  // Entry and exit markers.
+  const barAt = (k) => slots.find((b) => b.slot === k);
+  for (const t of vTrades) {
+    const ke = slotAt(t.entryAt), be = barAt(ke);
+    if (be && Date.parse(t.entryAt) >= firstMs) {
+      const y = Y(be.l) + 12;
+      svg.append(s('path', { d: `M${X(ke)},${y - 7} l5,8 h-10 z`, class: 'mk mk-entry' }, s('title', {}, `Simulated entry ${priceText(t.entryPrice)} at ${nyParts(t.entryAt).hm} ET`)));
+    }
+    if (t.exitAt && Date.parse(t.exitAt) <= lastMs + step) {
+      const kx = slotAt(t.exitAt), bx = barAt(kx);
+      if (bx) {
+        const y = Y(bx.h) - 12;
+        svg.append(s('path', { d: `M${X(kx)},${y + 7} l5,-8 h-10 z`, class: `mk ${t.r > 0 ? 'mk-win' : 'mk-loss'}` }, s('title', {}, `Simulated exit ${priceText(t.exitPrice)}${Number.isFinite(t.r) ? ` (${t.r >= 0 ? '+' : ''}${t.r.toFixed(2)}R)` : ''}`)));
+      }
+    }
+  }
+  // Decisions at a bar (signals, rejections, skips) along the top edge.
+  for (const m of markers) {
+    const ms = Date.parse(m.at);
+    if (!(ms >= firstMs && ms <= lastMs)) continue;
+    svg.append(s('circle', { cx: X(slotAt(m.at)), cy: padT - 6, r: 3.5, class: `mk-dot dot-${m.type}` }, s('title', {}, `${m.type.replace(/_/g, ' ')}: ${m.reason || ''}`)));
+  }
+  return svg;
+}
+
+// Histogram of R multiples. Bins are centred on multiples of binWidth (so a
+// -1R stop lands in the -1.0 bin); values are rounded to 1e-6 first so float
+// noise cannot split identical results across two bins.
+export function histogram(values, { width = 420, height = 150, binWidth = 0.5, unit = 'R' } = {}) {
+  const v = values.filter(Number.isFinite).map((x) => Math.round(x * 1e6) / 1e6);
+  const svg = s('svg', { viewBox: `0 0 ${width} ${height}`, width: '100%', class: 'histo', role: 'img', 'aria-label': `Distribution of ${v.length} values`, preserveAspectRatio: 'xMinYMin meet' });
+  if (!v.length) return svg;
+  const k = (x) => Math.round(x / binWidth);
+  const lo = Math.min(...v.map(k)), hi = Math.max(...v.map(k));
+  const bins = [];
+  for (let i = lo; i <= hi; i++) bins.push({ mid: i * binWidth, n: 0 });
+  for (const x of v) bins[k(x) - lo].n++;
+  const padL = 4, padB = 18, padT = 14;
+  const bw = (width - padL * 2) / bins.length;
+  const nMax = Math.max(...bins.map((b) => b.n));
+  const every = Math.max(1, Math.ceil(bins.length / 10));
+  const lbl = (x) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(1)}`;
+  bins.forEach((b, i) => {
+    const bh = (b.n / nMax) * (height - padB - padT);
+    const x = padL + i * bw;
+    svg.append(s('rect', { x: x + 1, y: height - padB - bh, width: Math.max(1, bw - 2), height: Math.max(b.n ? 1 : 0, bh), class: b.mid > 0 ? 'up' : b.mid < 0 ? 'down' : 'flat' },
+      s('title', {}, `${lbl(b.mid - binWidth / 2)} to ${lbl(b.mid + binWidth / 2)} ${unit}: ${b.n}`)));
+    if (b.n) svg.append(s('text', { x: x + bw / 2, y: height - padB - bh - 3, 'text-anchor': 'middle', class: 'axis' }, b.n));
+    if ((((i + lo) % every) + every) % every === 0) svg.append(s('text', { x: x + bw / 2, y: height - 4, 'text-anchor': 'middle', class: 'axis' }, lbl(b.mid)));
+  });
+  return svg;
+}

@@ -13,7 +13,7 @@ const CATEGORY = {
 const KIND_LABEL = {
   portfolio_record: 'Your records', market_data: 'Market data', news: 'News', filing: 'Regulatory filing', press_release: 'Company release',
   profile: 'Company/fund profile', event: 'Scheduled event', archived_report: 'Saved briefing (archived)', assessment: 'Saved assessment',
-  calculation: 'Signal Desk calculation', status: 'Data status',
+  calculation: 'Signal Desk calculation', status: 'Data status', simulation: 'Strategy Lab (simulated)',
 };
 const NEWS_STATUS = ['confirmed', 'reported', 'unconfirmed', 'conflicting'];
 const TOOL_LABEL = {
@@ -25,6 +25,8 @@ const TOOL_LABEL = {
   explain_portfolio_move: "Breaking down the latest session's move", analyze_risk_overlap: 'Analysing shared risks',
   simulate_trade: 'Calculating a hypothetical trade', simulate_trades: 'Calculating a multi-step scenario',
   estimate_price_move: 'Calculating price-move impact', propose_record_change: 'Preparing a proposed change',
+  get_strategy_lab: 'Reading the Strategy Lab (simulated)', get_strategy_trades: 'Reading simulated trades',
+  get_strategy_performance: 'Reading simulated results', get_strategy_versions: 'Reading strategy versions',
 };
 const CONF = { low: 'Low confidence', moderate: 'Moderate confidence', high: 'High confidence' };
 const NARROW = '(max-width: 1100px)';
@@ -508,6 +510,7 @@ function proposalCard(p) {
     d.duplicateWarning ? h('div', { class: 'notice danger small' }, d.duplicateWarning) : null,
     d.cashNote ? h('div', { class: 'small muted' }, d.cashNote) : null,
     d.reminder ? h('div', { class: 'small muted' }, d.reminder) : null,
+    d.recalculated ? h('div', { class: 'notice info small' }, d.recalculated) : null,
     h('div', { class: 'small muted' }, `Requested in your words: "${p.userQuote}"`));
   if (p.status === 'pending') {
     const ok = h('button', { class: 'btn small primary', dataset: { focus: `confirm-${p.id}` } }, 'Confirm and save');

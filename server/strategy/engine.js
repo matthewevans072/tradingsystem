@@ -25,6 +25,10 @@ export function floorTick(x, tick) {
   return Number((Math.floor(x / tick + 1e-9) * tick).toFixed(10));
 }
 
+export function ceilTick(x, tick) {
+  return Number((Math.ceil(x / tick - 1e-9) * tick).toFixed(10));
+}
+
 function toMs(t) {
   if (typeof t === 'number') return t;
   if (t instanceof Date) return t.getTime();
@@ -235,8 +239,9 @@ export function createEngine({ config, mode, symbols = [], tradeFrom = null, low
     };
     if (!vol.ok) return reject(st, ms, vol.code, vol.reason, { box, signal, missing: vol.missing ?? 0 });
     const c = bar.c;
-    const stop = bar.l - config.stop.atrBuffer * A;
-    const target = box.resistance + config.target.boxHeightMultiple * box.height;
+    // Orders rest at valid prices: the stop rounds down and the target up to the tick.
+    const stop = floorTick(bar.l - config.stop.atrBuffer * A, tick);
+    const target = ceilTick(box.resistance + config.target.boxHeightMultiple * box.height, tick);
     const minRR = config.entry.minRewardRisk;
     const gapLimit = c + config.entry.maxGapAtr * A;
     const rrLimit = ((target + minRR * stop) / (1 + minRR)) / (1 + k);
@@ -296,7 +301,9 @@ export function createEngine({ config, mode, symbols = [], tradeFrom = null, low
     let raw, kind;
     const flags = [];
     if (bar.o > L + PX_EPS) {
-      if (OV.entryFill === 'limit_intrabar' && bar.l <= L + PX_EPS) { raw = L; kind = 'limit'; flags.push('intrabar_limit_entry'); }
+      // TradingView parity: an intrabar limit fill needs price to trade the
+      // limit-verification ticks through it, as for the target.
+      if (OV.entryFill === 'limit_intrabar' && bar.l <= L - costs.limitFillTicksBeyond * tick + PX_EPS) { raw = L; kind = 'limit'; flags.push('intrabar_limit_entry'); }
       else {
         const lim = o.binding === 'gap' ? `gap limit ${o.plan.gapLimit.toFixed(4)}` : `reward/risk limit ${o.plan.rrLimit.toFixed(4)}`;
         return skipEntry(st, ms, 'above_max_entry', `opened at ${bar.o}, above the maximum entry ${L} (${lim} binding)`, { open: bar.o, low: bar.l });

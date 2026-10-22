@@ -130,7 +130,7 @@ export function whatEnded(trade) {
     pts.push(`The position was still open when the data ended, so it was closed at the last close of ${px(x.raw)} (${when(x.at)}) and flagged end of data; such trades count in P/L but not in per-trade statistics.`);
   } else pts.push(`Exit: ${x.reason}.`);
   if (trade.pnl) {
-    pts.push(`Entered ${qty(en.shares)} shares at ${px4(en.price)} on ${when(en.at)}; ${trade.pnl.net >= 0 ? 'gain' : 'loss'} of ${money(Math.abs(trade.pnl.net))} after ${money(trade.pnl.costs)} of costs (${px(r)}R on a planned risk of ${money(en.plannedRisk)}), held ${trade.holdBars} bar${trade.holdBars === 1 ? '' : 's'} over ${trade.holdSessions} session${trade.holdSessions === 1 ? '' : 's'}. Simulated.`);
+    pts.push(`The simulated account entered ${qty(en.shares)} shares at ${px4(en.price)} on ${when(en.at)}; ${trade.pnl.net >= 0 ? 'gain' : 'loss'} of ${money(Math.abs(trade.pnl.net))} after ${money(trade.pnl.costs)} of costs (${px(r)}R on a planned risk of ${money(en.plannedRisk)}), held ${trade.holdBars} bar${trade.holdBars === 1 ? '' : 's'} over ${trade.holdSessions} session${trade.holdSessions === 1 ? '' : 's'}. Simulated.`);
   }
   return out(pts);
 }

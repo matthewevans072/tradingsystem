@@ -88,8 +88,9 @@ Reset rules (no duplicate trades from overlapping boxes):
 With `A = ATR_j`, `k = (halfSpreadBps + slippageBps) / 10 000`:
 
 - `stop = l_j − stop.atrBuffer × A` (below the breakout candle's low: the
-  chosen reading of the video's wick-based stop).
-- `target = R + target.boxHeightMultiple × H`.
+  chosen reading of the video's wick-based stop), rounded **down** to the tick
+  so it is a valid order price (engine-1.0.1).
+- `target = R + target.boxHeightMultiple × H`, rounded **up** to the tick (engine-1.0.1).
 - Maximum acceptable entry (raw price, rounded down to the tick):
   - gap limit `G = c_j + entry.maxGapAtr × A`;
   - reward/risk limit `Q = ((target + minRR × stop) / (1 + minRR)) / (1 + k)`
@@ -125,7 +126,7 @@ Entry (bar `j + 1`), `entryFill = open_only` (default):
   × A` in the stress test). Reward/risk at the fill is recorded.
 
 `entryFill = limit_intrabar` (TradingView parity only): if `o ≤ L` as above;
-else if `l ≤ L` the order fills at `L` (a limit fill: no spread or slippage)
+else if `l ≤ L − limitFillTicksBeyond × tickSize` (TradingView's limit verification, engine-1.0.1) the order fills at `L` (a limit fill: no spread or slippage)
 and the trade is flagged `intrabar_limit_entry`; else skipped.
 
 Exits (orders rest from the entry fill; stop and target never move; no

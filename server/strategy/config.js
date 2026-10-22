@@ -6,7 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-export const ENGINE_VERSION = 'engine-1.0.0';
+export const ENGINE_VERSION = 'engine-1.0.1';
 export const STRATEGY_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../strategy');
 export const DEFAULT_CONFIG_PATH = path.join(STRATEGY_DIR, 'configs', 'cb-1.0.0.json');
 
