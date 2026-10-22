@@ -63,6 +63,8 @@ async function bodyOf(res) {
 }
 
 const headerOf = (res, k) => (typeof res.headers?.get === 'function' ? res.headers.get(k) : res.headers?.[k]) ?? null;
+// With redirect: 'manual' Node returns the 3xx itself; a browser-style fetch returns an opaque redirect (status 0).
+const isRedirect = (res) => res?.type === 'opaqueredirect' || (res?.status >= 300 && res?.status < 400);
 
 // Seconds to wait from Retry-After (seconds) or X-RateLimit-Reset (UNIX
 // seconds); null when neither is usable. Which header Alpaca sends is unverified.
@@ -91,12 +93,14 @@ export function createAlpacaSource({
       let res;
       stats.requests++;
       try {
-        res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+        // A redirect is never followed: fetch would resend both key headers to the new host.
+        res = await fetchImpl(url, { headers, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
       } catch (e) {
         if (transient++ < 2) { stats.retries++; await sleep(Math.min(maxBackoffMs, backoffMs * 2 ** transient)); continue; }
         const timeout = e?.name === 'TimeoutError' || e?.name === 'AbortError';
         throw new ProviderError('network', `Alpaca: ${timeout ? 'request timed out' : 'could not connect'} (${clean(e?.cause?.code || e?.name || 'error')})`);
       }
+      if (isRedirect(res)) throw new ProviderError('bad_response', `Alpaca: unexpected redirect (HTTP ${res.status || '3xx'}); it was not followed, so the keys were sent nowhere else`, { status: res.status || null });
       if (res.status === 429) {
         stats.rateLimited++;
         const hint = waitHint(res, now().getTime());

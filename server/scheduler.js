@@ -158,6 +158,7 @@ export function createScheduler(ctx, { tickMs = 30000, clock = () => new Date() 
     }
     state.lastTick = now;
     labTick(now);
+    hxrTick(now);
     try {
       await handleSlots(now);
       await maintenance(now);
@@ -177,6 +178,19 @@ export function createScheduler(ctx, { tickMs = 30000, clock = () => new Date() 
         .catch((e) => log.error('scheduler', 'strategy lab tick failed', e));
     } catch (e) {
       log.error('scheduler', 'strategy lab tick failed', e);
+    }
+  }
+
+  // HXR prospective account (simulated, real workspace only): never awaited
+  // and never touches delivery; it only records events in hxr-sim.sqlite.
+  function hxrTick(now) {
+    if (ctx.mode !== 'real') return;
+    try {
+      const hxr = ctx.hxr;
+      if (!hxr?.tick) return;
+      hxr.tick({ now }).catch((e) => log.error('scheduler', 'hxr tick failed', e));
+    } catch (e) {
+      log.error('scheduler', 'hxr tick failed', e);
     }
   }
 
