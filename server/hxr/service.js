@@ -16,7 +16,7 @@ import crypto from 'node:crypto';
 import * as store from './store.js';
 import {
   HXR_DIR, HXR_CONFIG_DIR, PREREG, loadHxrConfig, loadHxrUniverse, loadHxrPeriods, loadHxrCriteria, listHxrConfigs, validateHxrConfig,
-  hxrConfigHash, variantConfig, halfSpreadFor, basketSymbols, excludedDates, canonicalJson, configFileName,
+  hxrConfigHash, variantConfig, halfSpreadFor, basketSymbols, excludedDates, canonicalJson, configFileName, criterion,
 } from './config.js';
 import { createHxrSource, BAR_FINAL_AFTER_CLOSE_MIN } from './source.js';
 import { buildInputs, buildSpreadTable, halfSpreadFn, readiness as buildReadiness, sampledSpreadDays, spreadSampleFromQuotes, median, SPREAD_METHOD } from './data.js';
@@ -29,10 +29,46 @@ import { redact } from '../config.js';
 export const NOTICE = 'Simulated only. No order is sent to any broker or paper-trading platform.';
 export const REAL_ONLY = 'HXR runs on real market data in the real workspace only';
 export const FROZEN_VERSION = 'hxr-1.0.0';
-// The pre-registered arms (PREREGISTRATION.md section 6): exactly these files.
+// The pre-registered arms of hxr-prereg-2 (PREREGISTRATION-2.md sections 3-4):
+// exactly these files. Only the candidates can be picked; X3 is the owner's
+// comparison, run and reported but never picked or frozen. C1-C3 belong to the
+// superseded hxr-prereg-1 and are never run.
 export const HOLD_FILE = 'hxr-hold-0.1.0.json';
-export const CANDIDATE_FILES = ['hxr-c1-0.1.0.json', 'hxr-c2-0.1.0.json', 'hxr-c3-0.1.0.json'];
-export const PREREG_FILES = ['PREREGISTRATION.md', 'ENGINE-SPEC.md', 'universe-hxr-v1.json', 'periods-hxr-v1.json', 'criteria-hxr-v1.json'];
+export const CANDIDATE_FILES = ['hxr-x1-0.2.0.json', 'hxr-x2-0.2.0.json'];
+export const COMPARISON_FILES = ['hxr-x3-0.2.0.json'];
+export const SUPERSEDED_FILES = ['hxr-c1-0.1.0.json', 'hxr-c2-0.1.0.json', 'hxr-c3-0.1.0.json'];
+export const PREREG_FILES = ['PREREGISTRATION.md', 'PREREGISTRATION-2.md', 'ENGINE-SPEC.md', 'universe-hxr-v2.json', 'periods-hxr-v2.json', 'criteria-hxr-v2.json'];
+// PREREGISTRATION-2.md section 4: one setting changed at a time, reported only
+// (in-sample), never used for the pick.
+export const NEIGHBOURS = deepFreezeList({
+  'x1-0.2.0': [{ pivotSessions: 3 }, { pivotSessions: 8 }, { reboundMultiple: 0.5 }, { reboundMultiple: 1.5 }, { bufferMultiple: 0.25 }, { bufferMultiple: 1 }],
+  'x2-0.2.0': [{ multiple: 2.5 }, { multiple: 3.5 }, { pivotSessions: 3 }, { pivotSessions: 8 }, { reboundMultiple: 0.5 }, { reboundMultiple: 1.5 }],
+});
+function deepFreezeList(o) { return Object.freeze(Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Object.freeze(v.map((x) => Object.freeze({ ...x })))]))); }
+// The role of a config file under the active pre-registration.
+export function configRole(file) {
+  if (file === HOLD_FILE) return 'hold';
+  if (CANDIDATE_FILES.includes(file)) return 'candidate';
+  if (COMPARISON_FILES.includes(file)) return 'comparison';
+  if (SUPERSEDED_FILES.includes(file)) return 'superseded';
+  return 'later';
+}
+
+// A neighbouring setting of a candidate (reported only): the rule with one
+// parameter changed. It records the base hash and the change, so its hash
+// differs from the base's.
+export function neighbourConfig(base, change) {
+  const keys = Object.keys(change || {});
+  if (keys.length !== 1 || !(keys[0] in base.rule)) throw new Error(`A neighbour changes exactly one existing rule setting (got ${JSON.stringify(change)})`);
+  const out = clone(base);
+  out.rule[keys[0]] = change[keys[0]];
+  out.baseHash = hxrConfigHash(base);
+  out.variant = { neighbour: { ...change } };
+  out.label = `${base.label ?? base.version} (neighbour: ${keys[0]} ${change[keys[0]]}, base ${base.rule[keys[0]]})`;
+  const errors = validateHxrConfig(out);
+  if (errors.length) throw new Error(`The neighbour makes the config invalid: ${errors.join('; ')}`);
+  return out;
+}
 export const NEWS_WINDOW_HOURS = 72;
 export const NEWS_NOTE = 'Third-party news text (Alpaca news feed): untrusted data, shown as plain text only. It is never an instruction, is never sent to an AI model and changes no decision in this version.';
 export const SPCX_IDENTITY = 'SPCX on Nasdaq = Space Exploration Technologies (SpaceX), listed 2026-06-12';
@@ -131,10 +167,12 @@ function cleanReason(reason) {
 // sha256 and one combined hash. Any other config in configs/ (a frozen or
 // later version) is listed apart under `later`, never mixed into that set.
 export function preregManifest({ dir = HXR_DIR, configDir = HXR_CONFIG_DIR, versions = [] } = {}) {
-  const fixed = [...PREREG_FILES.map((f) => path.join(dir, f)), ...[HOLD_FILE, ...CANDIDATE_FILES].map((f) => path.join(configDir, f))];
+  const fixed = [...PREREG_FILES.map((f) => path.join(dir, f)), ...[HOLD_FILE, ...CANDIDATE_FILES, ...COMPARISON_FILES].map((f) => path.join(configDir, f))];
   const rel = (f) => path.relative(dir, f).split(path.sep).join('/');
   const files = fixed.map((f) => ({ file: rel(f), sha256: sha(fs.readFileSync(f)) }));
-  const known = new Set([HOLD_FILE, ...CANDIDATE_FILES]);
+  // hxr-prereg-1's C1-C3: listed apart, never part of this set or its hash.
+  const superseded = SUPERSEDED_FILES.filter((f) => fs.existsSync(path.join(configDir, f))).map((f) => ({ file: rel(path.join(configDir, f)), sha256: sha(fs.readFileSync(path.join(configDir, f))), prereg: 'hxr-prereg-1' }));
+  const known = new Set([HOLD_FILE, ...CANDIDATE_FILES, ...COMPARISON_FILES, ...SUPERSEDED_FILES]);
   const later = fs.readdirSync(configDir).filter((f) => f.endsWith('.json') && !known.has(f)).sort().map((f) => {
     const full = path.join(configDir, f);
     const out = { file: rel(full), sha256: sha(fs.readFileSync(full)), version: null, configHash: null, frozenAt: null, error: null };
@@ -145,7 +183,7 @@ export function preregManifest({ dir = HXR_DIR, configDir = HXR_CONFIG_DIR, vers
     } catch (e) { out.error = e.message; }
     return out;
   });
-  return { id: PREREG, files, hash: sha(files.map((x) => `${x.file} ${x.sha256}`).join('\n')), later };
+  return { id: PREREG, files, hash: sha(files.map((x) => `${x.file} ${x.sha256}`).join('\n')), later, superseded };
 }
 
 // The markdown tables of EXPERIMENT-LOG.md as { header, rows } (cells as plain
@@ -408,7 +446,7 @@ export function createHxr(ctx, opts = {}) {
     const d = muDecision();
     if (!d) throw new HxrError(409, 'Record the pending MU decision first (PREREGISTRATION.md section 7, disclosure 1): keep MU in the evaluation, or drop it for strict separation from the Strategy Lab holdout window. It can only be made before any HXR run. Nothing was run.');
     if (d.choice !== 'keep') {
-      throw new HxrError(409, `You chose to drop MU from the evaluation (${d.at}). ${PREREG} defines basket A, its equal sleeves and G6 (at least 4 of 5 leave-one-stock-out runs) for five stocks, so dropping MU needs them restated as a new pre-registered version in strategy/hxr before any run. Nothing was run. Until the first run you can record "keep" instead.`);
+      throw new HxrError(409, `You chose to drop MU from the evaluation (${d.at}). ${PREREG} defines basket A, its equal sleeves and G6 (at least ${criterion(criteria, 'G6')?.minPassing} of ${basketSymbols(universe, 'A').length} leave-one-stock-out runs) for ${basketSymbols(universe, 'A').length} stocks, so dropping MU needs them restated as a new pre-registered version in strategy/hxr before any run. Nothing was run. Until the first run you can record "keep" instead.`);
     }
     return d;
   }
@@ -477,7 +515,11 @@ export function createHxr(ctx, opts = {}) {
       const period = periods.periods.selection;
       const symbols = basketSymbols(universe, period.basket);
       const hold = holdConfig();
-      const arms = [{ name: hold.version, role: 'hold', config: hold }, ...CANDIDATE_FILES.map((f) => { const c = loadArm(f); return { name: c.version, role: 'candidate', config: c }; })];
+      const arms = [
+        { name: hold.version, role: 'hold', config: hold },
+        ...CANDIDATE_FILES.map((f) => { const c = loadArm(f); return { name: c.version, role: 'candidate', config: c }; }),
+        ...COMPARISON_FILES.map((f) => { const c = loadArm(f); return { name: c.version, role: 'comparison', config: c }; }),
+      ];
       const tag = contaminated ? ' [repeat: contaminated]' : '';
       const plan = arms.map((a) => ({
         ...a, kind: 'selection', period, symbols, basket: period.basket, contaminated, reason: why,
@@ -491,19 +533,46 @@ export function createHxr(ctx, opts = {}) {
         period, symbols, basket: period.basket, contaminated, reason: why,
         label: `Selection (in-sample, ${period.start} to ${period.end}): ${a.config.label}, first 15-minute VWAP fills (reported)${tag}`,
       }));
+      // Neighbouring settings of each selectable candidate (reported only, in-sample).
+      const neighbourPlan = arms.filter((a) => a.role === 'candidate').flatMap((a) => (NEIGHBOURS[a.name] || []).map((change) => {
+        const config = neighbourConfig(a.config, change);
+        return { name: a.name, role: 'neighbour', arm: a.name, variantKey: `neighbour:${Object.entries(change).map(([k, x]) => `${k}=${x}`).join(',')}`, change, config, kind: 'variant', period, symbols, basket: period.basket, contaminated, reason: why, label: `Selection (in-sample, ${period.start} to ${period.end}): ${config.label} (reported only)${tag}` };
+      }));
+      // The robustness list R on the same dates (PREREGISTRATION-2.md section 5): reported only, run only when ready.
+      const robustPeriod = periods.periods.robustSelection;
+      const robustProblem = robustPeriod ? periodProblem(readinessNow(), 'robustSelection') : 'not defined';
+      const robustSymbols = robustPeriod ? basketSymbols(universe, robustPeriod.basket) : [];
+      const robustPlan = robustPeriod && !robustProblem ? arms.map((a) => ({
+        name: a.name, role: 'robust', arm: a.name, variantKey: 'robust', config: a.config, kind: 'variant', period: robustPeriod, symbols: robustSymbols, basket: robustPeriod.basket, contaminated, reason: why,
+        label: `Robustness list ${robustPeriod.basket} (${robustPeriod.start} to ${robustPeriod.end}, reported only): ${a.config.label}${tag}`,
+      })) : [];
       const setHash = sha(canonicalJson(arms.map((a) => [a.name, hxrConfigHash(a.config)])));
-      let choice = null, frozen = null, frozenNote = null;
-      await executePlan([...plan, ...fillPlan], (at) => {
+      let choice = null, frozen = null, frozenNote = null, neighbours = null, robustness = null;
+      await executePlan([...plan, ...fillPlan, ...neighbourPlan, ...robustPlan], (at) => {
         plan.forEach((p, i) => {
           p.fills = fillComparison(p.result, fillPlan[i].result);
           store.updateRun(db, p.id, { details: { ...store.getRun(db, p.id).details, fills: p.fills, fillsRunId: fillPlan[i].id } });
         });
         const holdM = plan[0].metrics;
-        choice = selectCandidate(criteria.selection, { hold: holdM, candidates: plan.slice(1).map((p) => ({ name: p.name, metrics: p.metrics })) });
-        store.appendLedger(db, { kind: 'selection', prereg: PREREG, version: `selection:${arms.map((a) => a.name).join(',')}`, configHash: setHash, runIds: [...plan, ...fillPlan].map((p) => p.id), contaminated, reason: why || null, at });
+        // Only the candidates can be picked (X3 is the owner's comparison).
+        choice = selectCandidate(criteria.selection, { hold: holdM, candidates: plan.filter((p) => p.role === 'candidate').map((p) => ({ name: p.name, metrics: p.metrics })) });
+        const beats = (m) => (choice.threshold != null && Number.isFinite(m?.returnToDrawdown) ? m.returnToDrawdown >= choice.threshold : null);
+        neighbours = plan.filter((p) => p.role === 'candidate').map((p) => ({
+          candidate: p.name, base: { runId: p.id, returnToDrawdown: p.metrics.returnToDrawdown, roundTrips: p.metrics.roundTrips, beatsHoldThreshold: beats(p.metrics) },
+          neighbours: neighbourPlan.filter((n) => n.arm === p.name).map((n) => ({
+            change: n.change, runId: n.id, returnToDrawdown: n.metrics.returnToDrawdown, roundTrips: n.metrics.roundTrips, vsHold: compareArms(n.metrics, holdM),
+            beatsHoldThreshold: beats(n.metrics), sameConclusion: beats(n.metrics) === beats(p.metrics),
+          })),
+        }));
+        robustness = robustPlan.length
+          ? { run: true, basket: robustPeriod.basket, period: { start: robustPeriod.start, end: robustPeriod.end }, note: 'Reported only: never used for the pick.', arms: robustPlan.map((r) => ({ name: r.name, runId: r.id, returnToDrawdown: r.metrics.returnToDrawdown, roundTrips: r.metrics.roundTrips, vsHold: r.name === hold.version ? null : compareArms(r.metrics, robustPlan[0].metrics) })) }
+          : { run: false, basket: robustPeriod?.basket ?? null, reason: robustProblem, note: 'Not run: the robustness list was not ready (reported only, never a gate).' };
+        for (const p of plan.filter((x) => x.role === 'candidate')) store.updateRun(db, p.id, { details: { ...store.getRun(db, p.id).details, neighbours: neighbours.find((n) => n.candidate === p.name) } });
+        store.updateRun(db, plan[0].id, { details: { ...store.getRun(db, plan[0].id).details, robustness } });
+        store.appendLedger(db, { kind: 'selection', prereg: PREREG, version: `selection:${arms.map((a) => a.name).join(',')}`, configHash: setHash, runIds: [...plan, ...fillPlan, ...neighbourPlan, ...robustPlan].map((p) => p.id), contaminated, reason: why || null, at });
         store.appendExperiment(db, {
           at, what: contaminated ? 'selection run (repeat, contaminated)' : 'selection run', version: arms.map((a) => a.name).join(', '),
-          dataTouched: `selection period ${period.start} to ${period.end} (warm-up from ${period.warmupFrom}), basket ${period.basket}: ${symbols.map((s) => s.symbol).join(', ')}; each arm also with first 15-minute VWAP fills (reported)`,
+          dataTouched: `selection period ${period.start} to ${period.end} (warm-up from ${period.warmupFrom}), basket ${period.basket}: ${symbols.map((s) => s.symbol).join(', ')}; each arm also with first 15-minute VWAP fills (reported); ${neighbourPlan.length} neighbouring settings (reported); ${robustPlan.length ? `robustness list ${robustPeriod.basket}: ${robustSymbols.map((s) => s.symbol).join(', ')} (reported)` : 'robustness list not run (not ready)'}`,
           resultsSeen: 'yes: in-sample selection results', note: `${choice.reason}${why ? ` Reason for the repeat: ${why}` : ''}`,
         });
         if (!choice.chosen) { frozenNote = 'No candidate is frozen: HXR is reported as having no candidate worth evaluating, and the evaluation period is not used.'; return; }
@@ -523,8 +592,9 @@ export function createHxr(ctx, opts = {}) {
         frozenNote = `${FROZEN_VERSION} frozen from ${chosen.version}. Before the evaluation run, record it as strategy/hxr/configs/${configFileName(FROZEN_VERSION)} (the frozen config JSON in this response, unchanged, so its hash ${frozen.configHash.slice(0, 12)} matches) and add an EXPERIMENT-LOG.md entry.`;
       });
       return wrap({
-        kind: 'selection', prereg: PREREG, contaminated, reason: why || null, runs: [...plan, ...fillPlan].map(runRef), choice,
-        comparisons: plan.slice(1).map((p) => ({ name: p.name, vsHold: compareArms(p.metrics, plan[0].metrics) })),
+        kind: 'selection', prereg: PREREG, contaminated, reason: why || null, runs: [...plan, ...fillPlan, ...neighbourPlan, ...robustPlan].map(runRef), choice,
+        comparisons: plan.slice(1).map((p) => ({ name: p.name, role: p.role, vsHold: compareArms(p.metrics, plan[0].metrics) })),
+        neighbours, robustness,
         fills: Object.fromEntries(plan.map((p) => [p.name, p.fills])),
         frozen: frozen ? { version: frozen.version, configHash: frozen.configHash, basedOn: frozen.basedOn, frozenAt: frozen.frozenAt, file: `strategy/hxr/configs/${configFileName(frozen.version)}`, config: frozen.config } : null,
         note: `Selection results are in-sample. ${frozenNote}`,
@@ -580,6 +650,9 @@ export function createHxr(ctx, opts = {}) {
       pair('vw15', 'first 15-minute VWAP fills', vr(frozen, { fillModel: 'vw15' }), vr(hold, { fillModel: 'vw15' }), A, ev, 'variant');
       pair('withholding0', '0% dividend withholding', vr(frozen, { withholdingPct: 0 }), vr(hold, { withholdingPct: 0 }), A, ev, 'variant');
       for (const s of A) pair(`loo-${s.symbol}`, `without ${s.symbol} (equal sleeves of the other ${A.length - 1})`, frozen, hold, A.filter((x) => x.symbol !== s.symbol), ev, 'variant', { left: s.symbol });
+      const robustEv = periods.periods.robustEvaluation;
+      const robustProblem = robustEv ? periodProblem(ready, 'robustEvaluation') : 'not defined';
+      if (robustEv && !robustProblem) pair('robust', `robustness list ${robustEv.basket} (reported only, never a gate)`, frozen, hold, basketSymbols(universe, robustEv.basket), robustEv, 'variant');
       if (!fullProblem) {
         pair('fullList', `basket ${full.basket} full-list check (reported, not a gate)`, frozen, hold, B, full, 'variant');
         pair('fullList-vw15', `basket ${full.basket} full-list check, first 15-minute VWAP fills (reported)`, vr(frozen, { fillModel: 'vw15' }), vr(hold, { fillModel: 'vw15' }), B, full, 'variant');
@@ -599,6 +672,9 @@ export function createHxr(ctx, opts = {}) {
           perStock: { hxr: get('main', 'hxr').metrics.perStock, hold: get('main', 'hold').metrics.perStock },
           missedRebounds: get('main', 'hxr').metrics.missedRebounds, lossesAfterBuyBack: get('main', 'hxr').metrics.lossesAfterBuyBack,
           costs: armsOf('main').hxr.costs, dividends: armsOf('main').hxr.dividends,
+          robustness: robustEv && !robustProblem
+            ? { run: true, basket: robustEv.basket, period: { start: robustEv.start, end: robustEv.end }, runIds: { hxr: get('robust', 'hxr').id, hold: get('robust', 'hold').id }, note: 'Reported only, never a gate.' }
+            : { run: false, basket: robustEv?.basket ?? null, reason: robustProblem, note: 'Not run: the robustness list was not ready (reported only, never a gate).' },
           fullList: fullProblem
             ? { run: false, basket: full.basket, period: { start: full.start, end: full.end }, reason: fullProblem, reasons: ready.periods.fullList.reasons, note: 'Not run: basket B was not ready and the owner chose to evaluate without it (reported, not a gate).' }
             : {
@@ -1134,10 +1210,11 @@ export function createHxr(ctx, opts = {}) {
         symbols: universe.symbols.map((s) => ({ symbol: s.symbol, name: s.name, exchange: s.exchange, listedFrom: s.listedFrom, kind: s.kind, baskets: s.baskets, identity: s.identity ?? 'confirmed', note: s.note ?? null })),
       },
       periods: { ...periods.periods, excludedSessions: periods.excludedSessions, warmupSessions: periods.warmupSessions, dataFrom: periods.dataFrom },
+      neighbours: NEIGHBOURS,
       criteria: { outcomes: criteria.outcomes, selection: criteria.selection, criteria: criteria.criteria.map((c) => ({ id: c.id, name: c.name, rule: c.rule })), prospective: criteria.prospective.map((c) => ({ id: c.id, name: c.name, rule: c.rule })), passMeaning: PASS_MEANING },
       // The rule and its assumptions, so the page can state them before any result exists.
-      configs: listHxrConfigs().map((c) => (c.error ? { file: c.file, error: c.error } : {
-        file: c.file, version: c.version, label: c.label, ruleType: c.ruleType, hash: c.hash, status: c.config.status ?? null, rule: c.config.rule,
+      configs: listHxrConfigs().map((c) => (c.error ? { file: c.file, role: configRole(c.file), error: c.error } : {
+        file: c.file, role: configRole(c.file), version: c.version, label: c.label, ruleType: c.ruleType, hash: c.hash, status: c.config.status ?? null, rule: c.config.rule,
         assumptions: { account: c.config.account, execution: c.config.execution, costs: c.config.costs, dividends: c.config.dividends, cash: c.config.cash },
       })),
       settings: { spcx: spcx(), spcxIdentity: SPCX_IDENTITY, alpacaKeys: keysSet },

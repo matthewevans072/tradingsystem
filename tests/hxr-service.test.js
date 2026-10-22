@@ -69,7 +69,7 @@ test('no keys, demo workspace and the static separation rules', async () => {
   assert.equal(o.simulated, true);
   assert.equal(o.notice, NOTICE);
   assert.equal(o.settings.alpacaKeys, false);
-  assert.deepEqual(Object.values(o.readiness.periods).map((p) => p.usable), [false, false, false]);
+  assert.deepEqual(Object.fromEntries(Object.entries(o.readiness.periods).map(([k, p]) => [k, p.usable])), { selection: false, evaluation: false, fullList: false, robustSelection: false, robustEvaluation: false });
   assert.equal(o.decisions.mu, null, 'the MU decision is pending');
   await rejectsWith(hxr.runSelection({ confirm: true }), 409, /pending MU decision/);
   throwsWith(() => hxr.setMuDecision({ choice: 'keep' }), 400, /confirm: true/);
@@ -155,7 +155,7 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   hxr.setMuDecision({ choice: 'keep', confirm: true });
 
   const r = hxr.readiness();
-  for (const k of ['selection', 'evaluation', 'fullList']) assert.equal(r.periods[k].usable, true, `${k}: ${r.periods[k].reasons.join('; ')}`);
+  for (const k of ['selection', 'evaluation', 'fullList', 'robustSelection', 'robustEvaluation']) assert.equal(r.periods[k].usable, true, `${k}: ${r.periods[k].reasons.join('; ')}`);
   assert.equal(r.symbols.find((s) => s.symbol === 'AMZN').splits[0].status, 'pass');
   assert.equal(r.symbols.find((s) => s.symbol === 'SPCX').status, 'no data');
 
@@ -169,11 +169,26 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   const sel = await hxr.runSelection({ confirm: true });
   assert.equal(sel.simulated, true);
   assert.equal(sel.contaminated, false);
-  assert.equal(sel.runs.length, 8, 'each arm at base costs, and again with first 15-minute VWAP fills');
-  assert.deepEqual(sel.runs.filter((x) => x.role !== 'fills').map((x) => x.name), ['hold-0.1.0', 'c1-0.1.0', 'c2-0.1.0', 'c3-0.1.0']);
-  assert.deepEqual(sel.runs.filter((x) => x.role === 'fills').map((x) => [x.kind, x.variant, x.arm]), ['hold-0.1.0', 'c1-0.1.0', 'c2-0.1.0', 'c3-0.1.0'].map((n) => ['variant', 'vw15', n]));
-  for (const n of ['hold-0.1.0', 'c1-0.1.0', 'c2-0.1.0', 'c3-0.1.0']) assert.ok(Number.isFinite(sel.fills[n].medianAbsDiffBps) && sel.fills[n].matched > 0, n);
+  const ARMS = ['hold-0.1.0', 'x1-0.2.0', 'x2-0.2.0', 'x3-0.2.0'];
+  assert.equal(sel.runs.length, 4 + 4 + 12 + 4, 'each arm at base costs and with first 15-minute VWAP fills, 12 neighbouring settings, and every arm on the robustness list');
+  assert.deepEqual(sel.runs.filter((x) => ['hold', 'candidate', 'comparison'].includes(x.role)).map((x) => [x.name, x.role]), [['hold-0.1.0', 'hold'], ['x1-0.2.0', 'candidate'], ['x2-0.2.0', 'candidate'], ['x3-0.2.0', 'comparison']]);
+  assert.deepEqual(sel.runs.filter((x) => x.role === 'fills').map((x) => [x.kind, x.variant, x.arm]), ARMS.map((n) => ['variant', 'vw15', n]));
+  for (const n of ARMS) assert.ok(Number.isFinite(sel.fills[n].medianAbsDiffBps) && sel.fills[n].matched > 0, n);
+  // Neighbouring settings (PREREGISTRATION-2.md section 4): reported only, one change at a time, X1 and X2 only.
+  const nb = sel.runs.filter((x) => x.role === 'neighbour');
+  assert.equal(nb.length, 12);
+  assert.deepEqual([...new Set(nb.map((x) => x.arm))], ['x1-0.2.0', 'x2-0.2.0']);
+  assert.deepEqual(sel.neighbours.map((n) => [n.candidate, n.neighbours.length]), [['x1-0.2.0', 6], ['x2-0.2.0', 6]]);
+  for (const n of sel.neighbours.flatMap((x) => x.neighbours)) assert.equal(typeof n.sameConclusion, 'boolean');
+  assert.deepEqual(store.getRun(db, sel.runs.find((x) => x.name === 'x1-0.2.0' && x.role === 'candidate').id).details.neighbours, sel.neighbours[0]);
+  // The robustness list R on the selection dates: every arm, reported only.
+  assert.equal(sel.robustness.run, true);
+  assert.deepEqual(sel.runs.filter((x) => x.role === 'robust').map((x) => x.arm), ARMS);
+  assert.deepEqual(hxr.getRun(sel.runs.find((x) => x.role === 'robust').id).run.symbols, ['INTC', 'CSCO', 'PYPL', 'SNAP']);
+  // X3 is the owner's comparison: never ranked, never picked.
+  assert.ok(!sel.choice.table.some((t) => t.name === 'x3-0.2.0'));
   assert.deepEqual(store.getRun(db, sel.runs[0].id).details.fills, sel.fills['hold-0.1.0'], 'the fill comparison is stored with the base run');
+  assert.ok(sel.choice.chosen, `synthetic data must pick a candidate to exercise the rest: ${sel.choice.reason} ${JSON.stringify(sel.choice.table)}`);
   assert.equal(sel.frozen.file, 'strategy/hxr/configs/hxr-1.0.0.json', 'the natural file name, which loadHxrConfig accepts for this version');
   assert.equal(sel.frozen.config.version, FROZEN_VERSION);
   assert.match(sel.note, /record it as strategy\/hxr\/configs\/hxr-1\.0\.0\.json/);
@@ -183,13 +198,14 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   assert.equal(sel.frozen.basedOn, sel.choice.chosen);
   const frozen = store.getVersion(db, FROZEN_VERSION);
   assert.equal(frozen.config.version, FROZEN_VERSION);
-  assert.equal(frozen.prereg, 'hxr-prereg-1');
+  assert.equal(frozen.prereg, 'hxr-prereg-2');
+  assert.ok(['x1-0.2.0', 'x2-0.2.0'].includes(frozen.basedOn), 'only X1 or X2 can be frozen');
   assert.deepEqual(frozen.config.rule, store.getRun(db, sel.runs.find((x) => x.name === sel.choice.chosen).id).config.rule);
   for (const run of sel.runs) {
     const full = hxr.getRun(run.id);
     assert.equal(full.run.status, 'done');
-    assert.equal(full.run.kind, run.role === 'fills' ? 'variant' : 'selection');
-    assert.ok(full.equity.length > 1000 && full.fills.length >= 5 && full.run.metrics.sessions === full.equity.length);
+    assert.equal(full.run.kind, ['fills', 'neighbour', 'robust'].includes(run.role) ? 'variant' : 'selection');
+    assert.ok(full.equity.length > 1000 && full.fills.length >= full.run.symbols.length && full.run.metrics.sessions === full.equity.length);
     assert.equal(full.run.details.meta.simulated, true);
   }
   assert.equal(store.listLedger(db, { kind: 'selection' }).length, 1);
@@ -219,16 +235,17 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   assert.equal(ev.simulated, true);
   assert.ok(['PASS', 'FAIL', 'INSUFFICIENT_EVIDENCE'].includes(ev.outcome));
   assert.deepEqual(ev.evaluation.criteria.map((c) => c.id), ['G1', 'G2', 'G3', 'G4', 'G5', 'G6']);
-  assert.equal(ev.runs.length, 24, 'base, costs x2, delay 2, vw15, 0% withholding, 5 leave-one-out pairs, full list and its VWAP fills');
+  assert.equal(ev.runs.length, 28, 'base, costs x2, delay 2, vw15, 0% withholding, 6 leave-one-out pairs, the robustness list, full list and its VWAP fills');
   assert.equal(ev.runs.filter((x) => x.kind === 'evaluation').length, 2);
-  assert.deepEqual([...new Set(ev.runs.map((x) => x.variant))], ['main', 'costs2x', 'delay2', 'vw15', 'withholding0', 'loo-MU', 'loo-AMZN', 'loo-META', 'loo-TSLA', 'loo-VST', 'fullList', 'fullList-vw15']);
+  assert.deepEqual([...new Set(ev.runs.map((x) => x.variant))], ['main', 'costs2x', 'delay2', 'vw15', 'withholding0', 'loo-MU', 'loo-AMZN', 'loo-META', 'loo-TSLA', 'loo-VST', 'loo-GOOG', 'robust', 'fullList', 'fullList-vw15']);
+  assert.equal(ev.reported.robustness.run, true, 'the robustness list is reported, never a gate');
   assert.equal(ev.caveat, HISTORICAL_CAVEAT);
   assert.equal(ev.reported.fullList.run, true);
   assert.ok(Number.isFinite(ev.reported.fullList.fills.hxr.medianAbsDiffBps));
   const loo = hxr.getRun(ev.runs.find((x) => x.variant === 'loo-TSLA').id).run;
-  assert.deepEqual(loo.symbols, ['MU', 'AMZN', 'META', 'VST']);
+  assert.deepEqual(loo.symbols, ['MU', 'AMZN', 'META', 'VST', 'GOOG']);
   const fl = hxr.getRun(ev.runs.find((x) => x.variant === 'fullList' && x.arm === 'hxr').id).run;
-  assert.equal(fl.symbols.length, 8);
+  assert.equal(fl.symbols.length, 9);
   assert.equal(fl.period.start, '2025-03-18');
   const c2 = hxr.getRun(ev.runs.find((x) => x.variant === 'costs2x' && x.arm === 'hxr').id);
   const base = hxr.getRun(ev.runs.find((x) => x.variant === 'main' && x.arm === 'hxr').id);
@@ -237,13 +254,13 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   assert.equal(f1.slippageBps, 2 * f0.slippageBps);
   assert.ok(base.run.details.evaluation.outcome === ev.outcome);
   assert.ok(Number.isFinite(ev.reported.fills.hxr.medianAbsDiffBps));
-  assert.equal(store.countLedger(db, 'evaluation', 'hxr-prereg-1', FROZEN_VERSION, frozen.configHash), 1);
+  assert.equal(store.countLedger(db, 'evaluation', 'hxr-prereg-2', FROZEN_VERSION, frozen.configHash), 1);
   await rejectsWith(hxr.runEvaluation({ confirm: true }), 409, /already evaluated/);
   dropHood();
   const ev2 = await hxr.runEvaluation({ confirm: true, reason: 'repeat for the test', withoutFullList: true });
   store.upsertBars(db, 'HOOD', [hoodBar]);
   assert.equal(ev2.contaminated, true);
-  assert.equal(ev2.runs.length, 20, 'evaluated without the full-list pairs');
+  assert.equal(ev2.runs.length, 24, 'evaluated without the full-list pairs');
   assert.equal(ev2.reported.fullList.run, false);
   assert.match(ev2.reported.fullList.reasons.join(' '), /HOOD: 1 of \d+ session\(s\) missing/, 'recorded as not run, with the readiness reasons');
   assert.match(store.listExperiments(db).at(-1).dataTouched, /full-list check not run/);
@@ -260,7 +277,7 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   throwsWith(() => hxr.startProspective({}), 400, /confirm: true/);
   const st = hxr.startProspective({ confirm: true });
   assert.equal(st.account.startDate, '2026-10-23', 'the first session after the start time');
-  assert.equal(st.account.symbols.length, 9, 'basket B plus the confirmed SPCX');
+  assert.equal(st.account.symbols.length, 10, 'basket B (nine stocks with GOOG) plus the confirmed SPCX');
   assert.equal(st.account.symbols.at(-1), 'SPCX');
   throwsWith(() => hxr.startProspective({ confirm: true }), 409, /already exists/);
   const fresh = hxr.prospectiveStatus();
@@ -288,7 +305,7 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   assert.deepEqual(tick.processed, ['2026-10-23']);
   events = store.listProspectiveEvents(db, { from: '2026-10-23' });
   const initial = events.filter((e) => e.kind === 'fill');
-  assert.equal(initial.length, 18, '9 sleeves x 2 arms');
+  assert.equal(initial.length, 20, '10 sleeves x 2 arms');
   assert.ok(initial.every((e) => e.onTime === true && e.detail.initial && e.recordedAt === '2026-10-23T20:30:00.000Z'));
 
   // After the crash session: the exit decision is recorded on time with the news known then.
@@ -393,11 +410,11 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   assert.equal(store.getProspective(db).lastProcessed, '2026-10-30');
 
   const o = hxr.overview();
-  assert.equal(o.prereg.files.length, 9);
+  assert.equal(o.prereg.files.length, 10);
   assert.ok(o.prereg.files.every((f) => /^[0-9a-f]{64}$/.test(f.sha256)));
   assert.equal(o.versions.length, 1);
   assert.equal(o.prospective.status, 'active');
-  assert.equal(o.runs.length, 60, 'selection 8 x 2, evaluation 24, the repeat without the full-list check 20');
+  assert.equal(o.runs.length, 100, 'selection 24 x 2 (4 arms, their VWAP fills, 12 neighbours, 4 on the robustness list), evaluation 28, the repeat without the full-list check 24');
   assert.equal(o.versions[0].file, 'strategy/hxr/configs/hxr-1.0.0.json');
   assert.deepEqual(o.prereg.later, [], 'nothing recorded after the pre-registration in this checkout');
   assert.equal(o.historicalCaveat, HISTORICAL_CAVEAT);
@@ -472,10 +489,22 @@ test('the pre-registered files are a fixed set; a later config is listed apart a
   fs.cpSync(HXR_DIR, dir, { recursive: true });
   const before = preregManifest({ dir, configDir: path.join(dir, 'configs') });
   assert.deepEqual(before, preregManifest(), 'the copy hashes like the repository');
-  assert.deepEqual(before.files.map((f) => f.file), ['PREREGISTRATION.md', 'ENGINE-SPEC.md', 'universe-hxr-v1.json', 'periods-hxr-v1.json', 'criteria-hxr-v1.json', 'configs/hxr-hold-0.1.0.json', 'configs/hxr-c1-0.1.0.json', 'configs/hxr-c2-0.1.0.json', 'configs/hxr-c3-0.1.0.json']);
+  // hxr-prereg-2's hashed set: both pre-registration documents, the v2 lists and the hold, X1-X3 configs.
+  assert.equal(before.id, 'hxr-prereg-2');
+  assert.deepEqual(before.files.map((f) => f.file), ['PREREGISTRATION.md', 'PREREGISTRATION-2.md', 'ENGINE-SPEC.md', 'universe-hxr-v2.json', 'periods-hxr-v2.json', 'criteria-hxr-v2.json', 'configs/hxr-hold-0.1.0.json', 'configs/hxr-x1-0.2.0.json', 'configs/hxr-x2-0.2.0.json', 'configs/hxr-x3-0.2.0.json']);
+  // hxr-prereg-1's C1-C3 are listed apart: never in this set or its hash.
+  assert.deepEqual(before.superseded.map((x) => [x.file, x.prereg]), ['c1', 'c2', 'c3'].map((c) => [`configs/hxr-${c}-0.1.0.json`, 'hxr-prereg-1']));
+  assert.deepEqual(before.later, []);
+  // Any change to a pre-registered file changes the hash.
+  const p2 = path.join(dir, 'PREREGISTRATION-2.md');
+  const text = fs.readFileSync(p2, 'utf8');
+  fs.writeFileSync(p2, `${text}
+`);
+  assert.notEqual(preregManifest({ dir, configDir: path.join(dir, 'configs') }).hash, before.hash, 'editing PREREGISTRATION-2.md changes the hash');
+  fs.writeFileSync(p2, text);
   // The owner records the frozen hxr-1.0.0 after the selection (its JSON unchanged).
-  const c2 = JSON.parse(fs.readFileSync(path.join(dir, 'configs', 'hxr-c2-0.1.0.json'), 'utf8'));
-  const frozen = { ...c2, version: FROZEN_VERSION, label: 'HXR hxr-1.0.0 (frozen from c2-0.1.0)', createdAt: '2026-10-23' };
+  const x2 = JSON.parse(fs.readFileSync(path.join(dir, 'configs', 'hxr-x2-0.2.0.json'), 'utf8'));
+  const frozen = { ...x2, version: FROZEN_VERSION, label: 'HXR hxr-1.0.0 (frozen from x2-0.2.0)', createdAt: '2026-10-23' };
   fs.writeFileSync(path.join(dir, 'configs', 'hxr-1.0.0.json'), JSON.stringify(frozen, null, 2));
   const { hxrConfigHash } = await import('../server/hxr/config.js');
   const after = preregManifest({ dir, configDir: path.join(dir, 'configs'), versions: [{ version: FROZEN_VERSION, configHash: hxrConfigHash(frozen), frozenAt: '2026-10-23T01:00:00.000Z' }] });

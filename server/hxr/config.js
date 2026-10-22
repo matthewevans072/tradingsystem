@@ -8,14 +8,20 @@ import { STRATEGY_DIR, canonicalJson, configHash, deepFreeze } from '../strategy
 
 export const HXR_DIR = path.join(STRATEGY_DIR, 'hxr');
 export const HXR_CONFIG_DIR = path.join(HXR_DIR, 'configs');
-export const UNIVERSE_PATH = path.join(HXR_DIR, 'universe-hxr-v1.json');
-export const PERIODS_PATH = path.join(HXR_DIR, 'periods-hxr-v1.json');
-export const CRITERIA_PATH = path.join(HXR_DIR, 'criteria-hxr-v1.json');
-export const PREREG = 'hxr-prereg-1';
+// The active pre-registration is hxr-prereg-2 (PREREGISTRATION-2.md). The v1
+// files of hxr-prereg-1 stay on disk unchanged and are loadable by path.
+export const UNIVERSE_PATH = path.join(HXR_DIR, 'universe-hxr-v2.json');
+export const PERIODS_PATH = path.join(HXR_DIR, 'periods-hxr-v2.json');
+export const CRITERIA_PATH = path.join(HXR_DIR, 'criteria-hxr-v2.json');
+export const PREREG = 'hxr-prereg-2';
 
-export const RULE_TYPES = ['hold', 'ma_band', 'vol_trail', 'pct_trail'];
+export const RULE_TYPES = ['hold', 'ma_band', 'vol_trail', 'pct_trail', 'recovery_break', 'move_allowance', 'giveback'];
 export const FILL_MODELS = ['open', 'vw15'];
 export const BACKTEST_PERIODS = ['selection', 'evaluation', 'fullList'];
+// Reported-only periods (PREREGISTRATION-2.md section 5): validated and checked
+// for readiness when present, never a gate.
+export const REPORTED_PERIODS = ['robustSelection', 'robustEvaluation'];
+export const periodKeys = (periods) => [...BACKTEST_PERIODS, ...REPORTED_PERIODS.filter((k) => periods?.periods?.[k])];
 // Descriptive keys allowed beside the rule-relevant ones (left out of the hash
 // by canonicalJson's DESCRIPTIVE_KEYS).
 const DESCRIPTIVE = ['label', 'status', 'createdAt', 'notes'];
@@ -64,7 +70,15 @@ const RULE_PARAMS = {
   ma_band: { smaSessions: int({ min: 2 }), bandPct: num({ min: 0 }) },
   vol_trail: { volSessions: int({ min: 1 }), multiple: num({ gt: 0 }) },
   pct_trail: { exitDrawdownPct: num({ gt: 0, lt: 100 }), reentryRisePct: num({ gt: 0 }) },
+  // hxr-prereg-2 (PREREGISTRATION-2.md section 3): each exit rule plus the one buy-back rule.
+  recovery_break: { volSessions: int({ min: 1 }), bufferMultiple: num({ min: 0 }), ...buyBackParams() },
+  move_allowance: { volSessions: int({ min: 1 }), multiple: num({ gt: 0 }), ...buyBackParams() },
+  giveback: { volSessions: int({ min: 1 }), givebackPct: num({ gt: 0, lt: 100 }), activationMultiple: num({ min: 0 }), ...buyBackParams() },
 };
+
+function buyBackParams() {
+  return { pivotSessions: int({ min: 1 }), reboundMultiple: num({ min: 0 }), afterMissedRebound: exact('stay_out') };
+}
 
 const TOP_KEYS = new Set(['strategy', 'version', ...DESCRIPTIVE, ...Object.keys(SECTIONS), 'rule', 'baseHash', 'variant']);
 
@@ -274,9 +288,9 @@ export function validateHxrPeriods(p, universe = null) {
   if (!p.periods || typeof p.periods !== 'object') return ['periods file needs a periods object'];
   if (p.dataFrom !== undefined && !isDate(p.dataFrom)) errors.push('dataFrom must be a YYYY-MM-DD date');
   if (!Number.isInteger(p.warmupSessions) || p.warmupSessions < 1) errors.push('warmupSessions must be a whole number of at least 1');
-  for (const k of BACKTEST_PERIODS) {
+  for (const k of [...BACKTEST_PERIODS, ...REPORTED_PERIODS]) {
     const x = p.periods[k];
-    if (!x) { errors.push(`period ${k} is missing`); continue; }
+    if (!x) { if (BACKTEST_PERIODS.includes(k)) errors.push(`period ${k} is missing`); continue; }
     for (const f of ['warmupFrom', 'start', 'end']) if (!isDate(x[f])) errors.push(`period ${k} needs a ${f} date (YYYY-MM-DD)`);
     if (isDate(x.warmupFrom) && isDate(x.start) && x.warmupFrom > x.start) errors.push(`period ${k}: warmupFrom is after start`);
     if (isDate(x.start) && isDate(x.end) && x.start > x.end) errors.push(`period ${k}: start is after end`);

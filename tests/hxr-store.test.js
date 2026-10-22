@@ -35,7 +35,14 @@ test('guard: portfolio and Strategy Lab file names are refused case-insensitivel
   assert.equal(store.isRefusedName('signal-desk.sqlite.bak'), false);
 });
 
-test('guard: a symlink to a portfolio file, a dangling symlink and a symlinked directory are resolved first', () => {
+// Windows refuses to create symbolic links without administrator rights or
+// Developer Mode (EPERM). The guard is still exercised wherever links can be made.
+function symlinksAllowed() {
+  const d = tempDir('hxr-link-probe-');
+  try { fs.writeFileSync(path.join(d, 'a'), ''); fs.symlinkSync(path.join(d, 'a'), path.join(d, 'b')); return true; } catch (e) { if (e.code === 'EPERM' || e.code === 'EACCES') return false; throw e; }
+}
+
+test('guard: a symlink to a portfolio file, a dangling symlink and a symlinked directory are resolved first', { skip: symlinksAllowed() ? false : 'this system does not allow creating symbolic links (Windows without administrator rights or Developer Mode)' }, () => {
   const dir = tempDir('hxr-link-');
   const portfolio = path.join(dir, 'signal-desk.sqlite');
   const p = new DatabaseSync(portfolio);

@@ -1,4 +1,4 @@
-# HXR engine and module specification (hxr-engine-1)
+# HXR engine and module specification (hxr-engine-2)
 
 The exact behaviour of the HXR simulation code in `server/hxr/`. If code and
 this file disagree, one of them has a bug. The rules being tested are in
@@ -126,6 +126,64 @@ Here `c` is today's close and `closes` is `history`, ending with `c`.
 `SMA` is the mean of the last `smaSessions` closes, including `c`. `vol` is
 the mean of `|closes[i] − closes[i−1]|` over the last `volSessions` changes.
 Without enough history, no signal is generated.
+
+### 5a. hxr-prereg-2 rules (hxr-engine-2; PREREGISTRATION-2.md section 3)
+
+Three exit rules share one buy-back rule. Here `m` is `vol` with
+`volSessions` (the typical daily move at today's close), and `k` is
+`pivotSessions`. History kept: `max(volSessions + 1, 2k + 1)` closes.
+
+**Extra sleeve state**, all plain JSON and kept in snapshots:
+
+| Field | Meaning |
+|---|---|
+| `sinceFill` | The stock's closes since the last fill, counting the fill session; reset to 0 at every buy or sell fill |
+| `level` | X1's exit level |
+| `entryPrice` | The effective buy price, for X3 |
+| `gbActive` | Whether X3 is active |
+| `stayOut` | Set after a missed rebound |
+
+On a split with ratio `r`, `level` and `entryPrice` are divided by `r`, like
+the other prices.
+
+**Recovery point** (`recoveryPoint(closes, k, rebound, m)`). At today's close,
+the close `k` closes back (`i = n − 1 − k`) is a recovery point if both hold:
+
+- it is strictly below each of the `k` closes before it and the `k` closes
+  after it;
+- the highest of the `k` later closes is `≥ close(i) + rebound × m`.
+
+It reads only closes up to today. A recovery point "on or after the last
+fill" needs `sinceFill ≥ k + 1`.
+
+**At each close**, for a sleeve with a bar and no pending order:
+
+- `updateRuleState` runs first, while holding:
+  - **X1** (`recovery_break`): a recovery point on or after the buy fill
+    sets `level = max(level, close(i) − bufferMultiple × m)`.
+  - **X3** (`giveback`): `gbActive` becomes true once
+    `anchorHigh ≥ entryPrice + activationMultiple × m`.
+- Then `evaluateRule` checks the exit while in:
+
+  | Type | Exit when `in` |
+  |---|---|
+  | `recovery_break` | `level` set and `c < level` |
+  | `move_allowance` | `c < anchorHigh − multiple × m` |
+  | `giveback` | `gbActive` and `c ≤ entryPrice + (1 − givebackPct/100) × (anchorHigh − entryPrice)` |
+
+**Buy-back when `out`** (every one of these types). `P` is the last rule
+exit's effective price in current share units (`exitPriceNow`). If the
+sleeve has no last exit or `stayOut` is set, nothing happens.
+
+1. If `c ≥ P`, then `stayOut = true`, and a `rebound_missed` warning
+   records the close and `P`. No order is placed, now or later.
+2. Otherwise, a recovery point on or after the sell fill gives a buy order
+   with `ceiling: true`. At its fill, if the effective buy price is not below
+   `P`, the order is cancelled with a `buy_back_cancelled` warning and the
+   sleeve keeps waiting.
+
+Both are journalled as warnings, not decisions, so they never count as
+orders. Older rule types are unchanged.
 
 ## 6. Determinism and no look-ahead
 

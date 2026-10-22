@@ -47,7 +47,14 @@ test('overview: every config carries its rule, status and assumptions before any
   try {
     const o = hxr.overview();
     assert.equal(o.runs.length, 0);
-    assert.deepEqual(o.configs.map((c) => c.rule.type).sort(), ['hold', 'ma_band', 'pct_trail', 'vol_trail']);
+    assert.deepEqual(o.configs.map((c) => c.rule.type).sort(), ['giveback', 'hold', 'ma_band', 'move_allowance', 'pct_trail', 'recovery_break', 'vol_trail']);
+    // hxr-prereg-2 roles: X1 and X2 can be picked, X3 is the owner's comparison, C1-C3 are superseded and never run.
+    assert.deepEqual(Object.fromEntries(o.configs.map((c) => [c.version, c.role])), {
+      'c1-0.1.0': 'superseded', 'c2-0.1.0': 'superseded', 'c3-0.1.0': 'superseded', 'hold-0.1.0': 'hold',
+      'x1-0.2.0': 'candidate', 'x2-0.2.0': 'candidate', 'x3-0.2.0': 'comparison',
+    });
+    assert.equal(o.prereg.id, 'hxr-prereg-2');
+    assert.deepEqual(Object.keys(o.neighbours), ['x1-0.2.0', 'x2-0.2.0']);
     for (const c of o.configs) {
       const f = JSON.parse(read(`strategy/hxr/configs/${c.file}`));
       assert.deepEqual(c.rule, f.rule, c.file);

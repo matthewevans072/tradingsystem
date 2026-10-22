@@ -13,9 +13,12 @@ import crypto from 'node:crypto';
 import { configHash, canonicalJson } from '../strategy/config.js';
 import { isTradingDay, nextTradingDay } from '../calendar.js';
 
-export const ENGINE_VERSION = 'hxr-engine-1';
+export const ENGINE_VERSION = 'hxr-engine-2'; // hxr-engine-1 rules unchanged; adds the hxr-prereg-2 rule types
 const STATE_FORMAT = 'hxr-engine-state-1';
-export const RULE_TYPES = ['hold', 'ma_band', 'vol_trail', 'pct_trail'];
+export const RULE_TYPES = ['hold', 'ma_band', 'vol_trail', 'pct_trail', 'recovery_break', 'move_allowance', 'giveback'];
+// hxr-prereg-2 (PREREGISTRATION-2.md section 3): exit rules that share one
+// buy-back rule (a confirmed recovery point, filling only below the exit price).
+export const BUY_BACK_RULES = ['recovery_break', 'move_allowance', 'giveback'];
 export const FILL_MODELS = ['open', 'vw15'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EPS = 1e-9;
@@ -89,6 +92,15 @@ function checkConfig(config) {
   if (r.type === 'ma_band') { num(r.smaSessions, 'rule.smaSessions', { min: 1, int: true }); num(r.bandPct, 'rule.bandPct', { max: 100 }); }
   if (r.type === 'vol_trail') { num(r.volSessions, 'rule.volSessions', { min: 1, int: true }); num(r.multiple, 'rule.multiple', { gt: 0 }); }
   if (r.type === 'pct_trail') { num(r.exitDrawdownPct, 'rule.exitDrawdownPct', { gt: 0, max: 100 }); num(r.reentryRisePct, 'rule.reentryRisePct', { gt: 0 }); }
+  if (BUY_BACK_RULES.includes(r.type)) {
+    num(r.volSessions, 'rule.volSessions', { min: 1, int: true });
+    num(r.pivotSessions, 'rule.pivotSessions', { min: 1, int: true });
+    num(r.reboundMultiple, 'rule.reboundMultiple');
+    if (r.afterMissedRebound !== 'stay_out') errs.push('rule.afterMissedRebound must be "stay_out"');
+    if (r.type === 'recovery_break') num(r.bufferMultiple, 'rule.bufferMultiple');
+    if (r.type === 'move_allowance') num(r.multiple, 'rule.multiple', { gt: 0 });
+    if (r.type === 'giveback') { num(r.givebackPct, 'rule.givebackPct', { gt: 0, max: 100 }); num(r.activationMultiple, 'rule.activationMultiple'); }
+  }
   if (errs.length) throw new Error(`HXR engine: invalid config: ${errs.join('; ')}`);
 }
 
@@ -139,7 +151,99 @@ function typicalMove(closes, n) {
 }
 
 export function historyLength(rule) {
-  return Math.max(1, rule.smaSessions ?? 0, (rule.volSessions ?? -1) + 1);
+  return Math.max(1, rule.smaSessions ?? 0, (rule.volSessions ?? -1) + 1, BUY_BACK_RULES.includes(rule.type) ? 2 * rule.pivotSessions + 1 : 0);
+}
+
+// ---------- hxr-prereg-2 rules (PREREGISTRATION-2.md section 3) ----------
+
+// The exit price of the sleeve's last rule exit in current share units, or null.
+export function exitPriceNow(sl) {
+  const x = sl.lastExit;
+  return x ? x.price / (sl.splitFactor / x.splitFactor) : null;
+}
+
+// Section 3.1. At today's close (closes ends with it) the session k of the
+// stock's sessions earlier is a recovery point if its close is strictly below
+// each of the k closes before and the k closes after it, and the highest of
+// those k later closes is at least reboundMultiple x m above it. Only closes up
+// to today are read: the point exists from today's close, never earlier.
+export function recoveryPoint(closes, k, reboundMultiple, m) {
+  const n = closes.length;
+  if (n < 2 * k + 1) return null;
+  const i = n - 1 - k, ci = closes[i];
+  for (let j = i - k; j < i; j++) if (!(ci < closes[j])) return null;
+  let highestAfter = -Infinity;
+  for (let j = i + 1; j < n; j++) {
+    if (!(ci < closes[j])) return null;
+    highestAfter = Math.max(highestAfter, closes[j]);
+  }
+  if (!(highestAfter >= ci + reboundMultiple * m)) return null;
+  return { close: ci, highestAfter, sessionsAgo: k, m };
+}
+
+// The typical daily move m(t), or null without volSessions + 1 closes.
+export function typicalMoveNow(rule, closes) {
+  return closes.length >= rule.volSessions + 1 ? typicalMove(closes, rule.volSessions) : null;
+}
+
+// A recovery point that formed on or after the sleeve's last fill session
+// (sinceFill counts the stock's closes from the fill session, inclusive).
+function recoveryAfterFill(rule, sl, m) {
+  if (!((sl.sinceFill ?? 0) >= rule.pivotSessions + 1)) return null;
+  return recoveryPoint(sl.history, rule.pivotSessions, rule.reboundMultiple, m);
+}
+
+// State that moves at each close while holding: X1's exit level (only rises)
+// and X3's activation (sticky until the next sell). Called after the close is
+// appended and before evaluateRule; mutates the sleeve.
+export function updateRuleState(rule, sl) {
+  if (!BUY_BACK_RULES.includes(rule.type) || sl.state !== 'in') return null;
+  const m = typicalMoveNow(rule, sl.history);
+  if (m == null) return null;
+  if (rule.type === 'recovery_break') {
+    const rp = recoveryAfterFill(rule, sl, m);
+    if (!rp) return null;
+    const level = rp.close - rule.bufferMultiple * m;
+    const raised = sl.level == null || level > sl.level;
+    if (raised) sl.level = level;
+    return { kind: 'recovery_point', recoveryClose: rp.close, highestAfter: rp.highestAfter, m, candidateLevel: level, level: sl.level, raised };
+  }
+  if (rule.type === 'giveback' && !sl.gbActive && sl.anchorHigh != null && sl.entryPrice != null && sl.anchorHigh >= sl.entryPrice + rule.activationMultiple * m) {
+    sl.gbActive = true;
+    return { kind: 'giveback_active', entryPrice: sl.entryPrice, anchorHigh: sl.anchorHigh, m, threshold: sl.entryPrice + rule.activationMultiple * m };
+  }
+  return null;
+}
+
+function evaluateBuyBackRule(rule, sl, c) {
+  const m = typicalMoveNow(rule, sl.history);
+  if (m == null) return null;
+  if (sl.state === 'in') {
+    if (rule.type === 'recovery_break') {
+      if (sl.level == null) return null;
+      return c < sl.level ? { side: 'sell', values: { close: c, level: sl.level, m, bufferMultiple: rule.bufferMultiple }, reason: `close ${c} is below the recovery-point level ${sl.level}` } : null;
+    }
+    if (rule.type === 'move_allowance') {
+      if (sl.anchorHigh == null) return null;
+      const level = sl.anchorHigh - rule.multiple * m;
+      return c < level ? { side: 'sell', values: { close: c, anchorHigh: sl.anchorHigh, m, multiple: rule.multiple, level }, reason: `close ${c} is below the highest close since buying ${sl.anchorHigh} less ${rule.multiple} x typical move ${m} (${level})` } : null;
+    }
+    if (!sl.gbActive || sl.entryPrice == null || sl.anchorHigh == null) return null; // giveback
+    const level = sl.entryPrice + (1 - rule.givebackPct / 100) * (sl.anchorHigh - sl.entryPrice);
+    return c <= level ? { side: 'sell', values: { close: c, entryPrice: sl.entryPrice, anchorHigh: sl.anchorHigh, givebackPct: rule.givebackPct, level }, reason: `close ${c} gives back ${rule.givebackPct}% or more of the peak gain (entry ${sl.entryPrice}, highest close ${sl.anchorHigh}, level ${level})` } : null;
+  }
+  // Out: the one buy-back rule (section 3.5).
+  if (sl.stayOut) return null;
+  const P = exitPriceNow(sl);
+  if (P == null) return null;
+  if (c >= P) return { side: 'stay_out', values: { close: c, exitPrice: P }, reason: `close ${c} is at or above the exit price ${P} before any buy-back signal: rebound missed, the sleeve stays in cash for the rest of the period` };
+  const rp = recoveryAfterFill(rule, sl, m);
+  if (!rp) return null;
+  return {
+    side: 'buy', ceiling: P,
+    values: { close: c, exitPrice: P, recoveryClose: rp.close, highestAfter: rp.highestAfter, m, pivotSessions: rule.pivotSessions, reboundMultiple: rule.reboundMultiple },
+    reason: `a recovery point (close ${rp.close}, ${rule.pivotSessions} sessions ago) is confirmed below the exit price ${P}; buy at the next open only if the fill is below ${P}`,
+  };
 }
 
 // ENGINE-SPEC section 5. closes ends with today's close c. Returns null or the
@@ -148,6 +252,7 @@ export function evaluateRule(rule, sl) {
   const closes = sl.history, n = closes.length, c = closes[n - 1];
   const holding = sl.state === 'in';
   if (rule.type === 'hold' || !n) return null;
+  if (BUY_BACK_RULES.includes(rule.type)) return evaluateBuyBackRule(rule, sl, c);
   if (rule.type === 'ma_band') {
     if (n < rule.smaSessions) return null;
     const avg = sma(closes, rule.smaSessions);
@@ -220,6 +325,9 @@ function newSleeve(s, cash) {
     cash, shares: 0, state: 'out', pending: null,
     history: [], anchorHigh: null, anchorLow: null, lastClose: null, lastBarDate: null,
     splitFactor: 1, receivables: [], episode: null, lastExit: null,
+    // hxr-prereg-2 rules: closes since the last fill, X1's level, the effective
+    // buy price (X3), X3's activation and the stay-in-cash flag after a missed rebound.
+    sinceFill: 0, level: null, entryPrice: null, gbActive: false, stayOut: false,
   };
 }
 
@@ -356,6 +464,8 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       if (sl.anchorHigh != null) sl.anchorHigh /= r;
       if (sl.anchorLow != null) sl.anchorLow /= r;
       if (sl.lastClose != null) sl.lastClose /= r;
+      if (sl.level != null) sl.level /= r;
+      if (sl.entryPrice != null) sl.entryPrice /= r;
       sl.splitFactor *= r;
       let after = before * r;
       const whole = Math.floor(after + EPS);
@@ -488,10 +598,20 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     sl.state = 'out';
     sl.anchorLow = null;
     sl.pending = null;
+    Object.assign(sl, { sinceFill: 0, level: null, entryPrice: null, gbActive: false });
   }
 
   function buy(sl, o, bar, date) {
     const px = priceOf(sl, 'buy', bar, date);
+    // The buy-back fills only below the exit price (PREREGISTRATION-2.md 3.5).
+    if (o.ceiling) {
+      const P = exitPriceNow(sl);
+      if (P == null || !(px.price < P)) {
+        warn(date, sl.symbol, 'buy_back_cancelled', `buy-back order ${o.id} cancelled: the fill price ${px.price} is not below the exit price ${P}; the sleeve keeps waiting`, { orderId: o.id, price: px.price, open: bar.o, exitPrice: P });
+        sl.pending = null;
+        return;
+      }
+    }
     const cpo = costs.commissionPerOrder, cps = costs.commissionPerShare;
     const costOf = (n) => n * px.price + cpo + cps * n;
     let n = Math.floor((sl.cash - cpo) / (px.price + cps));
@@ -529,6 +649,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     sl.state = 'in';
     sl.anchorHigh = null;
     sl.pending = null;
+    Object.assign(sl, { sinceFill: 0, level: null, entryPrice: px.price, gbActive: false });
   }
 
   function closeEpisode(sl, { date, fillId, price, proceeds, sellCosts, endKind }) {
@@ -570,6 +691,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       if (sl.history.length > HIST) sl.history.splice(0, sl.history.length - HIST);
       sl.lastClose = bar.c;
       sl.lastBarDate = date;
+      sl.sinceFill = (sl.sinceFill ?? 0) + 1;
       if (!trading) continue;
       if (sl.state === 'in') sl.anchorHigh = maxOf(sl.anchorHigh, bar.c);
       else sl.anchorLow = minOf(sl.anchorLow, bar.c);
@@ -602,8 +724,14 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
   function signals(date, bars) {
     for (const sl of S.sleeves) {
       if (!bars.has(sl.symbol) || sl.pending) continue;
+      updateRuleState(rule, sl);
       const sig = evaluateRule(rule, sl);
       if (!sig) continue;
+      if (sig.side === 'stay_out') {
+        sl.stayOut = true;
+        warn(date, sl.symbol, 'rebound_missed', `${sl.symbol}: ${sig.reason}`, sig.values);
+        continue;
+      }
       const fillDate = addSessions(date, delay, ex);
       const id = `dec-${sl.symbol}-${date}`;
       const action = sig.side === 'sell' ? 'exit' : 'buy_back';
@@ -611,7 +739,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
         id, orderId: `order-${sl.symbol}-${date}-${sig.side}`, symbol: sl.symbol, date, side: sig.side, action, rule: rule.type,
         reason: sig.reason, values: sig.values, state: sl.state, shares: sl.shares, cash: sl.cash, fillDate, delaySessions: delay,
       });
-      sl.pending = { id: `order-${sl.symbol}-${date}-${sig.side}`, symbol: sl.symbol, side: sig.side, reason: action === 'exit' ? 'exit rule' : 'buy-back rule', initial: false, decisionId: id, decisionDate: date, fillDate, waited: 0 };
+      sl.pending = { id: `order-${sl.symbol}-${date}-${sig.side}`, symbol: sl.symbol, side: sig.side, reason: action === 'exit' ? 'exit rule' : 'buy-back rule', initial: false, decisionId: id, decisionDate: date, fillDate, waited: 0, ...(sig.ceiling != null ? { ceiling: true } : {}) };
     }
   }
 

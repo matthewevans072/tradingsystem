@@ -22,19 +22,25 @@ function rng(seed) {
 
 // Prices in post-split units; raw prices before a split are ratio times higher.
 const SPECS = {
-  MU: { from: '2016-01-04', p0: 14, drift: 0.22, amp: 0.36, period: 300, phase: 0.0, seed: 11 },
-  AMZN: { from: '2016-01-04', p0: 33, drift: 0.2, amp: 0.34, period: 300, phase: 0.2, seed: 12 },
-  META: { from: '2016-01-04', p0: 100, drift: 0.18, amp: 0.38, period: 300, phase: -0.2, seed: 13 },
-  TSLA: { from: '2016-01-04', p0: 15, drift: 0.25, amp: 0.4, period: 300, phase: 0.3, seed: 14 },
-  VST: { from: '2017-05-10', p0: 16, drift: 0.2, amp: 0.34, period: 300, phase: -0.1, seed: 15 },
+  MU: { from: '2016-01-04', p0: 14, drift: 0.22, amp: 0.36, period: 100, phase: 0.0, seed: 11 },
+  AMZN: { from: '2016-01-04', p0: 33, drift: 0.2, amp: 0.34, period: 100, phase: 0.2, seed: 12 },
+  META: { from: '2016-01-04', p0: 100, drift: 0.18, amp: 0.38, period: 100, phase: -0.2, seed: 13 },
+  TSLA: { from: '2016-01-04', p0: 15, drift: 0.25, amp: 0.4, period: 100, phase: 0.3, seed: 14 },
+  VST: { from: '2017-05-10', p0: 16, drift: 0.2, amp: 0.34, period: 100, phase: -0.1, seed: 15 },
   HOOD: { from: '2021-07-29', p0: 38, drift: 0.1, amp: 0.4, period: 300, phase: 0.1, seed: 16 },
   MUU: { from: '2024-10-10', p0: 4, drift: 0.3, amp: 0.5, period: 300, phase: 0.0, seed: 17 },
   NBIS: { from: '2024-10-21', p0: 20, drift: 0.3, amp: 0.4, period: 300, phase: 0.2, seed: 18 },
   SPCX: { from: '2026-06-12', p0: 120, drift: 0.2, amp: 0.2, period: 300, phase: 0.0, seed: 19 },
+  // hxr-prereg-2: GOOG in every basket; the robustness list R.
+  GOOG: { from: '2016-01-04', p0: 37, drift: 0.18, amp: 0.3, period: 100, phase: 0.15, seed: 20 },
+  INTC: { from: '2016-01-04', p0: 34, drift: -0.05, amp: 0.3, period: 300, phase: 0.05, seed: 21 },
+  CSCO: { from: '2016-01-04', p0: 27, drift: 0.05, amp: 0.25, period: 300, phase: -0.15, seed: 22 },
+  PYPL: { from: '2016-01-04', p0: 36, drift: 0.02, amp: 0.4, period: 300, phase: 0.25, seed: 23 },
+  SNAP: { from: '2017-03-02', p0: 24, drift: -0.08, amp: 0.45, period: 300, phase: -0.25, seed: 24 },
 };
-export const SPLITS = { AMZN: [['2022-06-06', 20]], TSLA: [['2020-08-31', 5], ['2022-08-25', 3]], MUU: [['2026-07-15', 20]] };
+export const SPLITS = { AMZN: [['2022-06-06', 20]], TSLA: [['2020-08-31', 5], ['2022-08-25', 3]], MUU: [['2026-07-15', 20]], GOOG: [['2022-07-18', 20]] };
 // Full quoted spread at the open, in bps of mid.
-const SPREAD_BPS = { MU: 6, AMZN: 4, META: 5, TSLA: 8, VST: 12, HOOD: 15, MUU: 30, NBIS: 25, SPCX: 40 };
+const SPREAD_BPS = { MU: 6, AMZN: 4, META: 5, TSLA: 8, VST: 12, HOOD: 15, MUU: 30, NBIS: 25, SPCX: 40, GOOG: 4, INTC: 5, CSCO: 5, PYPL: 7, SNAP: 12 };
 
 function rawFactor(sym, date) {
   return (SPLITS[sym] || []).filter(([d]) => date < d).reduce((a, [, r]) => a * r, 1);

@@ -8,7 +8,7 @@ import { isTradingDay, previousTradingDay } from '../calendar.js';
 import { tradingDays } from '../strategy/sessions.js';
 import { addDays, ymd, todayIn, NY } from '../time.js';
 import { canonicalJson, deepFreeze } from '../strategy/config.js';
-import { universeEntry, basketSymbols, excludedDates, halfSpreadFor, BACKTEST_PERIODS } from './config.js';
+import { universeEntry, basketSymbols, excludedDates, halfSpreadFor, periodKeys } from './config.js';
 import * as store from './store.js';
 
 export const SPREAD_MONTHS = [1, 3, 5, 7, 9, 11];
@@ -394,7 +394,7 @@ export function readiness(db, { universe, periods, today = todayIn(NY), reviewed
   const warmupSessions = periods.warmupSessions;
   const infos = new Map(universe.symbols.map((e) => [e.symbol, checkSymbol(db, e, { excluded, lastComplete, reviewed })]));
   const out = {};
-  for (const k of BACKTEST_PERIODS) {
+  for (const k of periodKeys(periods)) {
     const p = periods.periods[k];
     const members = basketSymbols(universe, p.basket).map((m) => checkMember(infos.get(m.symbol), m, p, { excluded, lastComplete, warmupSessions }));
     const usable = members.every((m) => m.ok);

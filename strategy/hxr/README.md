@@ -38,7 +38,9 @@ HXR is kept apart from everything else in Signal Desk:
    - Keep or drop Micron in the evaluation. Dropping it means a restated
      pre-registration before anything runs.
 4. **Run selection (once).**
-   - Runs C1, C2, C3 and the hold on 2017–2022.
+   - Runs X1, X2, X3 and the hold on 2017–2022. Only X1 or X2 can be picked;
+     X3 is shown as your comparison. Neighbouring settings and the robustness
+     list are reported only.
    - Freezes the pick as `hxr-1.0.0`, or stops if none is worth evaluating.
    - Then add `configs/hxr-1.0.0.json` (the page shows its content and hash)
      and log it in `EXPERIMENT-LOG.md`.
@@ -55,7 +57,8 @@ HXR is kept apart from everything else in Signal Desk:
 
 | File | Purpose |
 |---|---|
-| `PREREGISTRATION.md` | The rules, candidates, costs, periods, disclosures and pass/fail criteria, fixed before any result |
+| `PREREGISTRATION-2.md` | **Active (hxr-prereg-2).** Exit rules X1 (recovery-point break), X2 (normal-movement allowance), X3 (10% give-back, comparison only) and one buy-back rule; GOOG added; robustness list R; G6 as 5 of 6 |
+| `PREREGISTRATION.md` | hxr-prereg-1: costs, account, periods, disclosures and criteria (still in force by reference); its candidates C1–C3 are superseded |
 | `ENGINE-SPEC.md` | Exact mechanics of the engine, data, storage and prospective account |
 | `universe-hxr-v1.json` | The owner's stocks, listing dates and baskets |
 | `periods-hxr-v1.json` | Selection, evaluation, full-list and prospective periods; excluded sessions |

@@ -30,9 +30,16 @@ const VALUE_LABEL = {
   close: 'close', sma: 'average', smaSessions: 'average length', bandPct: 'band %', lower: 'exit level', upper: 'buy-back level', vol: 'typical daily move',
   volSessions: 'move window', multiple: 'multiple', anchorHigh: 'highest close since buying', anchorLow: 'lowest close since selling', level: 'trigger level',
   exitDrawdownPct: 'exit drop %', reentryRisePct: 'buy-back rise %',
+  m: 'typical daily move', exitPrice: 'exit price', recoveryClose: 'recovery-point close', highestAfter: 'highest close after it',
+  pivotSessions: 'recovery window', reboundMultiple: 'rebound (× move)', bufferMultiple: 'buffer (× move)', entryPrice: 'buy price',
+  givebackPct: 'give-back %',
 };
-// Why each family was chosen (PREREGISTRATION.md section 6); the numbers come from the configs.
+// Why each rule was chosen (PREREGISTRATION-2.md section 3; C1-C3 from the
+// superseded PREREGISTRATION.md section 6); the numbers come from the configs.
 const WHY = {
+  recovery_break: 'Your idea of a rise that keeps making higher lows: it sells when the price closes below an earlier low from which it rose again. The low only counts 5 sessions after it formed, so no future recovery is used.',
+  move_allowance: 'Gives each stock room for its own normal daily movement below its highest close since buying.',
+  giveback: 'Your 10% give-back idea, as a comparison only: it is run and shown, but can never be picked.',
   hold: 'The comparison: the same stocks, cash, costs, dividends and whole-share rule, never sold.',
   ma_band: 'The most common trend filter; the band reduces flip-flopping around the average.',
   vol_trail: 'Adjusts to each stock\'s volatility (TSLA and MUU move far more than AMZN); measured on closes, so stray high/low prints cannot trigger it.',
@@ -40,6 +47,8 @@ const WHY = {
 };
 // PREREGISTRATION.md section 7, "Disclosure of previously examined data", restated here; the file's hash is shown with it.
 const DISCLOSURES = [
+  'This is pre-registration 2 (hxr-prereg-2): X1, X2 and X3 with one buy-back rule replace hxr-prereg-1\'s C1–C3, which were never run. GOOG was added to every basket at your request before any test (basket A is now six stocks; G6 needs 5 of 6). The robustness list (INTC, CSCO, PYPL, SNAP) was chosen with hindsight because those stocks lagged, so it is reported only.',
+  'Experimental defaults stand in for your unanswered risk questions: decide after the close, hold through earnings, no news rules, US$0 commission in USD, no initial loss limit, and stay in cash after a missed rebound (which probably favours holding).',
   'MU was in the Strategy Lab consolidation-breakout universe: its 15-minute bars for 2021-07 to 2024-12 were run through that strategy (runs 1–12), and its 2025-01-01 to 2026-06-30 bars passed readiness checks only. HXR\'s evaluation period overlaps that strategy\'s untouched holdout window for MU. HXR never reads the Strategy Lab database, never runs that strategy and never writes its holdout ledger. If you want strict separation, MU can be dropped from HXR\'s evaluation before any HXR run (decision pending).',
   'The step 1 checks printed a few daily closes (first and last bars of each stock, and some 2016–2026 closes for SPY, MU, NVDA, AAPL and VRT). No rule outcome was computed.',
   'Hindsight cannot be removed: Claude\'s training data and your own memory cover these stocks\' history up to mid-2026. The stock list is your current holdings, which favours stocks that did well, so the hold comparison is probably flattering for holding. No historical period is truly unseen: only the prospective account is clean evidence.',
@@ -124,8 +133,28 @@ function ruleText(rule) {
       back: `the close is ${rule.reentryRisePct}% or more above the lowest close since the sleeve last sold`,
       needs: '1 close',
     };
+    case 'recovery_break': return {
+      exit: `the close is below the exit level: the close of the latest recovery point since buying (a close lower than the ${rule.pivotSessions} closes before and after it, which then rose by at least ${rule.reboundMultiple} × the typical daily move; known only ${rule.pivotSessions} sessions after it) less ${rule.bufferMultiple} × the typical daily move. The level only rises; there is no exit before the first recovery point`,
+      back: buyBackText(rule),
+      needs: `${Math.max(rule.volSessions + 1, 2 * rule.pivotSessions + 1)} closes (typical daily move = mean absolute close-to-close change over the last ${rule.volSessions} sessions)`,
+    };
+    case 'move_allowance': return {
+      exit: `the close is more than ${rule.multiple} × the typical daily move below the highest close since the sleeve last bought`,
+      back: buyBackText(rule),
+      needs: `${Math.max(rule.volSessions + 1, 2 * rule.pivotSessions + 1)} closes (typical daily move = mean absolute close-to-close change over the last ${rule.volSessions} sessions)`,
+    };
+    case 'giveback': return {
+      exit: `once the highest close since buying is at least ${rule.activationMultiple} × the typical daily move above the buy price, the close falls to or below the buy price plus ${100 - rule.givebackPct}% of the gain (gives back ${rule.givebackPct}%). No exit before that`,
+      back: buyBackText(rule),
+      needs: `${Math.max(rule.volSessions + 1, 2 * rule.pivotSessions + 1)} closes`,
+    };
     default: return { exit: `unknown rule type ${rule?.type ?? '—'}`, back: '—', needs: '—' };
   }
+}
+
+// The one buy-back rule of hxr-prereg-2 (PREREGISTRATION-2.md section 3.5).
+function buyBackText(rule) {
+  return `a recovery point (${rule.pivotSessions} closes either side, rebound ${rule.reboundMultiple} × the typical daily move) forms after the exit while the close is below the exit price; it fills at the next open only if the fill is below the exit price. If the price closes at or above the exit price first, the rebound is missed and the sleeve stays in cash for the rest of the period`;
 }
 
 // ---------- building blocks ----------
@@ -368,7 +397,7 @@ function preregSection(P) {
     h('p', { class: 'small' }, 'These rules, periods and criteria were written down before any HXR backtest or result existed, and are shown here before any result. ',
       'Historical results test the price rules only; they are never evidence for a news-informed HXR. Every number marked experimental is a labelled research assumption, not your approved preference.'),
     statuses.map((s) => notice('warn', h('strong', {}, 'Config status: '), s)),
-    h('h4', { class: 'lab-h4' }, 'The three candidates and the hold'),
+    h('h4', { class: 'lab-h4' }, 'The candidates, the comparison and the hold'),
     armsTable(P),
     assumptionsBlock(o),
     h('h4', { class: 'lab-h4' }, 'Periods'),
@@ -398,7 +427,7 @@ function muBlock(P) {
     h('div', { class: 'row small' }, d ? badge(d.choice === 'keep' ? 'keep MU' : 'drop MU', d.choice === 'keep' ? 'ok' : 'warn') : badge('pending', 'warn'),
       h('span', { class: 'muted' }, d ? `recorded ${when(d.at)}` : 'not recorded yet; the selection waits for it')),
     h('p', { class: 'small' }, 'Disclosure 1: MU can be dropped from HXR\'s evaluation for strict separation from the Strategy Lab holdout window, but only before any HXR run. Keeping it leaves the overlap disclosed.'),
-    h('p', { class: 'small muted' }, 'Dropping MU changes basket A, its sleeves and G6, which this pre-registration states for five stocks, so it needs a restated pre-registration (a new version); nothing runs until then.'),
+    h('p', { class: 'small muted' }, 'Dropping MU changes basket A, its sleeves and G6, which this pre-registration states for its six stocks, so it needs a restated pre-registration (a new version); nothing runs until then.'),
     locked ? h('div', { class: 'small hxr-gate' }, `Fixed as ${d?.choice ? `"${d.choice}"` : 'not recorded'}: an HXR run is already recorded.`)
       : h('div', { class: 'row' }, btn('keep', 'Keep MU…', d?.choice === 'keep' ? '' : 'primary'), btn('drop', 'Drop MU…', 'danger')));
 }
@@ -421,13 +450,15 @@ function muDialog(P, choice) {
 }
 
 function armsTable(P) {
-  return table(['Arm', 'Exit to cash when…', 'Buy back when…', 'History needed', 'Why this rule', 'Config'], (P.o.configs || []).map((c) => {
+  // Only the arms of the active pre-registration; superseded C1-C3 are never run.
+  const active = (P.o.configs || []).filter((c) => c.role !== 'superseded');
+  return table(['Arm', 'Exit to cash when…', 'Buy back when…', 'History needed', 'Why this rule', 'Config'], active.map((c) => {
     if (c.error) return [h('span', { class: 'mono small' }, c.file), h('span', { class: 'small neg' }, `Invalid config: ${c.error}`), '', '', '', ''];
     const t = ruleText(c.rule);
     const isFrozen = P.frozen && c.version === P.frozen.version;
     return [
       h('div', {}, h('strong', {}, c.label || c.version), h('div', { class: 'cell-sub' }, c.version),
-        isFrozen ? badge('frozen', 'info') : c.rule?.type === 'hold' ? badge('comparison arm', 'muted') : badge('experimental', 'warn')),
+        isFrozen ? badge('frozen', 'info') : c.rule?.type === 'hold' ? badge('comparison arm', 'muted') : c.role === 'comparison' ? badge('your comparison: never picked', 'muted') : badge('experimental', 'warn')),
       h('span', { class: 'small' }, t.exit), h('span', { class: 'small' }, t.back), h('span', { class: 'small' }, t.needs),
       h('span', { class: 'small muted' }, WHY[c.rule?.type] || ''),
       h('span', { class: 'mono small', title: `${c.file} · sha256 ${c.hash}` }, shortHash(c.hash)),
@@ -484,7 +515,7 @@ function selectionRule(o) {
   const s = o.criteria?.selection;
   if (!s) return h('div', { class: 'small muted' }, 'Not returned by the server.');
   return h('ol', { class: 'bullets small' },
-    h('li', {}, 'Run C1, C2, C3 and the hold on basket A over the selection period, at base costs.'),
+    h('li', {}, 'Run X1, X2, X3 and the hold on basket A over the selection period, at base costs. Only X1 and X2 can be picked; X3 (your 10% give-back) is shown as a comparison. Neighbouring settings and the robustness list are reported only.'),
     h('li', {}, `A candidate qualifies if it completes at least ${s.minRoundTrips} exit-and-buy-back round trips across its sleeves.`),
     h('li', {}, `Pick the qualifying candidate with the highest ${s.metric}; a tie goes to the ${s.tieBreak}.`),
     h('li', {}, `If no candidate's ratio reaches ${s.stopUnlessAtLeastTimesHold} × the hold's, stop: HXR has no candidate worth evaluating, and the evaluation period is not used.`),
@@ -798,7 +829,7 @@ function selectionCard(P) {
   const first = P.selEntries[0];
   const reason = first ? `Already run for ${P.prereg} on ${when(first.at)}. It runs once; a repeat needs a written reason, is marked contaminated and never freezes a version.` : block;
   return actionCard('Run selection (once)',
-    `C1, C2, C3 and the hold on basket ${period.basket || '—'} over ${day(period.start)} – ${day(period.end)}, at base costs. Picks at most one candidate and freezes it. In-sample.`,
+    `X1, X2, X3 and the hold on basket ${period.basket || '—'} over ${day(period.start)} – ${day(period.end)}, at base costs. Picks at most one of X1 and X2 and freezes it (X3 is your comparison, never picked). In-sample.`,
     reason,
     actionButton('Run selection (once)', reason, () => selectionDialog(P, false)),
     first ? actionButton('Repeat (contaminated)…', block, () => selectionDialog(P, true), 'danger') : null);
@@ -840,7 +871,7 @@ function selectionDialog(P, repeat) {
   const { o } = P;
   const s = o.criteria?.selection || {};
   const period = o.periods?.selection || {};
-  const arms = (o.configs || []).filter((c) => !c.error && !(P.frozen && c.version === P.frozen.version));
+  const arms = (o.configs || []).filter((c) => !c.error && c.role !== 'superseded' && c.role !== 'later' && !(P.frozen && c.version === P.frozen.version));
   const reason = h('textarea', { name: 'reason', maxlength: 2000, rows: 3, placeholder: 'Why the selection must be run again (required)' });
   const a = ack(repeat ? 'I understand this repeat is marked contaminated and can never freeze a version.' : 'I have read the pre-registration; this uses the selection period once.');
   const body = h('div', { class: 'stack', style: { gap: '10px' } },
