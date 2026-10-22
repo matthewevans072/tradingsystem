@@ -227,7 +227,7 @@ It also refuses any file that already holds a table that does not start with
 | `hxr_ledger` | One row per selection or evaluation event: `kind, prereg, version, config_hash, run_ids_json, contaminated, reason, at`. Never deleted. |
 | `hxr_experiments` | The experiment log, mirrored in `EXPERIMENT-LOG.md`: `at, what, version, data_touched, results_seen, note`. |
 | `hxr_prospective` | One account: `id, version, config_hash, started_at, start_date, symbols_json, state_json, last_processed, status`. Plus `hxr_prospective_events` for decisions, fills, dividends, warnings and news links, each with `recorded_at` and `on_time`. |
-| `hxr_settings` | Key/value pairs, e.g. `spcxConfirmed`, `muInEvaluation`. |
+| `hxr_settings` | Key/value pairs, e.g. `spcxConfirmed` (whether the owner confirmed SPCX = SpaceX on Nasdaq). |
 
 ## 9. Data rules (`source.js`, `data.js`)
 
