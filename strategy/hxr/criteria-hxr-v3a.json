@@ -1,0 +1,165 @@
+{
+  "name": "criteria-hxr-v3a",
+  "definedAt": "2026-10-22",
+  "definedBefore": "any HXR backtest or result (hxr-prereg-3a). As criteria-hxr-v3 plus: two benchmarks (the fully invested hold and the day-one positions held), the development pick rule left to the owner (amendment 3b), fresh entries reported apart.",
+  "judgedOn": "final period, basket A (ten stocks), the frozen candidate against both benchmarks from the same US$15,000; only after the validation gate passes",
+  "outcomes": {
+    "FAIL": "G1 is met and at least one of G2-G6 fails",
+    "INSUFFICIENT_EVIDENCE": "G1 is not met",
+    "PASS": "every criterion passes. This means eligible for the owner's review only; it is never permission to trade and never connects anything"
+  },
+  "selection": {
+    "minRoundTrips": 10,
+    "pickRule": "pending_owner_choice",
+    "pickRules": {
+      "ending_value": {
+        "metric": "ending account value after costs",
+        "mustBeat": "both benchmarks on ending value",
+        "tieBreak": "smaller largest decline",
+        "alsoReported": "largest decline"
+      },
+      "return_to_drawdown": {
+        "metric": "annualised return / largest decline from a previous peak",
+        "mustReachTimesBenchmarks": 1.1,
+        "tieBreak": "smaller largest decline",
+        "alsoReported": "ending value"
+      }
+    },
+    "benchmarks": [
+      "hold",
+      "hold_day_one"
+    ],
+    "candidates": [
+      "x1a-0.3.0",
+      "x1b-0.3.0",
+      "x1c-0.3.0",
+      "x2a-0.3.0",
+      "x2b-0.3.0",
+      "x2c-0.3.0"
+    ],
+    "comparisonsOnly": [
+      "x3a-0.3.0",
+      "x3b-0.3.0",
+      "x3c-0.3.0"
+    ],
+    "stopIfNone": "no qualifying candidate beats both benchmarks: HXR has no candidate worth validating; validation and final are never used",
+    "oneWinner": "only the single winner goes to validation, then to final; a validation failure stops HXR; no runner-up is ever tried"
+  },
+  "criteria": [
+    {
+      "id": "G1",
+      "name": "Enough evidence",
+      "rule": "at least 500 sessions, at least 20 completed exit-and-buy-back round trips, and a decline of at least 20% from a previous peak in the fully invested hold",
+      "minSessions": 500,
+      "minRoundTrips": 20,
+      "minHoldDrawdownPct": 20,
+      "onFail": "INSUFFICIENT_EVIDENCE"
+    },
+    {
+      "id": "G2",
+      "name": "Smaller worst decline",
+      "rule": "HXR largest decline <= 0.75 x each benchmark's (against both benchmarks)",
+      "maxRatioToHold": 0.75,
+      "benchmarks": [
+        "hold",
+        "hold_day_one"
+      ]
+    },
+    {
+      "id": "G3",
+      "name": "Better return per unit of decline",
+      "rule": "HXR annualised return / largest decline >= 1.10 x each benchmark's (against both benchmarks)",
+      "minRatioToHold": 1.1,
+      "benchmarks": [
+        "hold",
+        "hold_day_one"
+      ]
+    },
+    {
+      "id": "G4",
+      "name": "Limited return given up",
+      "rule": "HXR annualised return >= each benchmark's minus 5 percentage points (against both benchmarks)",
+      "maxShortfallPctPoints": 5,
+      "benchmarks": [
+        "hold",
+        "hold_day_one"
+      ]
+    },
+    {
+      "id": "G5",
+      "name": "Robust to costs and delay",
+      "rule": "G2 and G3 still pass against both benchmarks with spread and slippage doubled, and separately with fills one session later",
+      "variants": [
+        "costs2x",
+        "delay2"
+      ]
+    },
+    {
+      "id": "G6",
+      "name": "Not one stock",
+      "rule": "G3 passes against both benchmarks in at least 9 of the 10 leave-one-stock-out runs",
+      "minPassing": 9
+    }
+  ],
+  "prospective": [
+    {
+      "id": "P1",
+      "name": "Enough time and decisions",
+      "rule": "at least 6 months and at least 10 exit or buy-back decisions; otherwise insufficient evidence",
+      "minMonths": 6,
+      "minDecisions": 10
+    },
+    {
+      "id": "P2",
+      "name": "Operationally clean",
+      "rule": "at least 95% of sessions processed on time; no duplicate orders; every fill has a bar",
+      "minOnTimePct": 95
+    },
+    {
+      "id": "P3",
+      "name": "Fill realism",
+      "rule": "median absolute difference between assumed and realistic fills <= 25 bps",
+      "maxMedianBps": 25
+    },
+    {
+      "id": "P4",
+      "name": "Consistent with history",
+      "rule": "reported against the historical result; never called proof of the news-informed strategy"
+    }
+  ],
+  "reportedNotGated": [
+    "basket B full-list check",
+    "assumed vs realistic fills (first 15-minute VWAP)",
+    "0% withholding variant",
+    "per-stock results",
+    "missed rebounds and losses after buying back",
+    "costs and dividends",
+    "neighbouring settings (development only)",
+    "position sizes and the binding cap",
+    "signals lapsed for budget or pause",
+    "stocks never entered",
+    "open risk and tech/AI exposure over time",
+    "pause episodes",
+    "average invested fraction and return on average invested capital",
+    "initial-loss exits counted apart",
+    "fresh entries (at or above the previous sale price, or never held) apart from buy-backs",
+    "X3A-C comparisons",
+    "both benchmarks beside every figure"
+  ],
+  "validation": {
+    "V1": {
+      "name": "Enough round trips in validation",
+      "rule": "at least 10 completed exit-and-buy-back round trips (fresh entries do not count); otherwise insufficient evidence and HXR stops before the final period",
+      "minRoundTrips": 10
+    },
+    "V2": {
+      "name": "Still better than holding per unit of decline",
+      "rule": "annualised return / largest decline >= 1.10 x each benchmark's (the fully invested hold and the day-one positions held) in the validation period; otherwise HXR stops before the final period (reported as did not validate)",
+      "minRatioToHold": 1.1,
+      "benchmarks": [
+        "hold",
+        "hold_day_one"
+      ]
+    }
+  }
+}

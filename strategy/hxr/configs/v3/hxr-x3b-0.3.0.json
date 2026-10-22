@@ -1,0 +1,67 @@
+{
+  "strategy": "hxr",
+  "version": "x3b-0.3.0",
+  "label": "X3 give back 10% of the peak gain + B: fresh entry at the next recovery point above the sale price (owner comparison only, never selected; hxr-prereg-3a)",
+  "createdAt": "2026-10-22",
+  "status": "experimental (hxr-prereg-3a): labelled research assumptions, not the owner's approved preferences. Comparison only: can never be picked or frozen.",
+  "account": {
+    "startingCash": 15000,
+    "currency": "USD",
+    "allocation": "risk_sized",
+    "wholeShares": true,
+    "allowMargin": false,
+    "allowShort": false
+  },
+  "execution": {
+    "decision": "after_close",
+    "fill": "next_open",
+    "delaySessions": 1,
+    "fillModel": "open"
+  },
+  "costs": {
+    "commissionPerOrder": 0,
+    "commissionPerShare": 0,
+    "secFeeRate": 0.0000206,
+    "tafPerShare": 0.000166,
+    "tafMaxPerTrade": 8.3,
+    "halfSpread": "calibrated",
+    "halfSpreadFloorBps": 2,
+    "slippageBps": 2,
+    "notes": "US$0 commission (Questrade US stocks, search summary 2026-10-22). Half-spread: median quoted half-spread in the first minute after the open on six sampled days per stock and year (PREREGISTRATION.md section 5)."
+  },
+  "dividends": {
+    "credit": true,
+    "creditOn": "pay_date",
+    "withholdingPct": 15,
+    "notes": "15% = Canadian resident outside an RRSP (experimental)."
+  },
+  "cash": {
+    "annualInterestPct": 0
+  },
+  "rule": {
+    "type": "giveback",
+    "volSessions": 20,
+    "givebackPct": 10,
+    "activationMultiple": 3,
+    "pivotSessions": 5,
+    "reboundMultiple": 1,
+    "afterMissedRebound": "fresh_entry_recovery_point",
+    "entryWhenNeverHeld": "recovery_point_any_price"
+  },
+  "risk": {
+    "plannedLossPerTradeUsd": 150,
+    "maxPositionUsd": 3000,
+    "totalOpenRiskUsd": 750,
+    "maxTechAiExposureUsd": 10500,
+    "pauseDeclineUsd": 1500,
+    "resumeDeclineUsd": 750,
+    "minPositionFractionOfPlannedLoss": 0.5,
+    "initialAllocation": "equal_share_of_total_open_risk",
+    "contentionOrder": "alphabetical",
+    "notes": "Experimental dollar defaults on the simulated US$15,000 (PREREGISTRATION-3.md section 1); not the owner's approved limits."
+  },
+  "initialLoss": {
+    "multiple": 2.5,
+    "notes": "L0 = effective buy price - 2.5 x the typical daily move at the decision close; never moves; the effective exit level is the higher of L0 and the rule's own level (section 2)."
+  }
+}

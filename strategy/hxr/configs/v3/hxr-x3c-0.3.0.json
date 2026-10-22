@@ -1,9 +1,9 @@
 {
   "strategy": "hxr",
-  "version": "x2-0.3.0",
-  "label": "X2 normal-movement allowance below the highest close (experimental, hxr-prereg-3)",
+  "version": "x3c-0.3.0",
+  "label": "X3 give back 10% of the peak gain + C: fresh entry after 60 sessions out, at the next recovery point (owner comparison only, never selected; hxr-prereg-3a)",
   "createdAt": "2026-10-22",
-  "status": "experimental (hxr-prereg-3): labelled research assumptions, not the owner's approved preferences. rule.afterMissedRebound is pending the owner's choice (amendment hxr-prereg-3a); the code must refuse to run it until replaced.",
+  "status": "experimental (hxr-prereg-3a): labelled research assumptions, not the owner's approved preferences. Comparison only: can never be picked or frozen.",
   "account": {
     "startingCash": 15000,
     "currency": "USD",
@@ -39,13 +39,15 @@
     "annualInterestPct": 0
   },
   "rule": {
-    "type": "move_allowance",
+    "type": "giveback",
     "volSessions": 20,
-    "multiple": 3,
+    "givebackPct": 10,
+    "activationMultiple": 3,
     "pivotSessions": 5,
     "reboundMultiple": 1,
-    "afterMissedRebound": "pending_owner_choice",
-    "entryWhenNeverHeld": "recovery_point_any_price"
+    "afterMissedRebound": "fresh_entry_after_sessions",
+    "entryWhenNeverHeld": "recovery_point_any_price",
+    "freshEntryMinSessions": 60
   },
   "risk": {
     "plannedLossPerTradeUsd": 150,
