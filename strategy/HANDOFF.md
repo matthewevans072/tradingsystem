@@ -58,53 +58,51 @@ strategy as profitable or live-ready without supporting results.
 - A rule change is a new config version plus a `PARAMETER-LOG.md` entry
   saying which data had been seen.
 
-## State at handoff
+## State at handoff (updated 2026-10-22, after the real-data download)
 
-- `npm test`: 261 of 261 passed (dependency: `@anthropic-ai/sdk` only;
-  run `npm install` first).
-- Readiness on an empty Lab database: 0 READY, 0 NOT READY, 17 NO DATA.
-  Each symbol needs 3,316 warm-up, 12,990 development, 6,516 validation and
-  9,662 holdout bars.
-- The owner has added `data.alpaca.markets` to the environment's allowed
-  domains. A request without a key returned 401, so the host is reachable.
-  The owner has also added `ALPACA_API_KEY_ID` and `ALPACA_API_SECRET_KEY`
-  as environment variables. They load only in a new session; confirm they
-  are present.
-- No real-data run, holdout run or forward run has ever been made.
+- `npm test`: 261 of 261 pass, including in a session with real keys set
+  (`tests/no-host-keys.js` blanks host credentials in every test config).
+- Alpaca works: authenticated, `feed=sip` (consolidated), `adjustment=split`
+  (price and volume). In a cloud sandbox Node needs `NODE_USE_ENV_PROXY=1` to
+  reach it; a normal PC does not.
+- Downloaded 2021-07-01 to 2026-06-30 for all 17 symbols: 551,592 bars and
+  340 bar sets, in `data/strategy-lab.sqlite` (not in git). The owner also has
+  a copy.
+- **Readiness: 7 READY, 10 NOT READY, no usable period.** Details, the audit
+  and the options are in `strategy/reports/2026-10-22-data-readiness.md`.
+  - The 10 NYSE symbols miss bars on 2021-10-25, 2022-01-24, 2022-01-26 and
+    2022-03-08: a vendor gap in Alpaca's Tape A history, not a halt.
+  - VRT's split flag on 2022-02-23 is a real earnings drop.
+  - The calendar and all 17 listing exchanges are verified.
+- No backtest, holdout run or forward run has ever been made. No performance
+  figure exists.
 
 ## Next steps
 
-1. `cd signal-desk && npm install && npm test`.
-2. Confirm both Alpaca variables are set (presence only). Make one small
-   request through `server/strategy/sources/alpaca.js` (for example, one
-   session of SPY) and check the response: HTTP 200, `feed=sip`,
-   `adjustment=split`, bars in regular-session 15-minute slots.
-3. Download 2021-07-01 to 2026-06-30 for all 17 symbols through the Lab
-   service (`createLab(ctx).fetchHistory({ source: 'alpaca', from:
-   '2021-07-01', to: '2026-06-30' })`; watch `fetchStatus()`), or start the
-   app and use Lab → Data → Download history. Bars go to
-   `data/strategy-lab.sqlite`. That database is lost when the container
-   ends, so re-download in later sessions.
-4. Run the readiness checklist (`lab.readiness()` or
-   `GET /api/lab/readiness`) and report it per symbol and period, including
-   the NVDA split checks (2021-07-20 and 2024-06-10).
-5. If every symbol is READY for warm-up, development and validation, run
+1. Wait for the owner to choose a remedy for the Alpaca gap (options A–D in
+   the report) and say whether to record VRT 2022-02-23 as a reviewed
+   overnight move. Do not pick one yourself, and do not run anything until
+   then.
+2. Implement only the chosen remedy (with a `PARAMETER-LOG.md` entry if it
+   changes a frozen file), re-run the readiness checklist and show it.
+3. If every symbol is READY for warm-up, development and validation, run
    development and validation in both modes (`lab.startBacktest({ mode,
    split })` or `scripts/strategy-backtest.js`). **Do not run the
    holdout.** Report against `acceptance-v1.json` with trade counts and the
    outcome (not eligible, inconclusive or eligible for review; that last one
    is not permission to trade).
-6. If anything is NOT READY, stop before any backtest, report what is
-   missing and propose fixes or revised dates for the owner to approve.
-7. Commit reports (no bars, no keys) to the `signal-desk` branch.
+4. Commit reports only (no bars, no keys).
 
 ## Open items carried over
 
 - The Pine script has not been compiled or run in TradingView.
-- Listing exchanges for 11 symbols are unconfirmed, and per-symbol split
-  checks for 10 are unconfirmed.
-- The 2021–2025 NYSE calendar was generated from rules and cross-checked
-  only for 2026–2027. The readiness check compares it with real bars.
+- Listing exchanges (all 17) and the 2021–2026 calendar were verified on
+  2026-10-22 against search excerpts of official pages plus Alpaca's own
+  data (see the report). `corporate-actions-v1.json` and `calendar.js`
+  `VERIFIED_NYSE` still carry the older status labels; updating them is
+  optional and needs the owner's go-ahead.
+- No unadjusted split was found in any symbol's bars. Only NVDA's two splits
+  occur in the window.
 - Twelve Data's free-plan coverage is unverified and its intraday bars are
   unadjusted; `/earliest_timestamp` is not implemented.
 - `forward.js` has no Alpaca adapter; a real-time feed would be paid.
