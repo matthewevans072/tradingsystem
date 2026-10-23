@@ -12,7 +12,7 @@ sends a notification or calls any broker or paper-trading endpoint.
 
 | File | Responsibility |
 |---|---|
-| `server/hxr/config.js` | Load, validate, hash and freeze HXR configs (`strategy/hxr/configs/*.json`), the universe (`universe-hxr-v1.json`), periods (`periods-hxr-v1.json`) and criteria (`criteria-hxr-v1.json`). Hashing reuses `canonicalJson` and `DESCRIPTIVE_KEYS` from `server/strategy/config.js`. |
+| `server/hxr/config.js` | Load, validate, hash and freeze HXR configs (`strategy/hxr/configs/*.json`), the universe (`universe-hxr-v3.json`), periods (`periods-hxr-v3.json`) and criteria (`criteria-hxr-v3a.json`); the superseded v1 and v2 files stay in the folder, unchanged, and are not loaded. Hashing reuses `canonicalJson` and `DESCRIPTIVE_KEYS` from `server/strategy/config.js`. |
 | `server/hxr/store.js` | The HXR database `data/hxr-sim.sqlite` (real workspace only), with additive migrations and the file guard (section 8). |
 | `server/hxr/source.js` | Read-only Alpaca market-data client: daily bars, the first 15-minute bar of each session, corporate actions, sampled quotes and news. Only `https://data.alpaca.markets` is ever called. |
 | `server/hxr/data.js` | Turns stored rows into engine inputs: per-symbol raw daily bars from the listing date, split events, dividends filtered to the listing, half-spread table, first-15-minute VWAP. Also the readiness checklist. |
@@ -29,7 +29,7 @@ sends a notification or calls any broker or paper-trading endpoint.
 - `config`: one validated HXR config: rule, costs, execution, dividends, cash and account.
 - `symbols`: `[{ symbol, exchange, listedFrom }]`, one sleeve each, in the listed order.
 - `period`: `{ warmupFrom, start, end }`. These are exchange-local dates; sessions come from `server/calendar.js` (NYSE).
-- `excludedSessions`: dates skipped for every symbol (`periods-hxr-v1.json`).
+- `excludedSessions`: dates skipped for every symbol (`periods-hxr-v3.json`).
 - `inputs` for each session date, through `processSession(date, { bars, splits, dividends })`:
   - `bars[symbol]`: `{ o, h, l, c, v, vw15 }`. These are **raw** (unadjusted) regular-session prices. `vw15` is the volume-weighted price of the 09:30–09:45 ET bar, or `null`.
   - `splits`: `[{ symbol, ratio }]` whose first split-adjusted session is `date`. `ratio` is new shares per old share; below 1 means a reverse split.
@@ -92,7 +92,11 @@ For each NYSE session `d` from `warmupFrom` to `end`, skipping
    `in`, `anchorHigh = max(anchorHigh, c)`; if `out`,
    `anchorLow = min(anchorLow, c)`. Then add cash interest if
    `cash.annualInterestPct > 0`: `cash × pct/100/252`.
-7. **Equity point**:
+7. **Rule state, then the equity point.** For every sleeve with a bar on `d`
+   and no pending order, the rule state moves first (X1's level, X3's
+   activation; `updateRuleState`), so the equity point and every sizing on
+   `d` use each holding's exit level at this close, whatever the ticker
+   order (EXPERIMENT-LOG entry 13, correction 3). Then the equity point:
    - `{ date, equity, cash, invested, sleevesOut, receivable }`;
    - `equity` is `Σ(cash + shares × lastClose)`, excluding receivables;
    - `receivable` is reported separately.
@@ -230,6 +234,14 @@ reduce them to what the cash pays (`reduced_for_cash`), never raise them. At
 the fill `L0 = E − d` and `plannedLoss = n × d`, recorded with the fill. A
 sell resets `L0`, `plannedLoss`, `level`, `entryPrice` and `gbActive`.
 
+**Splits** (entry 13, corrections 1 and 2). `L0` is divided by the ratio like
+every other price; `plannedLoss` is dollars and stays. A sized buy still
+pending on a split's effective session moves to post-split units:
+`shares = floor(shares × r)`, and the sizing record's `d`, `close` and `m`
+are divided by `r`; the cash it reserved and its planned loss in dollars
+stay (`order_split_adjusted`). A reverse split that leaves no whole share
+cancels the order (`order_cancelled`, code `split`).
+
 **Exit while holding** (`evaluateHolding`): the rule's own signal, or a sell
 with `trigger = initial_loss` when `c < L0` and the rule is silent (the
 rule's signal, when both fire, carries `trigger = rule`). The hold rule never
@@ -244,6 +256,16 @@ lapse (`entry_skipped`, code `paused`) and a pending buy due to fill is
 cancelled (`order_cancelled`, code `paused`); exits run. The initial
 allocation is never cancelled by the pause.
 
+**Lapsed buys** (entry 13, correction 5, reconciling PREREGISTRATION-3.md
+1.2 step 4 with section 8). A buy that lapses at the decision (budget,
+paused) or is cancelled at the fill (paused at the fill, too little cash, no
+whole share after a split) needs a new recovery point (`sinceFill` reset). A
+lapsed or cancelled **buy-back** keeps the buy-back rule: it waits for the
+next recovery point below the sale price, and a missed rebound is judged as
+usual (policy A still retires the stock). Only a stock never held, or whose
+initial or fresh entry lapsed, enters at the next recovery point at any
+price.
+
 **Signals in alphabetical order** across sleeves, each sizing against the
 room the earlier ones reserved (1.2 step 6).
 
@@ -252,12 +274,15 @@ room the earlier ones reserved (1.2 step 6).
 missed rebound under policy B or C. In fresh mode, with
 `entryWhenNeverHeld = recovery_point_any_price`, the next recovery point
 confirmed after `sinceFill` was reset gives a buy at any price (no ceiling),
-after at least `freshEntryMinSessions` sessions out under policy C. On a
+after at least `freshEntryMinSessions` of the stock's sessions out under
+policy C, counted from the sale (`lastExit.sessionsOut`, which counts the
+sale session; entry 13, correction 4). On a
 missed rebound: policy A sets `stayOut` (retired); B and C set `fresh` with
 `afterMissedRebound = true` and reset `sinceFill`. A fresh-entry fill records
 a `freshEntries` journal item (price, the previous sale price in current
-units, premium %, sessions out, whether after a missed rebound or never
-held), starts an episode with `startKind = fresh_entry`, records no round
+units, premium %, sessions out since the sale (completed sessions at the
+fill), sessions since the missed rebound, whether after a missed rebound or
+never held), starts an episode with `startKind = fresh_entry`, records no round
 trip, and clears `lastExit`.
 
 **Day-one hold** (`holdDayOneConfig`): the candidate's config with
@@ -364,7 +389,7 @@ All in USD, after costs, from the engine output:
 - **Hold comparison**: the same fields for the hold arm, and HXR minus hold.
 
 `evaluateCriteria(criteria, runs)` implements G1–G6 from
-`criteria-hxr-v1.json`. It returns:
+`criteria-hxr-v3a.json` (against each benchmark a criterion lists). It returns:
 
 - every criterion's status (`pass`, `fail` or `not_evaluable`), its value and
   a note;
@@ -394,9 +419,9 @@ It also refuses any file that already holds a table that does not start with
 | `hxr_spread_samples` | `symbol, date, quotes, median_spread_bps, median_half_spread_bps, window, fetched_at`. |
 | `hxr_news` | `id` (Alpaca id), `created_at, updated_at, headline, summary, source, url, symbols_json, first_seen_at, backfilled`. Plus `hxr_news_symbols(news_id, symbol)`. |
 | `hxr_versions` | Frozen versions: `version, config_json, config_hash, based_on, frozen_at, prereg`. |
-| `hxr_runs` | `id, kind` (`selection`, `evaluation`, `variant`, `prospective`), `label, version, config_hash, basket, period_json, fill_model, delay, data_hash, calibration_hash, status, contaminated, reason, metrics_json, details_json, created_at, finished_at`. |
+| `hxr_runs` | `id, kind` (`selection` = the development pick, `validation`, `evaluation` = the final run, `variant`, `prospective`; `validation` added by store migration 2), `label, version, config_hash, basket, period_json, fill_model, delay, data_hash, calibration_hash, status, contaminated, reason, metrics_json, details_json, created_at, finished_at`. |
 | `hxr_fills`, `hxr_decisions`, `hxr_episodes`, `hxr_equity` | Per run, with the JSON detail. |
-| `hxr_ledger` | One row per selection or evaluation event: `kind, prereg, version, config_hash, run_ids_json, contaminated, reason, at`. Never deleted. |
+| `hxr_ledger` | One row per development pick, validation run or final run: `kind` (`selection`, `validation`, `evaluation`), `prereg, version, config_hash, run_ids_json, contaminated, reason, at`. Never deleted. The pick's neighbouring settings run later (`POST /api/hxr/selection/neighbours`) write no ledger row. |
 | `hxr_experiments` | The experiment log, mirrored in `EXPERIMENT-LOG.md`: `at, what, version, data_touched, results_seen, note`. |
 | `hxr_prospective` | One account: `id, version, config_hash, started_at, start_date, symbols_json, state_json, last_processed, status`. Plus `hxr_prospective_events` for decisions, fills, dividends, warnings and news links, each with `recorded_at` and `on_time`. |
 | `hxr_settings` | Key/value pairs, e.g. `spcxConfirmed` (whether the owner confirmed SPCX = SpaceX on Nasdaq). |
@@ -416,7 +441,7 @@ It also refuses any file that already holds a table that does not start with
   - never request an `end` later than now minus 16 minutes;
   - a daily bar for session `d` is stored only once `now ≥ close(d) + 20 minutes`;
   - Alpaca returns today's unfinished bar even when `end` is earlier, so the code must drop it by date.
-- **Listing starts** come from `universe-hxr-v1.json`: bars, corporate actions and dividends dated before `listedFrom` are ignored. This covers Yandex under NBIS and the old SPCX ETF.
+- **Listing starts** come from `universe-hxr-v3.json`: bars, corporate actions and dividends dated before `listedFrom` are ignored. This covers Yandex under NBIS and the old SPCX ETF.
 - **Corporate actions**: Alpaca filters by process or payable date, not ex-date, so every request spans 2015-01-01 to today plus 1 year, and filtering by ex-date is done locally.
 - **First 15-minute bar**: the bar starting at the session's open (09:30 ET), taken from `15Min` bars that also include extended hours.
 - **Spread samples**: quotes from the open to one minute later, on the sampled days in `PREREGISTRATION.md` section 5. The half-spread is `(ask − bid) / 2 / mid` for each quote, and the stored value is the median. Quotes with `bid ≤ 0`, `ask ≤ bid` or a spread over 5% of mid are dropped.

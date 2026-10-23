@@ -224,7 +224,7 @@ export function experimentLogFile(dir = HXR_DIR) {
 // ---------- the demo workspace ----------
 
 const METHODS = [
-  'overview', 'fetchData', 'fetchStatus', 'readiness', 'setSpcxConfirmed', 'setMuDecision', 'reviewMove', 'runSelection', 'runValidation', 'runEvaluation', 'startProspective', 'prospectiveTick',
+  'overview', 'fetchData', 'fetchStatus', 'readiness', 'setSpcxConfirmed', 'setMuDecision', 'reviewMove', 'runSelection', 'runNeighbours', 'runValidation', 'runEvaluation', 'startProspective', 'prospectiveTick',
   'pauseProspective', 'resumeProspective', 'prospectiveStatus', 'listRuns', 'getRun', 'experiments', 'ledger', 'news',
 ];
 
@@ -565,6 +565,12 @@ export function createHxr(ctx, opts = {}) {
           dataTouched: `development period ${period.start} to ${period.end} (warm-up from ${period.warmupFrom}), basket ${period.basket}: ${symbols.map((s) => s.symbol).join(', ')}; the fully invested hold and the day-one hold; each arm also with first 15-minute VWAP fills (reported); pick rule ${criteria.selection.pickRule}`,
           resultsSeen: 'yes: in-sample development results', note: `${choice.reason}${why ? ` Reason for the repeat: ${why}` : ''}`,
         });
+        if (!contaminated) {
+          store.setSetting(db, 'developmentPick', {
+            prereg: PREREG, at, pickRule: criteria.selection.pickRule, chosen: choice.chosen, threshold: choice.threshold ?? null,
+            runIds: { hold: byRole('hold').id, holdDayOne: byRole('hold_day_one').id, chosen: choice.chosen ? plan.find((p) => p.name === choice.chosen).id : null },
+          });
+        }
         if (!choice.chosen) { frozenNote = 'No candidate is frozen: HXR is reported as having no candidate worth validating, and the validation and final periods are not used.'; return; }
         const existing = store.getVersion(db, FROZEN_VERSION);
         if (existing) { frozen = existing; frozenNote = `${FROZEN_VERSION} was already frozen on ${existing.frozenAt} (from ${existing.basedOn}); it is unchanged.`; return; }
@@ -582,38 +588,20 @@ export function createHxr(ctx, opts = {}) {
         frozenNote = `${FROZEN_VERSION} frozen from ${chosen.version}. Before the validation run, record it as strategy/hxr/configs/${configFileName(FROZEN_VERSION)} (the frozen config JSON in this response, unchanged, so its hash ${frozen.configHash.slice(0, 12)} matches) and add an EXPERIMENT-LOG.md entry.`;
       });
       // Neighbouring settings of the winner only (PREREGISTRATION-3a.md section 1): development only, reported only.
+      // The pick, its ledger row and the frozen version are already stored: a failure here is reported with the
+      // selection response and the neighbours can be run later (runNeighbours), which is not a repeat of the pick.
       if (choice?.chosen && !contaminated) {
         const winner = plan.find((p) => p.name === choice.chosen);
-        for (const change of neighboursFor(winner.config.version)) {
-          const config = neighbourConfig(winner.config, change);
-          nPlan.push({ name: winner.name, role: 'neighbour', arm: winner.name, variantKey: `neighbour:${Object.entries(change).map(([k, x]) => `${k}=${x}`).join(',')}`, change, config, kind: 'variant', period, symbols, basket: period.basket, contaminated, reason: why, label: `Development (in-sample, ${period.start} to ${period.end}): ${config.label} (reported only)` });
-        }
-        if (nPlan.length) {
-          await executePlan(nPlan, (at) => {
-            const holdM = byRole('hold').metrics, dayOneM = byRole('hold_day_one').metrics;
-            const byEnd = criteria.selection.pickRule === 'ending_value';
-            const beats = (m) => (choice.threshold == null ? null : byEnd ? (m.endValue ?? -Infinity) > choice.threshold : (m.returnToDrawdown ?? -Infinity) >= choice.threshold);
-            neighbours = {
-              candidate: winner.name, pickRule: criteria.selection.pickRule, threshold: choice.threshold,
-              base: { runId: winner.id, endValue: winner.metrics.endValue, returnToDrawdown: winner.metrics.returnToDrawdown, roundTrips: winner.metrics.roundTrips, beatsBenchmarks: beats(winner.metrics) },
-              neighbours: nPlan.map((n) => ({
-                change: n.change, runId: n.id, endValue: n.metrics.endValue, returnToDrawdown: n.metrics.returnToDrawdown, roundTrips: n.metrics.roundTrips,
-                vsHold: compareArms(n.metrics, holdM), vsHoldDayOne: compareArms(n.metrics, dayOneM), beatsBenchmarks: beats(n.metrics), sameConclusion: beats(n.metrics) === beats(winner.metrics),
-              })),
-            };
-            store.updateRun(db, winner.id, { details: { ...store.getRun(db, winner.id).details, neighbours } });
-            store.appendExperiment(db, {
-              at, what: 'neighbouring settings of the pick (reported only)', version: winner.name,
-              dataTouched: `development period ${period.start} to ${period.end}, basket ${period.basket}: ${nPlan.length} runs, one setting changed at a time`,
-              resultsSeen: 'yes: in-sample development results (reported only; never used for the pick)', note: `${neighbours.neighbours.filter((n) => n.sameConclusion).length} of ${nPlan.length} neighbours reach the same conclusion against the benchmarks as the pick`,
-            });
-          });
+        try {
+          neighbours = await neighbourPhase({ winner, holdM: byRole('hold').metrics, dayOneM: byRole('hold_day_one').metrics, choice, period, symbols, nPlan });
+        } catch (e) {
+          neighbours = neighbourFailure(winner, e);
         }
       }
       const holdM = byRole('hold').metrics, dayOneM = byRole('hold_day_one').metrics;
       return wrap({
         kind: 'selection', prereg: PREREG, contaminated, reason: why || null, pickRule: criteria.selection.pickRule,
-        runs: [...plan, ...fillPlan, ...nPlan].map(runRef), choice,
+        runs: [...plan, ...fillPlan, ...nPlan.filter((p) => p.metrics)].map(runRef), choice,
         benchmarks: { hold: headline(holdM), holdDayOne: headline(dayOneM) },
         comparisons: plan.filter((p) => p.role === 'candidate' || p.role === 'comparison').map((p) => ({ name: p.name, role: p.role, vsHold: compareArms(p.metrics, holdM), vsHoldDayOne: compareArms(p.metrics, dayOneM) })),
         fills: Object.fromEntries(plan.map((p) => [p.name, p.fills])),
@@ -621,6 +609,74 @@ export function createHxr(ctx, opts = {}) {
         frozen: frozen ? { version: frozen.version, configHash: frozen.configHash, basedOn: frozen.basedOn, frozenAt: frozen.frozenAt, file: `strategy/hxr/configs/${configFileName(frozen.version)}`, config: frozen.config } : null,
         note: `Development results are in-sample. ${frozenNote}`,
       });
+    } finally { busy = null; }
+  }
+
+  // The winner's neighbouring settings: one setting changed at a time, development
+  // period only, reported only, never used for the pick. nPlan collects the runs.
+  async function neighbourPhase({ winner, holdM, dayOneM, choice, period, symbols, nPlan = [], later = false }) {
+    for (const change of neighboursFor(winner.config.version)) {
+      const config = neighbourConfig(winner.config, change);
+      nPlan.push({ name: winner.name, role: 'neighbour', arm: winner.name, variantKey: `neighbour:${Object.entries(change).map(([k, x]) => `${k}=${x}`).join(',')}`, change, config, kind: 'variant', period, symbols, basket: period.basket, contaminated: false, reason: null, label: `Development (in-sample, ${period.start} to ${period.end}): ${config.label} (reported only)` });
+    }
+    if (!nPlan.length) return null;
+    let neighbours = null;
+    await executePlan(nPlan, (at) => {
+      const byEnd = criteria.selection.pickRule === 'ending_value';
+      const beats = (m) => (choice.threshold == null ? null : byEnd ? (m.endValue ?? -Infinity) > choice.threshold : (m.returnToDrawdown ?? -Infinity) >= choice.threshold);
+      neighbours = {
+        candidate: winner.name, pickRule: criteria.selection.pickRule, threshold: choice.threshold, ...(later ? { runLater: at } : {}),
+        base: { runId: winner.id, endValue: winner.metrics.endValue, returnToDrawdown: winner.metrics.returnToDrawdown, roundTrips: winner.metrics.roundTrips, beatsBenchmarks: beats(winner.metrics) },
+        neighbours: nPlan.map((n) => ({
+          change: n.change, runId: n.id, endValue: n.metrics.endValue, returnToDrawdown: n.metrics.returnToDrawdown, roundTrips: n.metrics.roundTrips,
+          vsHold: compareArms(n.metrics, holdM), vsHoldDayOne: compareArms(n.metrics, dayOneM), beatsBenchmarks: beats(n.metrics), sameConclusion: beats(n.metrics) === beats(winner.metrics),
+        })),
+      };
+      store.updateRun(db, winner.id, { details: { ...store.getRun(db, winner.id).details, neighbours } });
+      store.appendExperiment(db, {
+        at, what: later ? 'neighbouring settings of the pick (reported only; run after the pick, not a repeat)' : 'neighbouring settings of the pick (reported only)', version: winner.name,
+        dataTouched: `development period ${period.start} to ${period.end}, basket ${period.basket}: ${nPlan.length} runs, one setting changed at a time`,
+        resultsSeen: 'yes: in-sample development results (reported only; never used for the pick)', note: `${neighbours.neighbours.filter((n) => n.sameConclusion).length} of ${nPlan.length} neighbours reach the same conclusion against the benchmarks as the pick`,
+      });
+    });
+    return neighbours;
+  }
+
+  function neighbourFailure(winner, e) {
+    const error = safe(e?.message ?? String(e));
+    const neighbours = {
+      candidate: winner.name, error,
+      note: `The development pick, its ledger entry and ${FROZEN_VERSION} are stored. Only the neighbouring settings (reported only) did not finish; run them with POST /api/hxr/selection/neighbours (confirm: true). That is not a repeat of the pick and is not recorded in the ledger.`,
+    };
+    try { if (!closed) store.updateRun(db, winner.id, { details: { ...store.getRun(db, winner.id).details, neighbours } }); } catch { /* reported in the response */ }
+    return neighbours;
+  }
+
+  // The winner's neighbouring settings run after the pick (when the pick's own
+  // neighbour phase failed or was interrupted). Reported only; the pick, the
+  // ledger and the frozen version are unchanged.
+  async function runNeighbours({ confirm } = {}) {
+    if (confirm !== true) throw new HxrError(400, 'The neighbouring-settings run needs confirm: true. It runs the development period again for the pick\'s ten neighbouring settings (reported only).');
+    const pick = store.getSetting(db, 'developmentPick', null);
+    if (!pick || pick.prereg !== PREREG) throw new HxrError(409, `No development pick is recorded for ${PREREG}: the neighbouring settings belong to the pick.`);
+    if (!pick.chosen) throw new HxrError(409, 'The development pick chose no candidate: there are no neighbouring settings to report.');
+    const base = store.getRun(db, pick.runIds.chosen);
+    if (base?.details?.neighbours && !base.details.neighbours.error) throw new HxrError(409, `The neighbouring settings of ${pick.chosen} are already stored (run ${base.id}).`);
+    requireUsable(readinessNow({ fresh: true }), ['development']);
+    claim('neighbours');
+    try {
+      const period = periods.periods.development;
+      const symbols = basketSymbols(universe, period.basket);
+      const holdM = store.getRun(db, pick.runIds.hold).metrics, dayOneM = store.getRun(db, pick.runIds.holdDayOne).metrics;
+      const winner = { id: base.id, name: pick.chosen, metrics: base.metrics, config: base.config };
+      const nPlan = [];
+      let neighbours;
+      try {
+        neighbours = await neighbourPhase({ winner, holdM, dayOneM, choice: { threshold: pick.threshold }, period, symbols, nPlan, later: true });
+      } catch (e) {
+        neighbours = neighbourFailure(winner, e);
+      }
+      return wrap({ kind: 'neighbours', prereg: PREREG, candidate: pick.chosen, neighbours, runs: nPlan.filter((p) => p.metrics).map(runRef), note: 'Reported only: never used for the pick. The pick, the ledger and the frozen version are unchanged.' });
     } finally { busy = null; }
   }
 
@@ -1270,11 +1326,21 @@ export function createHxr(ctx, opts = {}) {
 
   // ---------- read views ----------
 
+  // Whether the pick's reported-only neighbouring settings are stored ('done'),
+  // failed or were interrupted ('failed', 'not_run'), or do not apply (null).
+  function pickNeighboursStatus() {
+    const pick = store.getSetting(db, 'developmentPick', null);
+    if (!pick?.chosen || pick.prereg !== PREREG) return null;
+    const n = store.getRun(db, pick.runIds.chosen)?.details?.neighbours;
+    return { candidate: pick.chosen, status: !n ? 'not_run' : n.error ? 'failed' : 'done', error: n?.error ?? null };
+  }
+
   function overview() {
     const r = readinessNow();
     const p = store.getProspective(db);
     return wrap({
       prereg: preregFiles(), experimentLogFile: experimentLogFile(), historicalCaveat: HISTORICAL_CAVEAT,
+      pickNeighbours: pickNeighboursStatus(),
       decisions: { mu: muDecision(), muHistory: store.getSetting(db, 'muDecisions', []), reviewedMoves: store.getSetting(db, 'reviewedMoves', []) },
       universe: {
         name: universe.name, selectedAt: universe.selectedAt, selectedBy: universe.selectedBy, selectedBefore: universe.selectedBefore ?? null, baskets: universe.baskets,
@@ -1337,6 +1403,7 @@ export function createHxr(ctx, opts = {}) {
     setMuDecision,
     reviewMove,
     runSelection,
+    runNeighbours,
     runValidation,
     runEvaluation,
     startProspective,

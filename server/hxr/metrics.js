@@ -222,7 +222,11 @@ function pooledItems(result, eq, fills, episodes, start, end, symbols) {
       avgSessionsToFreshEntry: mean(afterMissed.map((x) => x.sessionsOut).filter(fin)),
       holdings: freshEp.length, pnl: pnlOf(freshEp), initialLossExits: freshEp.filter((e) => e.endTrigger === 'initial_loss').length,
     },
-    buyBacks: { count: backEp.length, pnl: pnlOf(backEp), initialLossExits: backEp.filter((e) => e.endTrigger === 'initial_loss').length },
+    buyBacks: {
+      count: backEp.length, pnl: pnlOf(backEp), initialLossExits: backEp.filter((e) => e.endTrigger === 'initial_loss').length,
+      // Buy-back price against the sale price (split-adjusted), PREREGISTRATION-3.md section 7.
+      avgChangeFromSalePct: mean((result.roundTrips || []).map((t) => t.changePct).filter(fin)),
+    },
     reboundsMissedEvents: { count: missed.length, retired: missed.filter((w) => w.details?.policy === 'stay_out').length },
     initialLossExits: episodes.filter((e) => e.endTrigger === 'initial_loss').length,
     ruleExits: episodes.filter((e) => e.endTrigger === 'rule').length,
@@ -231,6 +235,11 @@ function pooledItems(result, eq, fills, episodes, start, end, symbols) {
       bindingCaps: binding, lapsedSignals: lapsed, reducedForCash: warnings.filter((w) => w.code === 'reduced_for_cash').length,
     },
     neverEntered: symbols.filter((s) => !fills.some((f) => f.symbol === s && f.side === 'buy')),
+    // How long each never-entered stock waited for an entry: its sessions in waiting mode by the end.
+    neverEnteredWaits: symbols.filter((s) => !fills.some((f) => f.symbol === s && f.side === 'buy')).map((s) => {
+      const sl = (result.sleeves || []).find((x) => x.symbol === s);
+      return { symbol: s, waitingSince: sl?.fresh?.since ?? null, sessionsWaited: sl?.fresh?.sessions ?? null, retired: !!sl?.retired };
+    }),
     exposure: {
       avgOpenRiskUsd: mean(eq.map((p) => p.openRisk).filter(fin)), maxOpenRiskUsd: Math.max(0, ...eq.map((p) => p.openRisk).filter(fin)),
       avgTechAiUsd: mean(eq.map((p) => p.techAi).filter(fin)), maxTechAiUsd: Math.max(0, ...eq.map((p) => p.techAi).filter(fin)),

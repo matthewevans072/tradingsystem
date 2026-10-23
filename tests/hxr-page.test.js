@@ -122,6 +122,21 @@ test('the owner\'s decisions through the rendered page: MU kept before any run, 
     assert.deepEqual(hxr.overview().decisions.reviewedMoves.map((m) => [m.symbol, m.date, m.reason]), [['MU', '2024-03-05', reason.value]]);
     await settle();
     assert.ok(view.textContent.includes('2024-03-05: a 2-for-1 split (reviewed: not a split)'));
+
+    // The pre-registration is described from hxr-prereg-3a (EXPERIMENT-LOG entry 13, corrections 8-10).
+    const text = view.textContent;
+    for (const sx of ['10 stocks (MU, AMZN, META, TSLA, VST, GOOG, INTC, CSCO, PYPL, SNAP)', 'G6: G3 passes against both benchmarks in at least 9 of the 10', 'B enters at the next recovery point at any price',
+      'the development period is not ready', 'Development', 'Validation', 'Final', 'one pool of risk-sized cash']) assert.ok(text.includes(sx), `the page shows "${sx}"`);
+    // (The read-only experiment log keeps its history, so the old wording is checked in the disclosures and the MU block only.)
+    const disclosed = view.querySelectorAll('.hxr-disclose').map((e) => e.textContent).join(' ') + findAll(view, 'p', 'Dropping MU').map((e) => e.textContent).join(' ');
+    assert.ok(disclosed.includes('Dropping MU changes basket A, the benchmarks and G6, which this pre-registration states for 10 stocks'));
+    for (const bad of ['six stocks', '5 of 6', 'no initial loss limit', 'stay in cash after a missed rebound (which']) assert.ok(!disclosed.includes(bad), `the disclosures no longer say "${bad}"`);
+    // The development pick dialog (correction 7): the development period, the recorded pick rule, pooled cash.
+    await click(findAll(view, 'button', 'Run development pick (once)')[0]);
+    const dlg = overlay().textContent;
+    for (const bad of ['undefined', 'NaN', 'equal sleeves.']) assert.ok(!dlg.includes(bad), `the dialog shows "${bad}"`);
+    for (const sx of ['on basket A (MU, AMZN, META, TSLA, VST, GOOG, INTC, CSCO, PYPL, SNAP) from Oct 2, 2017 to Dec 31, 2021', 'at least 10 completed exit-and-buy-back round trips',
+      'the highest ending account value after costs wins, if its ending value beats both benchmarks', 'A tie goes to the smaller largest decline', 'one pool of risk-sized cash; only the fully invested hold uses equal sleeves']) assert.ok(dlg.includes(sx), `the dialog shows "${sx}"`);
   } finally {
     hxr.close();
   }

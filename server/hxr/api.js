@@ -60,6 +60,8 @@ export function registerHxrRoutes(r, HttpError) {
     const b = obj(body);
     return hxr.runSelection({ confirm: bool(b.confirm, 'confirm'), reason: text(b.reason, 'reason') });
   });
+  // The pick's neighbouring settings, run later when the pick's own neighbour phase did not finish (reported only; not a repeat).
+  route('POST', '/api/hxr/selection/neighbours', (hxr, { body }) => hxr.runNeighbours({ confirm: bool(obj(body).confirm, 'confirm') }));
   // The validation gate (PREREGISTRATION-3.md section 5): once per frozen version, between the development pick and the final run.
   route('POST', '/api/hxr/validation', (hxr, { body }) => {
     const b = obj(body);

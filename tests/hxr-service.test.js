@@ -508,6 +508,8 @@ test('download, readiness, selection and evaluation ledgers, prospective account
     `Every report item, ${FROZEN_VERSION} vs hold`, 'Prospective HXR / hold', 'Every report item against its hold',
     'strategy/hxr/EXPERIMENT-LOG.md (read-only', 'Step 1 capability checks', 'NBIS 2022-02-22 to 2024-10-25',
     'a fill uses only the samples dated on or before it',
+    // hxr-prereg-3a report items (EXPERIMENT-LOG entry 13, correction 12)
+    'Buy-backs: average change of the buy-back price from the sale price', 'Stocks never entered (how long each waited)', 'Pause episodes (dates · deepest decline from the peak · length)',
   ]) assert.ok(text.includes(s), `the page shows "${s}"`);
   assert.ok(!text.includes('the pre-registration compares fills on the evaluation period'), 'the false sentence is gone');
   assert.ok(!text.includes('Not compared for this run'), 'selection, evaluation, full-list and prospective runs all compare fills');
@@ -517,6 +519,66 @@ test('download, readiness, selection and evaluation ledgers, prospective account
   const files = fs.readdirSync(dir);
   assert.ok(files.includes('hxr-sim.sqlite'));
   assert.ok(!files.some((f) => /^(signal-desk|demo)\.sqlite|^strategy-lab/i.test(f)), files.join(', '));
+});
+
+test('the pick is kept when its neighbour phase is interrupted; the neighbours run later without repeating the pick (entry 13, correction 6)', { timeout: 240000 }, async () => {
+  const dir = tempDir('hxr-svc-');
+  const t = fakeClock(T0);
+  const fake = fakeAlpaca({ clock: t.clock, market: MARKET, news: NEWS });
+  // Test fixture: a copy of the criteria with the cycle minimum lowered to 4, so that the synthetic prices
+  // (which give at most 4 cycles) produce a pick and the neighbour phase is reached. The repository file is unchanged.
+  const criteriaPath = path.join(dir, 'criteria-fixture.json');
+  const repoCriteria = JSON.parse(fs.readFileSync(CRITERIA_PATH, 'utf8'));
+  fs.writeFileSync(criteriaPath, JSON.stringify({ ...repoCriteria, selection: { ...repoCriteria.selection, minRoundTrips: 4 } }));
+  const opts = { clock: t.clock, fetchImpl: fake.fetchImpl, sleep: async () => {}, criteriaPath };
+  let hxr = createHxr(hxrCtx(dir), opts);
+  hxr.fetchData();
+  await hxr.fetchDone;
+  hxr.setMuDecision({ choice: 'keep', confirm: true });
+  // Close the app as soon as the pick's ledger entry exists, i.e. during the neighbour phase.
+  const db0 = hxr.db;
+  let closedAt = null;
+  const running = hxr.runSelection({ confirm: true });
+  (async () => {
+    while (!closedAt) {
+      await new Promise((r) => setImmediate(r));
+      try { if (store.listLedger(db0, { kind: 'selection' }).length) { closedAt = 'after the pick'; hxr.close(); } } catch { return; }
+    }
+  })();
+  const sel = await running;
+  assert.equal(sel.contaminated, false);
+  assert.ok(sel.choice.chosen, `the fixture must produce a pick: ${sel.choice.reason}`);
+  assert.equal(closedAt, 'after the pick');
+  assert.equal(sel.frozen.version, FROZEN_VERSION, 'the frozen version is in the normal response');
+  assert.match(sel.neighbours.error, /closed/);
+  assert.match(sel.neighbours.note, /stored.*POST \/api\/hxr\/selection\/neighbours.*not a repeat/);
+  assert.ok(!sel.runs.some((r) => r.role === 'neighbour'), 'no unfinished neighbour run is listed as a result');
+
+  // Reopened: the pick, its ledger entry and hxr-1.0.0 are there; the interrupted neighbour rows are marked failed.
+  hxr = createHxr(hxrCtx(dir), opts);
+  const db = hxr.db;
+  assert.equal(store.listLedger(db, { kind: 'selection' }).length, 1);
+  const interrupted = store.listRuns(db, { kind: 'variant', limit: 500 }).filter((r) => r.status === 'failed');
+  assert.ok(interrupted.length >= 1, 'the interrupted neighbour rows are marked failed on the next start');
+  assert.equal(store.getVersion(db, FROZEN_VERSION).basedOn, sel.choice.chosen);
+  // Closed mid-phase: the error could not be written to the closed database, so the neighbours read as not run (interrupted).
+  assert.deepEqual([hxr.overview().pickNeighbours.candidate, hxr.overview().pickNeighbours.status], [sel.choice.chosen, 'not_run']);
+  await rejectsWith(hxr.runNeighbours({}), 400, /confirm: true/);
+  const later = await hxr.runNeighbours({ confirm: true });
+  assert.equal(hxr.overview().pickNeighbours.status, 'done');
+  assert.equal(later.candidate, sel.choice.chosen);
+  assert.equal(later.neighbours.error, undefined);
+  assert.equal(later.neighbours.neighbours.length, 10);
+  assert.ok(later.neighbours.runLater);
+  assert.equal(later.runs.length, 10);
+  assert.ok(later.runs.every((r) => r.kind === 'variant' && r.role === 'neighbour'));
+  assert.equal(store.listLedger(db, { kind: 'selection' }).length, 1, 'not a repeat of the pick: no ledger entry');
+  assert.ok(later.runs.every((r) => !store.getRun(db, r.id).contaminated));
+  const base = store.getRun(db, later.neighbours.base.runId);
+  assert.deepEqual(base.details.neighbours, later.neighbours, 'stored with the pick\'s run');
+  assert.match(store.listExperiments(db).at(-1).what, /run after the pick, not a repeat/);
+  await rejectsWith(hxr.runNeighbours({ confirm: true }), 409, /already stored/);
+  hxr.close();
 });
 
 test('a flagged split-like overnight move can be recorded as reviewed by the owner (audited, append-only)', () => {

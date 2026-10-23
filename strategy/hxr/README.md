@@ -49,7 +49,11 @@ HXR is kept apart from everything else in Signal Desk:
      development period (2017-10-02 to 2021-12-31), each also with first
      15-minute VWAP fills. Only a candidate can be picked, and only one that
      beats both benchmarks with at least 10 completed cycles. The winner's
-     ten neighbouring settings are then run and reported only.
+     ten neighbouring settings are then run and reported only. If that
+     reported-only phase is interrupted, the pick and `hxr-1.0.0` stay
+     stored, and **Run neighbouring settings** (`POST
+     /api/hxr/selection/neighbours`) runs them later; that is not a repeat
+     of the pick.
    - Freezes the pick as `hxr-1.0.0`, or stops HXR if none qualifies.
    - Then add `configs/hxr-1.0.0.json` (the page shows its content and hash)
      and log it in `EXPERIMENT-LOG.md`.
@@ -101,7 +105,7 @@ All numbers are experimental defaults recorded before any run; see
 
 | File | Purpose |
 |---|---|
-| `PREREGISTRATION-3a.md` | **Active (hxr-prereg-3a).** Six candidates (X1 and X2, each with fresh-entry policy A, B or C), X3A–C as comparison only; the development pick rule (pending amendment 3b: most profit, or best return per unit of fall); one winner to validation, then final; fresh entries reported apart from buy-backs; the day-one hold as a second benchmark |
+| `PREREGISTRATION-3a.md` | **Active (hxr-prereg-3a).** Six candidates (X1 and X2, each with fresh-entry policy A, B or C), X3A–C as comparison only; the development pick rule (amendment 3b, 2026-10-23: most profit, `ending_value`); one winner to validation, then final; fresh entries reported apart from buy-backs; the day-one hold as a second benchmark |
 | `PREREGISTRATION-3.md` | hxr-prereg-3: positions sized from pooled cash, the planned exit distance and dollar budgets; the initial-loss rule for every exit rule; the pause; three periods; the laggards in basket A; the validation gate (in force by reference) |
 | `PREREGISTRATION-2.md` | hxr-prereg-2: exit rules X1 (recovery-point break), X2 (normal-movement allowance), X3 (10% give-back) and the buy-back rule (in force by reference); its X1–X3 configs are superseded |
 | `PREREGISTRATION.md` | hxr-prereg-1: costs, account, disclosures and criteria (in force by reference); its candidates C1–C3 are superseded |

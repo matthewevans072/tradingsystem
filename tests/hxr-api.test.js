@@ -90,6 +90,8 @@ test('API: /api/hxr routes through the real server', { timeout: 120000 }, async 
       ['/api/hxr/selection', { confirm: 1 }, 400, /confirm must be true or false/],
       ['/api/hxr/selection', { confirm: true, reason: 7 }, 400, /reason must be text/],
       ['/api/hxr/selection', { confirm: true }, 409, /pending MU decision/],
+      ['/api/hxr/selection/neighbours', {}, 400, /confirm: true/],
+      ['/api/hxr/selection/neighbours', { confirm: true }, 409, /No development pick is recorded/],
       ['/api/hxr/validation', {}, 400, /confirm: true/],
       ['/api/hxr/validation', { confirm: true, reason: 7 }, 400, /reason must be text/],
       ['/api/hxr/validation', { confirm: true }, 409, /No frozen version/],

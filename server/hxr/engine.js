@@ -264,13 +264,16 @@ function evaluateBuyBackRule(rule, sl, c) {
     // Never held, a lapsed buy, or a missed rebound under policy B or C: the
     // next confirmed recovery point, at any price (PREREGISTRATION-3.md section 8).
     if (rule.entryWhenNeverHeld !== 'recovery_point_any_price') return null;
+    // Option C: at least N of the stock's sessions out, counted from the sale
+    // (PREREGISTRATION-3.md 8; EXPERIMENT-LOG entry 13, correction 4).
+    const sessionsOut = sl.lastExit ? sl.lastExit.sessionsOut : sl.fresh.sessions;
     const minOut = rule.afterMissedRebound === 'fresh_entry_after_sessions' && sl.fresh.afterMissedRebound ? rule.freshEntryMinSessions : 0;
-    if (sl.fresh.sessions < minOut) return null;
+    if (sessionsOut < minOut) return null;
     const rp = recoveryAfterFill(rule, sl, m);
     if (!rp) return null;
     return {
       side: 'buy', fresh: true,
-      values: { close: c, previousExitPrice: P, recoveryClose: rp.close, highestAfter: rp.highestAfter, m, pivotSessions: rule.pivotSessions, reboundMultiple: rule.reboundMultiple, sessionsOut: sl.fresh.sessions, afterMissedRebound: !!sl.fresh.afterMissedRebound },
+      values: { close: c, previousExitPrice: P, recoveryClose: rp.close, highestAfter: rp.highestAfter, m, pivotSessions: rule.pivotSessions, reboundMultiple: rule.reboundMultiple, sessionsOut, sessionsSinceMissedRebound: sl.fresh.afterMissedRebound ? sl.fresh.sessions : null, afterMissedRebound: !!sl.fresh.afterMissedRebound },
       reason: `fresh entry: a recovery point (close ${rp.close}, ${rule.pivotSessions} sessions ago) is confirmed${P != null ? ` after a missed rebound (previous exit ${P})` : ' for a stock not held'}; buy at the next open at any price`,
     };
   }
@@ -552,7 +555,24 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       if (sl.lastClose != null) sl.lastClose /= r;
       if (sl.level != null) sl.level /= r;
       if (sl.entryPrice != null) sl.entryPrice /= r;
+      // The initial-loss level is a price like the others (PREREGISTRATION-3.md 2);
+      // plannedLoss is dollars and stays.
+      if (sl.L0 != null) sl.L0 /= r;
       sl.splitFactor *= r;
+      // A sized buy waiting to fill on or after the split's effective session:
+      // its shares and per-share numbers move to post-split units; the cash it
+      // reserved and its planned loss in dollars stay (entry 13, correction 2).
+      const po = sl.pending;
+      if (po?.side === 'buy' && po.shares != null && po.sizing) {
+        const sharesBefore = po.shares;
+        po.shares = Math.floor(po.shares * r + EPS);
+        po.sizing = { ...po.sizing, shares: po.shares, d: po.sizing.d / r, close: po.sizing.close / r, m: po.sizing.m / r };
+        warn(date, sl.symbol, 'order_split_adjusted', `pending buy ${po.id}: ${sharesBefore} shares become ${po.shares} after the ${r}-for-1 split`, { orderId: po.id, ratio: r, sharesBefore, sharesAfter: po.shares });
+        if (!(po.shares >= 1)) {
+          warn(date, sl.symbol, 'order_cancelled', `pending buy ${po.id} cancelled: no whole share is left after the split`, { orderId: po.id, code: 'split' });
+          lapse(sl, date, po);
+        }
+      }
       let after = before * r;
       const whole = Math.floor(after + EPS);
       if (Math.abs(after - whole) < EPS) after = whole; // snap float noise to whole shares
@@ -692,7 +712,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     const px = priceOf(sl, 'buy', bar, date);
     if (S.pooled && (o.shares == null || !(o.shares >= 1))) {
       warn(date, sl.symbol, 'order_cancelled', `buy order ${o.id} cancelled: it was never sized (no typical daily move before ${date})`, { orderId: o.id, code: 'insufficient_history' });
-      lapse(sl, date);
+      lapse(sl, date, o);
       return;
     }
     // The buy-back fills only below the exit price (PREREGISTRATION-2.md 3.5).
@@ -713,7 +733,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     if (!(n >= 1)) {
       warn(date, sl.symbol, 'insufficient_cash', `buy order ${o.id} cancelled: ${S.pooled ? 'pooled' : 'sleeve'} cash ${cashNow} cannot buy one share at ${px.price}`, { orderId: o.id, cash: cashNow, price: px.price, initial: !!o.initial });
       sl.pending = null;
-      if (S.pooled) lapse(sl, date);
+      if (S.pooled) lapse(sl, date, o);
       return;
     }
     if (S.pooled && n < o.shares) warn(date, sl.symbol, 'reduced_for_cash', `buy order ${o.id}: ${o.shares} shares planned, ${n} affordable at the open ${bar.o}`, { orderId: o.id, planned: o.shares, filled: n });
@@ -735,7 +755,8 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       record('freshEntries', {
         id: `fresh-${sl.symbol}-${date}`, symbol: sl.symbol, date, fillId: fill.id, price: px.price, shares: n, previousExitPrice: prev,
         previousExitDate: x?.date ?? null, premiumPct: prev != null ? (px.price / prev - 1) * 100 : null,
-        sessionsOut: sl.fresh?.sessions ?? null, afterMissedRebound: !!sl.fresh?.afterMissedRebound, neverHeld: !sl.everHeld,
+        sessionsOut: x ? x.sessionsOut : sl.fresh?.sessions ?? null, sessionsSinceMissedRebound: sl.fresh?.afterMissedRebound ? sl.fresh.sessions : null,
+        afterMissedRebound: !!sl.fresh?.afterMissedRebound, neverHeld: !sl.everHeld,
       });
       sl.lastExit = null;
     }
@@ -764,13 +785,19 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     Object.assign(sl, { sinceFill: 0, level: null, entryPrice: px.price, gbActive: false, fresh: null, everHeld: true });
   }
 
-  // A buy that could not happen (budget, pause, cash, no sizing): the stock
-  // waits for the next recovery point at any price, if the rule allows it.
-  function lapse(sl, date) {
+  // A buy that could not happen (budget, pause, cash, no sizing), at the
+  // decision or at the fill (EXPERIMENT-LOG entry 13, correction 5, reconciling
+  // PREREGISTRATION-3.md 1.2 step 4 with section 8): a lapsed BUY-BACK keeps the
+  // buy-back rule and waits for the next recovery point below the sale price
+  // (policy A still retires on a missed rebound); an initial or fresh entry
+  // that lapsed waits for the next recovery point at any price.
+  function lapse(sl, date, o = null) {
     sl.pending = null;
+    sl.sinceFill = 0; // a new recovery point is needed either way
+    const buyBack = !!sl.lastExit && !sl.fresh && !o?.initial && !o?.fresh;
+    if (buyBack) return;
     if (rule.entryWhenNeverHeld === 'recovery_point_any_price' && !sl.stayOut) {
       sl.fresh = sl.fresh ?? { since: date, sessions: 0, afterMissedRebound: false };
-      sl.sinceFill = 0;
     }
   }
 
@@ -794,7 +821,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
         const o = sl.pending;
         if (o?.side === 'buy' && !o.initial && o.fillDate <= date) {
           warn(date, sl.symbol, 'order_cancelled', `buy order ${o.id} cancelled: the account is paused after a decline of ${(S.peak - lastValue()).toFixed(2)} from its peak`, { orderId: o.id, code: 'paused' });
-          lapse(sl, date);
+          lapse(sl, date, o);
         }
       }
     }
@@ -896,13 +923,13 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       const m = sl.history.length >= sizingVol + 1 ? typicalMove(sl.history, sizingVol) : null;
       if (m == null || sl.lastClose == null) {
         warn(date, sl.symbol, 'entry_skipped', `initial allocation of ${sl.symbol} skipped: no typical daily move yet (needs ${sizingVol + 1} closes)`, { orderId: o.id, code: 'insufficient_history' });
-        lapse(sl, date);
+        lapse(sl, date, o);
         continue;
       }
       const sz = sizeBuy(sl, sl.lastClose, m, Math.min(share, risk.plannedLossPerTradeUsd), date);
       if (!sz.shares) {
         warn(date, sl.symbol, 'entry_skipped', `initial allocation of ${sl.symbol} skipped: ${sz.reason}`, { orderId: o.id, code: 'budget', sizing: sz });
-        lapse(sl, date);
+        lapse(sl, date, o);
         continue;
       }
       o.shares = sz.shares;
@@ -954,11 +981,21 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     if (out) out.equity = p;
   }
 
+  // Each holding's rule state (X1's level, X3's activation) at this close, for
+  // every sleeve before the equity point and any sizing, so open risk uses each
+  // holding's current exit level whatever the ticker order (PREREGISTRATION-3.md
+  // 1.2; EXPERIMENT-LOG entry 13, correction 3).
+  function ruleStates(bars) {
+    for (const sl of S.sleeves) {
+      if (!bars.has(sl.symbol) || sl.pending) continue;
+      updateRuleState(rule, sl);
+    }
+  }
+
   function signals(date, bars) {
     // Pooled: alphabetical order, each signal seeing the room the earlier ones reserved (section 1.2 step 6).
     for (const sl of S.pooled ? alphabetical : S.sleeves) {
       if (!bars.has(sl.symbol) || sl.pending) continue;
-      updateRuleState(rule, sl);
       const sig = sl.state === 'in' && S.pooled ? evaluateHolding(rule, sl) : evaluateRule(rule, sl);
       if (!sig) continue;
       if (sig.side === 'stay_out') {
@@ -971,15 +1008,14 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       }
       let sizing = null;
       if (sig.side === 'buy' && S.pooled) {
-        if (S.paused) { warn(date, sl.symbol, 'entry_skipped', `${sl.symbol}: ${sig.reason}; skipped, the account is paused`, { code: 'paused', signal: sig.values }); if (sig.fresh) { sl.fresh = sl.fresh ?? { since: date, sessions: 0, afterMissedRebound: false }; sl.sinceFill = 0; } else sl.sinceFill = 0; continue; }
+        if (S.paused) { warn(date, sl.symbol, 'entry_skipped', `${sl.symbol}: ${sig.reason}; skipped, the account is paused`, { code: 'paused', signal: sig.values }); lapse(sl, date, { fresh: !!sig.fresh }); continue; }
         const m = sl.history.length >= sizingVol + 1 ? typicalMove(sl.history, sizingVol) : null;
         const c = sl.history[sl.history.length - 1];
         sizing = m != null ? sizeBuy(sl, c, m, risk.plannedLossPerTradeUsd, date) : null;
         if (!sizing?.shares) {
           warn(date, sl.symbol, 'entry_skipped', `${sl.symbol}: ${sig.reason}; skipped: ${sizing?.reason ?? 'no typical daily move yet'}`, { code: 'budget', signal: sig.values, sizing });
           // The signal lapses: the next recovery point is needed (sections 1.2 step 4 and 8).
-          sl.sinceFill = 0;
-          if (sig.fresh) sl.fresh = sl.fresh ?? { since: date, sessions: 0, afterMissedRebound: false };
+          lapse(sl, date, { fresh: !!sig.fresh });
           continue;
         }
       }
@@ -1022,6 +1058,7 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
     closes(date, bars, trading);
     if (S.pooled && !trading && nextSession(date, ex) === S.firstTradingSession) sizeInitialOrders(date);
     if (trading) {
+      ruleStates(bars);
       equityPoint(date);
       signals(date, bars);
     }

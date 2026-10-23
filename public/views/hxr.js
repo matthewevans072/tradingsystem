@@ -49,14 +49,22 @@ const WHY = {
   vol_trail: 'Adjusts to each stock\'s volatility (TSLA and MUU move far more than AMZN); measured on closes, so stray high/low prints cannot trigger it.',
   pct_trail: 'The simplest rule a person could follow by hand.',
 };
-// PREREGISTRATION.md section 7, "Disclosure of previously examined data", restated here; the file's hash is shown with it.
-const DISCLOSURES = [
-  'This is pre-registration 2 (hxr-prereg-2): X1, X2 and X3 with one buy-back rule replace hxr-prereg-1\'s C1–C3, which were never run. GOOG was added to every basket at your request before any test (basket A is now six stocks; G6 needs 5 of 6). The robustness list (INTC, CSCO, PYPL, SNAP) was chosen with hindsight because those stocks lagged, so it is reported only.',
-  'Experimental defaults stand in for your unanswered risk questions: decide after the close, hold through earnings, no news rules, US$0 commission in USD, no initial loss limit, and stay in cash after a missed rebound (which probably favours holding).',
-  'MU was in the Strategy Lab consolidation-breakout universe: its 15-minute bars for 2021-07 to 2024-12 were run through that strategy (runs 1–12), and its 2025-01-01 to 2026-06-30 bars passed readiness checks only. HXR\'s evaluation period overlaps that strategy\'s untouched holdout window for MU. HXR never reads the Strategy Lab database, never runs that strategy and never writes its holdout ledger. If you want strict separation, MU can be dropped from HXR\'s evaluation before any HXR run (decision pending).',
-  'The step 1 checks printed a few daily closes (first and last bars of each stock, and some 2016–2026 closes for SPY, MU, NVDA, AAPL and VRT). No rule outcome was computed.',
-  'Hindsight cannot be removed: Claude\'s training data and your own memory cover these stocks\' history up to mid-2026. The stock list is your current holdings, which favours stocks that did well, so the hold comparison is probably flattering for holding. No historical period is truly unseen: only the prospective account is clean evidence.',
-];
+// The disclosures of PREREGISTRATION.md section 7, restated for PREREGISTRATION-3.md
+// (sections 1.5, 3, 4 and 10) and PREREGISTRATION-3a.md; list sizes, G6 and the
+// budgets come from the server's universe, criteria and configs.
+function disclosures(o) {
+  const A = o.universe?.baskets?.A?.symbols || [];
+  const g6 = (o.criteria?.criteria || []).find((c) => c.id === 'G6');
+  const r = (o.configs || []).find((c) => !c.error && c.assumptions?.risk)?.assumptions;
+  return [
+    `This is ${o.prereg?.id || 'the active pre-registration'}: pre-registration 3 with amendments 3a and 3b. Basket A is ${A.length ? `${A.length} stocks (${A.join(', ')})` : 'not returned by the server'}: your stocks plus four that lagged (INTC, CSCO, PYPL, SNAP), all chosen with hindsight, so the list is not a random sample of anything and the fully invested hold is deliberately weaker than with your stocks alone.${g6 ? ` G6: ${g6.rule}.` : ''} The earlier candidates (C1–C3, X1–X3 0.2.0) were never run.`,
+    `Experimental defaults stand in for your unanswered risk questions: decide after the close, hold through earnings, no news rules, US$0 commission in USD, an initial-loss level ${r?.initialLoss?.multiple ?? '—'} × the typical daily move below every buy, and positions sized from pooled cash with dollar budgets${r?.risk ? ` (planned loss ${usd(r.risk.plannedLossPerTradeUsd)} per trade, ${usd(r.risk.maxPositionUsd)} per position, ${usd(r.risk.totalOpenRiskUsd)} open risk)` : ''}. These untested round numbers shape the result as much as the exit rules do. After a missed rebound, three policies are tested as separate candidates: A stays in cash, B enters at the next recovery point at any price, C does the same after the cooling-off period.`,
+    'Risk sizing keeps the candidates partly in cash by construction: that lowers their return in rising markets and their decline in falling ones. The criteria compare return per unit of decline against both benchmarks; the invested fraction and the return on average invested capital are shown as information only.',
+    'MU was in the Strategy Lab consolidation-breakout universe: its 15-minute bars for 2021-07 to 2024-12 were run through that strategy (runs 1–12), and its 2025-01-01 to 2026-06-30 bars passed readiness checks only. HXR\'s final period overlaps that strategy\'s untouched holdout window for MU. HXR never reads the Strategy Lab database, never runs that strategy and never writes its holdout ledger. If you want strict separation, MU can be dropped from HXR before any HXR run.',
+    'The step 1 checks printed a few daily closes (first and last bars of each stock, and some 2016–2026 closes for SPY, MU, NVDA, AAPL and VRT). No rule outcome was computed under any version.',
+    'Hindsight cannot be removed: Claude\'s training data and your own memory cover these stocks\' history up to mid-2026, so no historical period is truly unseen: only the prospective account is clean evidence.',
+  ];
+}
 
 // Page state that survives re-renders.
 const S = { sel: null, ev: null, cand: null, run: null, runTab: 'decisions', runSymbol: '', runPage: 0, showAll: {} };
@@ -390,7 +398,7 @@ function nextAction(P) {
   if (!P.cleanSel) {
     const anyBars = (o.data || []).some((d) => d.bars?.count > 0);
     if (!o.settings?.alpacaKeys && !anyBars) return ['Add ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY (a free Alpaca market-data account) to .env, restart Signal Desk, then download the data.', 'data'];
-    if (!periodReady(o, ['selection'])) return ['Download or refresh the data, then check the readiness table: the selection period is not ready.', 'data'];
+    if (!periodReady(o, ['development'])) return ['Download or refresh the data, then check the readiness table: the development period is not ready.', 'data'];
     const mu = o.decisions?.mu?.choice;
     if (mu === 'drop') return ['You chose to drop MU from the evaluation: the pre-registration has to be restated as a new version before any run (or record "keep MU" instead).', 'prereg'];
     if (mu !== 'keep') return ['Decide whether MU stays in the final period (pre-registration disclosure 1). The choice is possible only before any HXR run; then run the development pick (once).', 'prereg'];
@@ -425,7 +433,7 @@ function preregSection(P) {
       'Historical results test the price rules only; they are never evidence for a news-informed HXR. Every number marked experimental is a labelled research assumption, not your approved preference.'),
     statuses.map((s) => notice('warn', h('strong', {}, 'Config status: '), s)),
     h('h4', { class: 'lab-h4' }, 'The six candidates, your comparison and the two benchmarks'),
-    h('p', { class: 'small' }, `Exit rules X1 and X2 are each combined with the three fresh-entry policies after a missed rebound (A stay in cash, B a fresh entry at the next recovery point above the sale price, C the same after a cooling-off period): six candidates. X3, your 10% give-back, is run with the same policies as a comparison and can never be picked. Benchmarks: ${BENCH.hold.toLowerCase()} (equal money in every stock, never sold) and ${BENCH.holdDayOne.toLowerCase()} (the exact positions the candidates open on day one, never sold); every pass/fail test must beat both.`),
+    h('p', { class: 'small' }, `Exit rules X1 and X2 are each combined with the three fresh-entry policies after a missed rebound (A stay in cash, B a fresh entry at the next recovery point at any price, C the same after a cooling-off period counted from the sale): six candidates. X3, your 10% give-back, is run with the same policies as a comparison and can never be picked. Benchmarks: ${BENCH.hold.toLowerCase()} (equal money in every stock, never sold) and ${BENCH.holdDayOne.toLowerCase()} (the exact positions the candidates open on day one, never sold); every pass/fail test must beat both.`),
     riskText((o.configs || []).find((c) => !c.error && c.assumptions?.risk)?.assumptions) ? h('p', { class: 'small' }, h('strong', {}, 'Sizing and the initial-loss rule. '), riskText((o.configs || []).find((c) => !c.error && c.assumptions?.risk)?.assumptions)) : null,
     armsTable(P),
     assumptionsBlock(o),
@@ -433,13 +441,13 @@ function preregSection(P) {
     periodsTable(o),
     excludedList(o.periods?.excludedSessions),
     h('h4', { class: 'lab-h4' }, 'Disclosure of previously examined data'),
-    h('ol', { class: 'bullets small hxr-disclose' }, DISCLOSURES.map((d) => h('li', {}, d))),
+    h('ol', { class: 'bullets small hxr-disclose' }, disclosures(o).map((d) => h('li', {}, d))),
     muBlock(P),
     o.universe?.selectedBy ? h('p', { class: 'small muted' }, `Stock list chosen by ${o.universe.selectedBy} on ${day(o.universe.selectedAt)}${o.universe.selectedBefore ? `, before ${o.universe.selectedBefore}` : '.'}`) : null,
-    h('p', { class: 'small muted' }, `Restated from PREREGISTRATION.md section 7${prFile ? ` (sha256 ${shortHash(prFile.sha256)})` : ''}.`),
-    h('h4', { class: 'lab-h4' }, 'Choosing one candidate (selection period only)'),
+    h('p', { class: 'small muted' }, `Restated from PREREGISTRATION.md section 7${prFile ? ` (sha256 ${shortHash(prFile.sha256)})` : ''}, PREREGISTRATION-3.md sections 1.5, 3, 4 and 10, and PREREGISTRATION-3a.md.`),
+    h('h4', { class: 'lab-h4' }, 'Choosing one candidate (development period only)'),
     selectionRule(o),
-    h('h4', { class: 'lab-h4' }, 'Pass/fail criteria (evaluation period)'),
+    h('h4', { class: 'lab-h4' }, 'Pass/fail criteria (final period, against both benchmarks)'),
     criteriaRules(o),
     h('h4', { class: 'lab-h4' }, 'Prospective criteria (judged later, separately)'),
     table(['', 'Criterion', 'Rule'], (o.criteria?.prospective || []).map((c) => [h('span', { class: 'mono' }, c.id), h('strong', {}, c.name), h('span', { class: 'small' }, c.rule)]), { cls: 'hxr-rules' }),
@@ -454,9 +462,9 @@ function muBlock(P) {
   return h('div', { class: 'lab-panel mt' },
     h('h4', { class: 'lab-h4 first' }, 'Your decision: MU in the evaluation'),
     h('div', { class: 'row small' }, d ? badge(d.choice === 'keep' ? 'keep MU' : 'drop MU', d.choice === 'keep' ? 'ok' : 'warn') : badge('pending', 'warn'),
-      h('span', { class: 'muted' }, d ? `recorded ${when(d.at)}` : 'not recorded yet; the selection waits for it')),
-    h('p', { class: 'small' }, 'Disclosure 1: MU can be dropped from HXR\'s evaluation for strict separation from the Strategy Lab holdout window, but only before any HXR run. Keeping it leaves the overlap disclosed.'),
-    h('p', { class: 'small muted' }, 'Dropping MU changes basket A, its sleeves and G6, which this pre-registration states for its six stocks, so it needs a restated pre-registration (a new version); nothing runs until then.'),
+      h('span', { class: 'muted' }, d ? `recorded ${when(d.at)}` : 'not recorded yet; the development pick waits for it')),
+    h('p', { class: 'small' }, 'Disclosure 4: MU can be dropped from HXR for strict separation from the Strategy Lab holdout window (which the final period overlaps), but only before any HXR run. Keeping it leaves the overlap disclosed.'),
+    h('p', { class: 'small muted' }, `Dropping MU changes basket A, the benchmarks and G6, which this pre-registration states for ${(P.o.universe?.baskets?.A?.symbols || []).length || 'its'} stocks${(P.o.criteria?.criteria || []).find((c) => c.id === 'G6') ? ` (G6: ${(P.o.criteria.criteria.find((c) => c.id === 'G6')).rule})` : ''}, so it needs a restated pre-registration (a new version); nothing runs until then.`),
     locked ? h('div', { class: 'small hxr-gate' }, `Fixed as ${d?.choice ? `"${d.choice}"` : 'not recorded'}: an HXR run is already recorded.`)
       : h('div', { class: 'row' }, btn('keep', 'Keep MU…', d?.choice === 'keep' ? '' : 'primary'), btn('drop', 'Drop MU…', 'danger')));
 }
@@ -466,7 +474,7 @@ function muDialog(P, choice) {
   const a = ack(keep ? 'Keep MU in basket A for the evaluation; the overlap with the Strategy Lab holdout window stays disclosed.' : 'Drop MU: I understand nothing runs until the pre-registration is restated as a new version.');
   confirmDialog(keep ? 'Keep MU in the evaluation?' : 'Drop MU from the evaluation?', h('div', { class: 'stack', style: { gap: '10px' } },
     notice('warn', 'This choice is possible only before any HXR run. It is recorded with its time in the experiment log; earlier choices are kept.'),
-    h('div', { class: 'small' }, DISCLOSURES[0]),
+    h('div', { class: 'small' }, disclosures(P.o)[3]),
     a.el), {
     confirmLabel: keep ? 'Keep MU' : 'Drop MU', danger: !keep,
     ready: () => (a.box.checked ? true : 'Tick the box to confirm.'),
@@ -499,7 +507,10 @@ function assumptionsBlock(o) {
   const valid = (o.configs || []).filter((c) => !c.error && c.assumptions);
   const base = valid.find((c) => c.rule?.type === 'hold') || valid[0];
   if (!base) return null;
-  const same = valid.every((c) => JSON.stringify(c.assumptions) === JSON.stringify(base.assumptions));
+  const pooledArms = valid.filter((c) => c.role !== 'superseded' && c.assumptions?.account?.allocation === 'risk_sized');
+  // Compared without the account and sizing sections, which differ by design between the hold and the candidates.
+  const common = (x) => JSON.stringify({ ...x, account: { ...x.account, allocation: null }, risk: null, initialLoss: null });
+  const same = valid.every((c) => common(c.assumptions) === common(base.assumptions));
   const { account: a = {}, execution: x = {}, costs: c = {}, dividends: d = {}, cash = {} } = base.assumptions;
   const hs = c.halfSpread === 'calibrated'
     ? `calibrated per stock and calendar year: the median quoted half-spread (SIP) in the first minute after the open on six sampled days a year, floored at ${c.halfSpreadFloorBps} bps; the floor applies before a stock's first sampled day. A fill uses only that year's samples dated on or before it (the previous year's value until the year's first sample), so no later quote reaches an earlier fill`
@@ -507,7 +518,8 @@ function assumptionsBlock(o) {
   return h('div', { class: 'lab-panel mt' },
     h('h4', { class: 'lab-h4 first' }, `Account, execution and cost assumptions (experimental${same ? ', the same for every arm' : '; they differ between arms, shown for the hold'})`),
     h('dl', { class: 'kv small lab-kv' },
-      h('dt', {}, 'Account'), h('dd', {}, `${usd(a.startingCash)} simulated, ${a.currency || 'USD'}; equal sleeves (each stock gets 1/N of the cash and its own sleeve; no rotation, no rebalancing); ${a.wholeShares ? 'whole shares only' : 'fractional shares'}; ${a.allowMargin ? 'margin allowed' : 'no borrowing'}; ${a.allowShort ? 'short selling allowed' : 'no short selling'}; cash never below zero`),
+      h('dt', {}, 'Account'), h('dd', {}, `${usd(a.startingCash)} simulated, ${a.currency || 'USD'}; ${pooledArms.length ? `the candidates and comparisons (${pooledArms.map((c) => c.version).join(', ')}) use one pool of risk-sized cash (below); the fully invested hold uses equal sleeves (each stock gets 1/N of the cash and its own sleeve; no rotation, no rebalancing)` : 'equal sleeves (each stock gets 1/N of the cash and its own sleeve; no rotation, no rebalancing)'}; ${a.wholeShares ? 'whole shares only' : 'fractional shares'}; ${a.allowMargin ? 'margin allowed' : 'no borrowing'}; ${a.allowShort ? 'short selling allowed' : 'no short selling'}; cash never below zero`),
+      ...(pooledArms.length && riskText(pooledArms[0].assumptions) ? [h('dt', {}, 'Sizing (candidates)'), h('dd', {}, riskText(pooledArms[0].assumptions))] : []),
       h('dt', {}, 'Decisions'), h('dd', {}, `after the close (${x.decision}), from completed daily bars only; signals use split-adjusted closes up to and including the decision session`),
       h('dt', {}, 'Fills'), h('dd', {}, `at the open ${x.delaySessions === 1 ? 'of the next session' : `${x.delaySessions} sessions later`} (${x.fill}), fill model "${x.fillModel}": the open plus (buy) or minus (sell) half-spread + slippage; a gap is taken at the gapped open; no intraday stop`),
       h('dt', {}, 'Realistic fill (reported)'), h('dd', {}, 'the first 15-minute VWAP (09:30–09:45 ET) plus or minus the half-spread; never used for the main result'),
@@ -538,6 +550,12 @@ function excludedList(list) {
   if (!list?.length) return null;
   return h('div', { class: 'small mt' }, h('strong', {}, 'Excluded sessions (skipped for every stock): '),
     h('ul', { class: 'bullets' }, list.map((x) => h('li', {}, `${day(x.date)}: ${x.reason}`))));
+}
+
+function pickText(s) {
+  if (s?.pickRule === 'ending_value') return 'Pick rule (a), most profit: the qualifying candidate with the highest ending account value after costs wins, if its ending value beats both benchmarks\' (the fully invested hold and the day-one hold); its largest decline is reported next to it.';
+  if (s?.pickRule === 'return_to_drawdown') return `Pick rule (b), best return per unit of fall: the qualifying candidate with the highest annualised return ÷ largest decline wins, if it reaches at least ${s.pickRules?.return_to_drawdown?.mustReachTimesBenchmarks ?? 1.1} × both benchmarks on that measure; its ending value is reported next to it.`;
+  return 'The pick rule is pending your choice: nothing runs until it is recorded.';
 }
 
 function selectionRule(o) {
@@ -661,7 +679,7 @@ function readinessView(P, r) {
   const { o } = P;
   const data = new Map((o.data || []).map((d) => [d.symbol, d]));
   const uni = new Map((o.universe?.symbols || []).map((s) => [s.symbol, s]));
-  const periodRows = ['selection', 'evaluation', 'fullList'].filter((k) => r.periods?.[k]).map((k) => {
+  const periodRows = ['development', 'validation', 'final', 'fullList'].filter((k) => r.periods?.[k]).map((k) => {
     const p = r.periods[k];
     const why = p.reasons || [];
     return [
@@ -877,7 +895,27 @@ function selectionCard(P) {
     `The six candidates, the three X3 comparisons and both benchmarks on basket ${period.basket || '—'} over ${day(period.start)} – ${day(period.end)}, at base costs. Picks at most one candidate by your pick rule and freezes it; then runs the winner's neighbouring settings (reported only). In-sample.`,
     reason,
     actionButton('Run development pick (once)', reason, () => selectionDialog(P, false)),
-    first ? actionButton('Repeat (contaminated)…', block, () => selectionDialog(P, true), 'danger') : null);
+    first ? actionButton('Repeat (contaminated)…', block, () => selectionDialog(P, true), 'danger') : null,
+    // The pick is stored; only its reported-only neighbouring settings are missing (EXPERIMENT-LOG entry 13, correction 6).
+    o.pickNeighbours && o.pickNeighbours.status !== 'done' ? actionButton('Run neighbouring settings…', commonBlock(o), () => neighboursDialog(P), '') : null);
+}
+
+function neighboursDialog(P) {
+  const n = P.o.pickNeighbours;
+  const a = ack('I understand these runs are reported only and never change the pick.');
+  confirmDialog('Run the neighbouring settings of the pick?', h('div', { class: 'stack', style: { gap: '10px' } },
+    notice('info', `The development pick, its ledger entry and the frozen version are stored. The ten neighbouring settings of ${n.candidate} ${n.status === 'failed' ? `did not finish (${n.error})` : 'have not been run'}. This runs them on the development period, one setting changed at a time. It is not a repeat of the pick and writes no ledger entry.`),
+    a.el), {
+    confirmLabel: 'Run neighbouring settings',
+    runningText: 'Running the neighbouring settings (simulated, reported only)… keep this page open.',
+    ready: () => (!a.box.checked ? 'Tick the box to confirm.' : true),
+    onConfirm: async () => {
+      const r = await P.api('POST', '/api/hxr/selection/neighbours', { confirm: true });
+      toast(r.note || 'Neighbouring settings finished (simulated).');
+      S.sel = null;
+      P.reload();
+    },
+  });
 }
 
 function validationCard(P) {
@@ -933,30 +971,32 @@ function armsList(cands) {
 function selectionDialog(P, repeat) {
   const { o } = P;
   const s = o.criteria?.selection || {};
-  const period = o.periods?.selection || {};
+  const period = o.periods?.development || {};
   const arms = (o.configs || []).filter((c) => !c.error && c.role !== 'superseded' && c.role !== 'later' && !(P.frozen && c.version === P.frozen.version));
-  const reason = h('textarea', { name: 'reason', maxlength: 2000, rows: 3, placeholder: 'Why the selection must be run again (required)' });
-  const a = ack(repeat ? 'I understand this repeat is marked contaminated and can never freeze a version.' : 'I have read the pre-registration; this uses the selection period once.');
+  const risk = riskText(arms.find((c) => c.assumptions?.risk)?.assumptions);
+  const reason = h('textarea', { name: 'reason', maxlength: 2000, rows: 3, placeholder: 'Why the development pick must be run again (required)' });
+  const a = ack(repeat ? 'I understand this repeat is marked contaminated and can never freeze a version.' : 'I have read the pre-registration; this uses the development period once.');
   const body = h('div', { class: 'stack', style: { gap: '10px' } },
     repeat
-      ? notice('danger', `The selection was already run ${plural(P.selEntries.length, 'time')} for ${P.prereg} (first ${when(P.selEntries[0]?.at)}). Another run needs a written reason, is recorded in the ledger as contaminated and never freezes a version.`)
-      : notice('warn', `The selection runs once for ${P.prereg}. Its result decides whether HXR continues at all.`),
-    h('div', {}, h('strong', {}, 'What runs. '), `Each arm below on basket ${period.basket} (${basketList(o, period.basket).join(', ')}) from ${day(period.start)} to ${day(period.end)} (warm-up from ${day(period.warmupFrom)}), at base costs. Each starts a fresh simulated ${usd(startingCash(o))} account in equal sleeves.`),
+      ? notice('danger', `The development pick was already run ${plural(P.selEntries.length, 'time')} for ${P.prereg} (first ${when(P.selEntries[0]?.at)}). Another run needs a written reason, is recorded in the ledger as contaminated and never freezes a version.`)
+      : notice('warn', `The development pick runs once for ${P.prereg}. Its result decides whether HXR continues at all.`),
+    h('div', {}, h('strong', {}, 'What runs. '), `Each arm below and the day-one hold on basket ${period.basket} (${basketList(o, period.basket).join(', ')}) from ${day(period.start)} to ${day(period.end)} (warm-up from ${day(period.warmupFrom)}), at base costs, each from a fresh simulated ${usd(startingCash(o))} account. The candidates and comparisons use one pool of risk-sized cash; only the fully invested hold uses equal sleeves (1/N of the cash per stock); the day-one hold keeps the candidates' day-one positions and never sells.`),
+    risk ? h('div', { class: 'small' }, risk) : null,
     armsList(arms),
     h('div', { class: 'small' }, 'Each arm also runs with first 15-minute VWAP fills, so assumed and realistically available fills are compared for every run. Those runs are reported only; the pick uses the base-cost runs.'),
     o.decisions?.mu ? h('div', { class: 'small' }, h('strong', {}, 'MU decision: '), `${o.decisions.mu.choice} MU (recorded ${when(o.decisions.mu.at)})`) : null,
-    h('div', {}, h('strong', {}, 'How one is picked. '), `A candidate qualifies with at least ${s.minRoundTrips} completed exit-and-buy-back round trips. The qualifying candidate with the highest ${s.metric} is picked (a tie goes to the ${s.tieBreak}). If none reaches ${s.stopUnlessAtLeastTimesHold} × the hold's figure, HXR stops: nothing is frozen and the evaluation period is not used. Otherwise the pick is frozen as a new version before any evaluation.`),
-    h('div', { class: 'small' }, 'Selection results are in-sample: they describe the period the pick is made on and are not evidence that the rule works.'),
+    h('div', {}, h('strong', {}, 'How one is picked. '), `A candidate qualifies with at least ${s.minRoundTrips} completed exit-and-buy-back round trips (fresh entries do not count). ${pickText(s)} A tie goes to the smaller largest decline. If no candidate qualifies and beats both benchmarks, HXR stops: nothing is frozen and the validation and final periods are never used. Otherwise the pick is frozen as a new version before the validation run, and its ten neighbouring settings are run and reported only.`),
+    h('div', { class: 'small' }, 'Development results are in-sample: they describe the period the pick is made on and are not evidence that the rule works.'),
     repeat ? field('Reason for the repeat', reason, 'Up to 2,000 characters. Stored with the runs and in the ledger.') : null,
     a.el,
     h('div', { class: 'small muted' }, 'Simulation only: stored daily bars replayed on simulated accounts. Nothing is ordered or sent anywhere.'));
-  confirmDialog(repeat ? 'Repeat the selection (contaminated)?' : 'Run the selection?', body, {
-    confirmLabel: repeat ? 'Run again (contaminated)' : 'Run the selection', danger: repeat,
-    runningText: 'Running the simulated selection backtests… keep this page open.',
+  confirmDialog(repeat ? 'Repeat the development pick (contaminated)?' : 'Run the development pick?', body, {
+    confirmLabel: repeat ? 'Run again (contaminated)' : 'Run the development pick', danger: repeat,
+    runningText: 'Running the simulated development backtests… keep this page open.',
     ready: () => (!a.box.checked ? 'Tick the box to confirm.' : repeat && !reason.value.trim() ? 'A repeat needs a written reason.' : true),
     onConfirm: async () => {
       const r = await P.api('POST', '/api/hxr/selection', { confirm: true, ...(repeat ? { reason: reason.value.trim() } : {}) });
-      toast(r.note || 'Selection finished (simulated).');
+      toast(r.note || 'Development pick finished (simulated).');
       S.sel = null;
       S.cand = null;
       S.run = null;
@@ -1053,7 +1093,7 @@ function prospectiveDialog(P) {
   const basket = (o.universe?.baskets?.prospective?.symbols || []).concat(spcx ? o.universe?.baskets?.prospective?.addWhenConfirmed || [] : []);
   const a = ack('I understand there is only one prospective account and it is never restarted.');
   const body = h('div', { class: 'stack', style: { gap: '10px' } },
-    notice('info', `Starts the one prospective simulated account: ${f.version} and the hold side by side, each from a simulated ${usd(startingCash(o))} in ${basket.length} equal sleeves (${basket.join(', ')}). It starts at the open of the first session after now.`),
+    notice('info', `Starts the one prospective simulated account: ${f.version} and the hold side by side on ${basket.length} stocks (${basket.join(', ')}), each from a simulated ${usd(startingCash(o))}. ${f.config?.account?.allocation === 'risk_sized' ? `${f.version} uses one pool of risk-sized cash (the frozen settings: ${riskText(f.config) || 'see the config'}); the hold uses equal sleeves.` : 'Both use equal sleeves.'} It starts at the open of the first session after now.`),
     armsList([base ? { ...base, label: `${f.version} (= ${base.label})` } : { version: f.version, label: f.version, rule: f.config?.rule }, hold].filter(Boolean)),
     h('ul', { class: 'bullets small' },
       h('li', {}, 'After each close, "Process now" or the scheduler processes the completed session: each decision is recorded with the time it was recorded, and counts as on time only if recorded before the next session\'s open.'),
@@ -1307,10 +1347,11 @@ function metricsTable(m, n, { hxLabel = 'HXR', fills = null, cmp = null, benchLa
     ...(m.pooled ? [
       ['Buy-backs below the sale price, apart from fresh entries at or above it', [
         ['Buy-backs (below the previous sale price): holdings · net P/L', `${int(bb?.count)} · ${sMoney(bb?.pnl)}`],
+        ['Buy-backs: average change of the buy-back price from the sale price', bb?.avgChangeFromSalePct != null ? pct(bb.avgChangeFromSalePct) : '—'],
         ['Fresh entries (at or above the previous sale price, or never held): holdings · net P/L', `${int(fe?.holdings)} · ${sMoney(fe?.pnl)}`],
         ['Fresh entries after a missed rebound · never held or lapsed', `${int(fe?.afterMissedRebound)} · ${int(fe?.neverHeldOrLapsed)}`],
         ['Average premium of a fresh entry over the previous sale price', fe?.withPreviousExit ? pct(fe.avgPremiumPct) : '—'],
-        ['Average sessions from a missed rebound to the fresh entry', fe?.avgSessionsToFreshEntry != null ? ratio(fe.avgSessionsToFreshEntry, 0) : '—'],
+        ['Average sessions out from the sale to a fresh entry after a missed rebound', fe?.avgSessionsToFreshEntry != null ? ratio(fe.avgSessionsToFreshEntry, 0) : '—'],
         ['Missed rebounds (price back at or above the sale price before any buy-back) · stocks retired by policy A', `${int(m.reboundsMissedEvents?.count)} · ${int(m.reboundsMissedEvents?.retired)}`],
         ['Exits at the initial-loss level · exits by the rule', `${int(m.initialLossExits)} · ${int(m.ruleExits)}`],
       ], true],
@@ -1318,11 +1359,12 @@ function metricsTable(m, n, { hxLabel = 'HXR', fills = null, cmp = null, benchLa
         ['Buys: average position · average planned loss', `${money(sz?.avgPositionUsd)} · ${money(sz?.avgPlannedLossUsd)}`],
         ['Which cap bound the size (counts)', sz?.bindingCaps ? Object.entries(sz.bindingCaps).map(([k, v]) => `${k} ${v}`).join(', ') || '—' : '—'],
         ['Signals that lapsed (by reason)', sz?.lapsedSignals ? Object.entries(sz.lapsedSignals).map(([k, v]) => `${k} ${v}`).join(', ') || 'none' : '—'],
-        ['Stocks never entered', (m.neverEntered || []).join(', ') || 'none'],
+        ['Stocks never entered (how long each waited)', (m.neverEnteredWaits || []).length ? m.neverEnteredWaits.map((w) => `${w.symbol}: ${w.sessionsWaited != null ? `waited ${plural(w.sessionsWaited, 'session')}${w.waitingSince ? ` from ${day(w.waitingSince)}` : ''}` : 'no entry rule while never held'}${w.retired ? ' (retired)' : ''}`).join('; ') : (m.neverEntered || []).join(', ') || 'none'],
         ['Open risk: average · maximum', `${money(ex?.avgOpenRiskUsd)} · ${money(ex?.maxOpenRiskUsd)}`],
         ['Tech/AI exposure: average · maximum', `${money(ex?.avgTechAiUsd)} · ${money(ex?.maxTechAiUsd)}`],
         ['Invested fraction (average) · return on average invested capital', `${pctPlain(ex?.investedFractionPct, 1)} · ${pct(ex?.returnOnAvgInvestedPct)}`],
         ['Pauses of new entries: episodes · sessions paused', `${int(pa?.count)} · ${int(pa?.sessions)}`],
+        ['Pause episodes (dates · deepest decline from the peak · length)', (pa?.episodes || []).length ? pa.episodes.map((e) => `${day(e.from)} – ${e.to ? day(e.to) : 'still paused at the end'} · ${money(e.deepest)} · ${plural(e.sessions, 'session')}`).join('; ') : 'none'],
       ], true],
     ] : []),
     [`Performance against the benchmark (${benchLabel})`, [
