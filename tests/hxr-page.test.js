@@ -57,7 +57,7 @@ test('overview: every config carries its rule, status and assumptions before any
       'x3a-0.3.0': 'comparison', 'x3b-0.3.0': 'comparison', 'x3c-0.3.0': 'comparison',
     });
     assert.equal(o.prereg.id, 'hxr-prereg-3a');
-    assert.equal(o.pickRule, 'pending_owner_choice');
+    assert.equal(o.pickRule, 'ending_value');
     assert.equal(o.validation, null);
     assert.deepEqual(o.benchmarks, ['hold', 'holdDayOne']);
     assert.deepEqual(Object.keys(o.neighbours), ['x1', 'x2']);

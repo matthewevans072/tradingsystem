@@ -308,8 +308,9 @@ const DAY1 = (o) => M({ roundTrips: 0, maxDrawdownPct: 25, returnToDrawdown: 0.5
 
 test('pick rule (a) most profit and (b) best return per unit of fall, each against both benchmarks; pending refuses', () => {
   const sel = clone(CRITERIA.selection);
+  assert.equal(sel.pickRule, 'ending_value', 'amendment 3b (2026-10-23)');
   const c = (name, roundTrips, endValue, returnToDrawdown, maxDrawdownPct = 20) => ({ name, metrics: M({ roundTrips, endValue, returnToDrawdown, maxDrawdownPct }) });
-  const pending = selectCandidate(sel, { hold: HOLD(), holdDayOne: DAY1(), candidates: [c('x1a', 12, 30000, 2)] });
+  const pending = selectCandidate({ ...sel, pickRule: 'pending_owner_choice' }, { hold: HOLD(), holdDayOne: DAY1(), candidates: [c('x1a', 12, 30000, 2)] });
   assert.equal(pending.chosen, null);
   assert.match(pending.reason, /pending the owner's choice/);
   // (a): the highest ending value above both benchmarks' (21000 and 19000); a tie goes to the smaller decline; 9 round trips do not qualify.

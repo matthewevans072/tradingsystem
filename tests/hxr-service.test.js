@@ -71,7 +71,7 @@ test('no keys, demo workspace and the static separation rules', async () => {
   assert.equal(o.notice, NOTICE);
   assert.equal(o.settings.alpacaKeys, false);
   assert.deepEqual(Object.fromEntries(Object.entries(o.readiness.periods).map(([k, p]) => [k, p.usable])), { development: false, validation: false, final: false, fullList: false });
-  assert.equal(o.pickRule, 'pending_owner_choice');
+  assert.equal(o.pickRule, 'ending_value', 'amendment 3b');
   assert.equal(o.decisions.mu, null, 'the MU decision is pending');
   await rejectsWith(hxr.runSelection({ confirm: true }), 409, /pending MU decision/);
   throwsWith(() => hxr.setMuDecision({ choice: 'keep' }), 400, /confirm: true/);
@@ -82,9 +82,17 @@ test('no keys, demo workspace and the static separation rules', async () => {
   hxr.setMuDecision({ choice: 'keep', confirm: true });
   assert.deepEqual(hxr.overview().decisions.muHistory.map((d) => d.choice), ['drop', 'keep']);
   assert.deepEqual(store.listExperiments(hxr.db).map((e) => e.what), ['MU decision: drop MU from the evaluation', 'MU decision: keep MU in the evaluation']);
-  // With the repository's criteria file the pick rule is still pending the owner's choice (amendment 3b): nothing runs.
-  await rejectsWith(hxr.runSelection({ confirm: true }), 409, /pick rule is pending the owner's choice/);
+  await rejectsWith(hxr.runSelection({ confirm: true }), 409, /development period is not ready/);
   await rejectsWith(hxr.runSelection({}), 400, /confirm: true/);
+  // A criteria file that still carries the amendment-3a placeholder refuses the development pick outright (before readiness).
+  const pendingPath = path.join(dir, 'criteria-pending.json');
+  const repoCriteria = JSON.parse(fs.readFileSync(CRITERIA_PATH, 'utf8'));
+  fs.writeFileSync(pendingPath, JSON.stringify({ ...repoCriteria, selection: { ...repoCriteria.selection, pickRule: 'pending_owner_choice' } }));
+  const pending = createHxr(hxrCtx(dir, 'real', {}), { criteriaPath: pendingPath });
+  assert.equal(pending.overview().pickRule, 'pending_owner_choice');
+  await rejectsWith(pending.runSelection({ confirm: true }), 409, /pick rule is pending the owner's choice/);
+  assert.equal(store.listLedger(pending.db).length, 0);
+  pending.close();
   await rejectsWith(hxr.runValidation({ confirm: true }), 409, /No frozen version/);
   await rejectsWith(hxr.runEvaluation({ confirm: true }), 409, /No frozen version/);
   throwsWith(() => hxr.startProspective({ confirm: true }), 409, /No frozen version/);
@@ -126,11 +134,8 @@ test('download, readiness, selection and evaluation ledgers, prospective account
     return { ...res, text: async () => JSON.stringify(body) };
   };
   const fake = fakeAlpaca({ clock: t.clock, market: MARKET, news: NEWS, handler });
-  // The owner's pick rule, as amendment 3b would record it in criteria-hxr-v3a.json (a copy for the test; the repository file stays pending).
-  const criteriaPath = path.join(dir, 'criteria-test.json');
-  const criteriaRepo = JSON.parse(fs.readFileSync(CRITERIA_PATH, 'utf8'));
-  fs.writeFileSync(criteriaPath, JSON.stringify({ ...criteriaRepo, selection: { ...criteriaRepo.selection, pickRule: 'ending_value' } }));
-  const hxr = createHxr(hxrCtx(dir), { clock: t.clock, fetchImpl: fake.fetchImpl, sleep: async () => {}, criteriaPath });
+  // The repository's criteria file, with the pick rule amendment 3b recorded (ending_value).
+  const hxr = createHxr(hxrCtx(dir), { clock: t.clock, fetchImpl: fake.fetchImpl, sleep: async () => {} });
   const db = hxr.db;
 
   // ---------- download ----------

@@ -10,7 +10,8 @@
   },
   "selection": {
     "minRoundTrips": 10,
-    "pickRule": "pending_owner_choice",
+    "pickRule": "ending_value",
+    "pickRuleRecorded": "amendment 3b, 2026-10-23, before any run: ending_value (most profit), chosen by the owner; return_to_drawdown is not used",
     "pickRules": {
       "ending_value": {
         "metric": "ending account value after costs",

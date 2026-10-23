@@ -38,10 +38,12 @@ HXR is kept apart from everything else in Signal Desk:
    - Keep or drop Micron in the evaluation. Dropping it means a restated
      pre-registration before anything runs.
 4. **Run the development pick (once).**
-   - Needs amendment 3b first: `selection.pickRule` in `criteria-hxr-v3a.json`
-     must say `ending_value` (most profit) or `return_to_drawdown` (best
-     return per unit of fall). While it says `pending_owner_choice` the run
-     is refused.
+   - Pick rule (amendment 3b, recorded 2026-10-23 in `criteria-hxr-v3a.json`
+     as `selection.pickRule = ending_value`): most profit. The qualifying
+     candidate with the highest ending account value after costs wins, if it
+     beats both benchmarks on ending value; a tie goes to the smaller largest
+     decline, which is reported next to it. (The code refuses the run while a
+     criteria file still says `pending_owner_choice`.)
    - Runs the fully invested hold, the day-one hold, the six candidates
      (X1A–X1C, X2A–X2C) and the three comparisons (X3A–X3C) on the
      development period (2017-10-02 to 2021-12-31), each also with first

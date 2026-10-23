@@ -126,7 +126,7 @@ test('API: /api/hxr routes through the real server', { timeout: 120000 }, async 
     assert.equal((await s.api('GET', '/api/hxr/overview')).body.decisions.mu.choice, 'keep');
     r = await s.api('POST', '/api/hxr/selection', { confirm: true });
     assert.equal(r.status, 409);
-    assert.match(r.body.error, /pick rule is pending the owner's choice/, 'amendment 3b first (criteria-hxr-v3a.json)');
+    assert.match(r.body.error, /development period is not ready/, 'the pick rule is recorded (amendment 3b); no data yet');
     assert.equal((await s.api('GET', '/api/hxr/runs?kind=validation')).status, 200);
     r = await s.api('POST', '/api/hxr/spcx', { confirmed: true, confirm: true });
     assert.equal(r.status, 200);

@@ -291,7 +291,7 @@ test('criteria: G1-G6 and P1-P4 with their numbers', () => {
   // criteria-hxr-v3a: G6 for ten stocks (at most one may fail), the validation gate, the pick rule pending the owner's choice, two benchmarks.
   assert.equal(c.name, 'criteria-hxr-v3a');
   assert.equal(criterion(c, 'G6').minPassing, 9);
-  assert.equal(c.selection.pickRule, 'pending_owner_choice');
+  assert.equal(c.selection.pickRule, 'ending_value', 'amendment 3b (2026-10-23): most profit');
   assert.deepEqual(c.selection.benchmarks, ['hold', 'hold_day_one']);
   assert.equal(c.selection.pickRules.return_to_drawdown.mustReachTimesBenchmarks, 1.1);
   assert.deepEqual([c.validation.V1.minRoundTrips, c.validation.V2.minRatioToHold, c.validation.V2.benchmarks], [10, 1.1, ['hold', 'hold_day_one']]);
