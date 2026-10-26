@@ -146,3 +146,75 @@ Run 4 (X1B).
 - **[Hypothesis]** Day one used the cash in alphabetical order (five positions near the US$3,000 cap). The other five stocks then depended on later fresh entries, which the pause blocked. This would explain the high cash share. How much the corrected tech/AI cap would change it is not predicted here.
 - **[Hypothesis]** The 243 skips whose stored open-risk room is below zero happened while the open risk of existing holdings exceeded the US$750 budget. Open risk is shares × (close − exit level), so it grows when a holding rises and its exit level does not rise with it (the initial-loss level never moves; the X1 level moves only at a new recovery point). If so, a winning holding blocks new entries. Checking this needs the stored `openRiskNow` of each skip set against its holdings, which this report does not tabulate.
 - **[Hypothesis]** The low cycle counts come from exits followed by missed rebounds more often than from buy-backs below the sale. Compare the rebound_missed counts with the completed cycles in the development report.
+
+---
+
+## Supplement (2026-10-26, second pass)
+
+Same source and rules as above: `data/hxr-sim.sqlite` opened read-only, the run tables of runs 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 only, no bars, nothing run. Labels as above.
+
+### a. Corrected totals: base runs and VWAP reruns apart
+
+Section 1 above added the base runs and their VWAP reruns together. Counting them separately **[Recorded]**: counts of stored `entry_skipped` warnings, by reason code:
+
+| Run set | Runs | paused | budget | of which: no binding cap recorded | other |
+|---|---|---|---|---|---|
+| Base costs | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 | 2999 | 318 | 121 | 0 |
+| VWAP reruns | 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 | 3046 | 307 | 122 | 0 |
+
+The VWAP reruns repeat the base decisions with different fill prices, so adding them double-counts the same situations. The base figures are the ones to quote.
+
+### b. Skipped buys per stock and reason (base runs) **[Recorded]**
+
+- **Hold (fully invested)** (run 1): none.
+- **Hold day-one positions** (run 2): MU: budget 1; PYPL: budget 1; SNAP: budget 1; TSLA: budget 1; VST: budget 1.
+- **X1A** (run 3): MU: budget 2, budget (no binding cap recorded) 2; PYPL: budget 2, budget (no binding cap recorded) 3; SNAP: budget 2, budget (no binding cap recorded) 7; TSLA: budget 2, budget (no binding cap recorded) 4; VST: budget 4, budget (no binding cap recorded) 8.
+- **X1B** (run 4): MU: budget 2, budget (no binding cap recorded) 8, paused 51; PYPL: budget 2, budget (no binding cap recorded) 5, paused 50; SNAP: budget 2, budget (no binding cap recorded) 10, paused 49; TSLA: budget 4, budget (no binding cap recorded) 5, paused 47; VST: budget 5, budget (no binding cap recorded) 12, paused 51; META: budget (no binding cap recorded) 5, budget 1, paused 51; GOOG: budget 4, budget (no binding cap recorded) 7, paused 56; INTC: budget (no binding cap recorded) 3, paused 57; CSCO: budget (no binding cap recorded) 3, budget 1, paused 48; AMZN: paused 50. Paused skips: 510, over 10 distinct stocks (TSLA, MU, PYPL, SNAP, AMZN, GOOG, INTC, CSCO, META, VST), first 2018-10-15, last 2021-12-28.
+- **X1C** (run 5): MU: budget 2, budget (no binding cap recorded) 4, paused 48; PYPL: budget 2, budget (no binding cap recorded) 5, paused 49; SNAP: budget 3, budget (no binding cap recorded) 7, paused 48; TSLA: budget 2, budget (no binding cap recorded) 4, paused 45; VST: budget 3, budget (no binding cap recorded) 12, paused 47; GOOG: budget (no binding cap recorded) 4, budget 5, paused 49; META: budget (no binding cap recorded) 1, paused 51; INTC: budget (no binding cap recorded) 2, paused 51; CSCO: budget 1, paused 44; AMZN: paused 45. Paused skips: 477, over 10 distinct stocks (META, MU, SNAP, PYPL, TSLA, INTC, AMZN, GOOG, CSCO, VST), first 2018-11-05, last 2021-12-28.
+- **X2A** (run 6): MU: budget 1; PYPL: budget 1; SNAP: budget 1; TSLA: budget 1; VST: budget 2.
+- **X2B** (run 7): MU: budget 2, paused 55; PYPL: budget 2, paused 53; SNAP: budget 1, paused 49; TSLA: budget 2, paused 50; VST: budget 4, paused 54; CSCO: budget 7, paused 51; META: budget 5, paused 54; AMZN: budget 6, paused 53; GOOG: budget 7, paused 59; INTC: budget 2, paused 59. Paused skips: 537, over 10 distinct stocks (TSLA, VST, AMZN, GOOG, CSCO, MU, PYPL, INTC, META, SNAP), first 2018-08-06, last 2021-12-28.
+- **X2C** (run 8): MU: budget 1, paused 55; PYPL: budget 1, paused 49; SNAP: budget 1, paused 49; TSLA: budget 1, paused 50; VST: budget 2, paused 51; GOOG: budget 3, paused 59; META: budget 2, paused 51; CSCO: budget 2, paused 51; AMZN: budget 1, paused 53; INTC: paused 56. Paused skips: 524, over 10 distinct stocks (TSLA, AMZN, GOOG, CSCO, MU, SNAP, INTC, META, VST, PYPL), first 2018-08-06, last 2021-12-28.
+- **X3A** (run 9): MU: budget 1; PYPL: budget 1; SNAP: budget 1; TSLA: budget 1; VST: budget 2.
+- **X3B** (run 10): MU: budget 2, paused 48; PYPL: budget 3, paused 48; SNAP: budget 1, paused 47; TSLA: budget 2, paused 45; VST: budget 6, paused 50; AMZN: budget 11, paused 48; CSCO: budget 10, paused 47; META: budget 6, paused 50; GOOG: budget 11, paused 53; INTC: budget 3, paused 53. Paused skips: 489, over 10 distinct stocks (CSCO, META, SNAP, AMZN, PYPL, VST, TSLA, GOOG, INTC, MU), first 2018-11-21, last 2021-12-28.
+- **X3C** (run 11): MU: budget 1, paused 46; PYPL: budget 1, paused 42; SNAP: budget 1, paused 44; TSLA: budget 1, paused 44; VST: budget 2, paused 48; CSCO: budget 5, paused 47; META: budget 2, paused 46; GOOG: budget 5, paused 49; AMZN: budget 4, paused 45; INTC: paused 51. Paused skips: 462, over 10 distinct stocks (CSCO, VST, TSLA, INTC, AMZN, GOOG, META, MU, PYPL, SNAP), first 2018-11-21, last 2021-12-28.
+
+### c. Skips with no binding cap recorded: which stored caps were at or below zero
+
+- **X1A** (run 3) **[Derived]** (caps with a stored value ≤ 0, per record): 24 records; 0 with more than one cap at or below zero; by combination: openRisk 24.
+- **X1B** (run 4) **[Derived]** (caps with a stored value ≤ 0, per record): 58 records; 0 with more than one cap at or below zero; by combination: openRisk 58.
+- **X1C** (run 5) **[Derived]** (caps with a stored value ≤ 0, per record): 39 records; 0 with more than one cap at or below zero; by combination: openRisk 39.
+
+### d. Pause timelines (base runs with a pause) 
+
+`peak`, `value` and `decline` at the start are copied from the stored `pause_start` warning **[Recorded]**. "Highest value afterwards" is the maximum stored equity on or after the start date **[Derived]**. "Within US$750 of the peak" asks whether any stored equity point after the start has `peak − equity ≤ 750`, using the peak stored with that equity point **[Derived]**.
+
+| Run | Start | Peak at start | Account value at start | Decline at start | Highest value afterwards | Any close within US$750 of the peak afterwards? | Pause ended? |
+|---|---|---|---|---|---|---|---|
+| X1B (4) | 2018-10-05 | US$20399.73 | US$18825.50 | US$1574.23 | US$18825.50 | no | no (open at the end) |
+| X1C (5) | 2018-10-19 | US$19967.08 | US$18386.67 | US$1580.41 | US$18503.02 | no | no (open at the end) |
+| X2B (7) | 2018-07-27 | US$16690.86 | US$15187.58 | US$1503.28 | US$15187.58 | no | no (open at the end) |
+| X2C (8) | 2018-07-27 | US$16167.08 | US$14536.82 | US$1630.26 | US$14536.82 | no | no (open at the end) |
+| X3B (10) | 2018-11-12 | US$15707.46 | US$14120.90 | US$1586.56 | US$14339.79 | no | no (open at the end) |
+| X3C (11) | 2018-11-12 | US$16179.99 | US$14554.71 | US$1625.27 | US$14670.43 | no | no (open at the end) |
+
+The day-one hold also records pauses, but it never buys after day one, so its pauses change nothing (see section 3 above).
+
+### e. Do the no-binding skips coincide with holdings still at their initial-loss level?
+
+Method **[Derived]**:
+- For each skip, read the stored equity point of the same date. Each holding (shares > 0) in it has a stored effective `level` and `openRisk`.
+- Take the holding's initial-loss level from its most recent stored buy fill (`initialLossLevel`) before that date.
+- A holding is "at its initial-loss level" when the two agree within 0.0001.
+- Stored `openRisk` = shares × (close − effective level), as the engine records it.
+
+| Run | No-binding skips | Every holding at its initial-loss level | Some holdings at it | No equity point that day | Share of summed open risk from holdings at their initial-loss level | Skips on a day with stored open risk above US$750 |
+|---|---|---|---|---|---|---|
+| X1A (3) | 24 | 0 | 1 | 0 | 0.63% | 24 |
+| X1B (4) | 58 | 0 | 25 | 0 | 17.79% | 58 |
+| X1C (5) | 39 | 0 | 14 | 0 | 13.06% | 39 |
+
+**[Derived]** Of 121 no-binding skips in the base runs, 0 fell on a day when every holding's effective level was still its initial-loss level, 40 on a day when some holdings' levels were, and 81 on a day when none were. 121 of the 121 fell on a day with stored open risk above US$750.
+
+**[Derived] Conclusion:** the hypothesis that these skips coincide with X1 holdings still at their initial-loss level is **refuted as stated**. Most of the open risk that blocked the entries came from holdings whose X1 level had already risen above the initial-loss level (the column above shows the small share from holdings still at it). What the records do support is the broader point: on every one of these days, the open risk of existing holdings, measured as shares × (close − effective level), exceeded the US$750 budget. The open risk of winners grows as their price rises faster than their exit level.
+
+**[Not stored / not observable]** Overlap between the pause and the budget limits cannot be observed. While the account is paused, a buy signal is skipped before it is sized, so no sizing record exists to show whether a budget would also have blocked it.
