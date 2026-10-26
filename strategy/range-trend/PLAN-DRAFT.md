@@ -1,7 +1,43 @@
-# Range-trend (working name): plan
+# Range-trend (working name): plan, version 0.2
 
-> **DRAFT. Nothing in this document is approved, built or run.** No code exists for it. Every setting below is
-> a proposal for the owner to accept, change or reject. Written 2026-10-26.
+> **DRAFT. Nothing in this document is built or run, and no code exists for it.** Version 0.2 records the
+> owner's research decisions (section 0) as experimental choices. Every value marked **[OWNER TO CONFIRM]** is a
+> proposal; nothing is built until the owner confirms those values in writing. Version 0.1 written 2026-10-26;
+> version 0.2 written 2026-10-26.
+
+## 0. The owner's research decisions (version 0.2)
+
+These are choices about **what to test**. They do not reproduce the owner's own trading, which reacts during
+the day, uses news and judgement, and holds through declines when the business case is intact. A result for
+these rules says nothing directly about that.
+
+1. **Range entry:** dip and recovery entries are tested as separate runs (H1, H2). Neither is a default.
+2. **Breakout entry:** immediate and pullback entries are tested as separate runs (H3, H4). Neither is
+   confirmed as a preference.
+3. **Support failure:** two consecutive closes. This is a **provisional assumption** for testing, not a
+   finding.
+4. **Re-entry above the last sale price:** each family is tested with and without the below-sale limit (H5).
+   Neither is adopted as a rule.
+5. **Money per stock:** the portfolio rules of section 6a, every value [OWNER TO CONFIRM]. No adding to
+   positions.
+6. **Decision frequency:** daily, after the close, with fills at the next open. This **does not reproduce
+   intraday reactions** (section 2.5).
+7. **Success:** the three tiers of section 7a, every threshold [OWNER TO CONFIRM].
+8. **Experiment budget:** 11 runs plus 1 reserve, used only for a verified code defect (section 6).
+9. **Evaluation data:** option A, B or C of section 8a, recorded in `EVALUATION-PROTOCOL.md` before the first
+   practice run.
+10. **Stocks:** HXR's ten (MU, AMZN, META, TSLA, VST, GOOG, INTC, CSCO, PYPL, SNAP). They were **hand-picked
+    with hindsight** (the owner's holdings plus four known laggards). Results apply only to these ten stocks
+    and are not evidence about any other list.
+
+**Changes from version 0.1:**
+- Section 0 is new.
+- The provisional portfolio set is replaced by the proposal in 6a.
+- 6b lists two things not inherited from HXR.
+- Success tiers are added (7a).
+- The exposure-matched hold now uses the run's invested fraction day by day (7).
+- The evaluation protocol is added (8a).
+- The budget rules are tightened (6).
 
 The idea: a stock that keeps bouncing between a lower and an upper price area is traded as a **range**. A stock
 that breaks out of its range and stays strong is held as a **trend**. The two are tested separately before they
@@ -58,19 +94,16 @@ throwaway cloud folder. Counts, listing dates and split ratios only; no prices w
 - I pay attention during the day. That is my attention, not an agreed decision frequency for the system.
 - **Panic and social-media influence are never signals.**
 
-### 2.2 Unresolved owner decisions
+### 2.2 Still open after version 0.2
 
-1. **Default range entry:** buy the dip, or buy the recovery. The plan compares both.
-2. **Breakout entry:** none, immediate, or wait for a pullback.
-3. **Support failure:** one close or several closes.
-4. **Re-entry above the last sale price:** allowed or not (see 2.4).
-5. **Position limits and adding to winners.**
-6. **Tech/AI concentration cap:** whether there is one, and at what level.
-7. **Decision frequency:** daily or intraday (see 2.5).
-8. **Definition of success:** which measures decide whether this is worth pursuing.
-9. **Evaluation data:** which period, after reading the inventory in section 1.
-10. **Experiment budget** (section 6).
-11. **Which stocks.**
+1. **Portfolio values:** position cap, risk per trade, total risk at entry (5% or none) and sizing stops
+   (section 6a) [OWNER TO CONFIRM].
+2. **Success tiers:** thresholds (section 7a) [OWNER TO CONFIRM].
+3. **Return against drawdown:** how much lower return the owner would accept for a smaller drawdown, if any.
+   This stays open (section 7a).
+4. **Evaluation option:** A, B or C (section 8a), recorded in `EVALUATION-PROTOCOL.md`.
+5. **Tech/AI concentration cap:** the 6a proposal has none beyond the 20% position cap.
+6. **Time limit for a range trade** that neither breaks down nor reaches the top (section 4): none proposed.
 
 ### 2.3 Proposed experimental settings (each a hypothesis, none approved)
 
@@ -84,8 +117,8 @@ throwaway cloud folder. Counts, listing dates and split ratios only; no prices w
 | Breakdown | 2 consecutive closes more than half a typical move below the range bottom | Support has failed. Two closes, so that a single bad day is not enough. |
 | Range exit near the top | The resistance-rejection exit (section 4) | Sell only when the price reaches the top and is turned back down. |
 | Trend exits | 2 closes back below the old top, or a close more than 3 typical moves below the highest close since buying | The breakout failed, or the trend has given back a normal-sized move. |
-| Portfolio (provisional, one set) | US$15,000 shared cash; at most US$3,000 per position (so at most 5 positions); no adding to a position; whole shares; when several signals come on the same day, alphabetical order; no tech/AI cap beyond the position limits | A simple, fixed set, so that results compare the rules and not the money management. Changing it is a separate experiment. |
-| Decision timing (provisional) | Decide after the close; fill at the next open | See 2.5. |
+| Portfolio | See section 6a [OWNER TO CONFIRM] | One fixed set within each family, so that results compare the rules and not the money management. Changing it is a separate experiment. |
+| Decision timing | Decide after the close; fill at the next open (decision 6) | See 2.5. |
 | Costs | HXR's cost model: calibrated half-spread, slippage, US$0 commission, sell fees | So the results can be compared with HXR's. |
 
 ### 2.4 What re-entry above the last sale price would mean (owner item 6)
@@ -116,7 +149,7 @@ decides.
 - It is harder to follow by hand, and closer to the reactive trading the owner wants to avoid (panic is never a
   signal).
 
-The provisional proposal is after the close. It is the owner's decision.
+The owner chose after the close as an experimental choice (section 0, decision 6). It does not reproduce intraday reactions.
 
 ---
 
@@ -232,27 +265,61 @@ either:
 
 ---
 
-## 6. Experiment budget (proposed; the owner confirms)
+## 6. Experiment budget (decision 8)
 
-All runs use 2017-10-02 to 2021-12-31 and are labelled **exploratory**. That period is already development data
-(section 1).
+All runs use 2017-10-02 to 2021-12-31 and are labelled **exploratory practice runs**. That period is already
+development data (section 1).
 
 | Family | Runs | Variants |
 |---|---|---|
 | Range | 4 | Dip or recovery entry, each with and without the re-entry limit |
 | Trend | 4 | Immediate or pullback entry, each with and without the re-entry limit |
-| HXR corrected-cap diagnostic | 1 | H6. Contaminated, never counted |
+| HXR corrected-cap diagnostic | 1 | H6: an HXR variant run, not a range-trend config. Marked contaminated, never counted |
 | Range + trend combination | up to 2 | Only if both families show measurable behaviour |
 | **Total** | **11** | |
-| Reserve | 1 (the 12th) | Used only to re-run a run invalidated by a verified code defect, with the defect and the re-run logged |
+| Reserve | 1 | **Only** to re-run a run invalidated by a verified code defect |
 
 - Every run is logged, failures included.
+- If the reserve is used, the broken result is **kept and logged** next to the re-run. It is never used for
+  tuning.
+- No run outside this table is possible: only these configs are runnable.
 - Range and trend are tested separately before they are combined.
 - Constant within each family: HXR's ten stocks, HXR's cost model, decisions after the close with fills at the
-  next open (provisional), US$15,000 shared cash, and the one provisional portfolio set. Changing any of these is
-  a separate experiment.
+  next open, US$15,000 shared cash and the portfolio rules of 6a.
 
----
+### 6a. Portfolio rules (proposal; every value [OWNER TO CONFIRM])
+
+All amounts are fractions of the **current account value** `V` at the decision close (cash plus holdings at
+that close). There is no adding to positions: one position per stock at a time.
+
+- **Sizing stop:**
+  - Range trades: frozen support `lo − 0.5 × m(entry)` **[OWNER TO CONFIRM]**. This is also the level the
+    breakdown exit uses.
+  - Trend trades: old high `hi − 0.5 × m(entry)` **[OWNER TO CONFIRM]**.
+- **Risk per trade:** `1% × V` **[OWNER TO CONFIRM]**. Shares by risk = `floor(1% × V / (c − stop))`, where `c` is
+  the decision close.
+- **Position cap:** `20% × V` **[OWNER TO CONFIRM]**. Shares by cap = `floor(20% × V / c)`.
+- **Total risk at entry:** the sum over open positions of `shares × (entry price − sizing stop)`, measured **at
+  entry only**, at most `5% × V`, **or no limit** **[OWNER TO CONFIRM: 5% or none]**.
+- **Several signals on the same day:**
+  1. The available cash is shared equally between that day's signals.
+  2. Each signal's own limits apply (risk per trade, position cap, total risk at entry).
+  3. Whole shares.
+  4. Cash left over stays in cash. It is not passed on to the other signals.
+- **Below one share:** no position, and the skip is recorded with its reason.
+- **Cash never goes below zero.**
+
+### 6b. Not inherited from HXR, and why
+
+- **The account-decline pause.** In a mostly-cash account it can lock permanently. The HXR development records
+  show this: in all six base runs that paused, the pause started in 2018. The account never again came within
+  US$750 of its peak, and 2,999 buy signals were skipped while paused (`strategy/hxr/reports/2026-10-26-diagnosis.md`,
+  supplement a and d).
+- **The open-risk budget measured from current value.** HXR measures open risk as shares × (current close −
+  exit level), so a rising winner uses up more and more of the budget. In the development records, all 121
+  base-run skips with no recorded binding cap fell on days with open risk above US$750, mostly from holdings
+  whose level had risen (diagnosis, supplement e).
+- **Instead, risk is measured at entry only** (6a): a winner never blocks a new buy by rising.
 
 ## 7. Benchmarks and reporting
 
@@ -260,31 +327,77 @@ The strategy starts in cash, so an "opening-positions hold" would simply hold ca
 reported against:
 - **(a) Buy and hold:** the fully invested equal-weight buy-and-hold of the same stocks (HXR's hold arm).
 - **(b) Cash at 0%.** Labelled as cash. It is not an exposure-matched comparison.
-- **(c) Optionally, an exposure-matched hold (derived).** The buy-and-hold scaled to the run's average
-  invested fraction `f`:
-  - `V(t) = V(t−1) × (1 + f × r_bh(t))`, where `r_bh(t)` is the buy-and-hold's daily return and `V(0)` = US$15,000.
-  - In words: a daily-rebalanced mix of `f` in the buy-and-hold and `1 − f` in cash at 0%, with no rebalancing
-    costs. Labelled derived.
+- **(c) Exposure-matched hold (derived, frictionless):**
+  - `B(t) = B(t−1) × (1 + f(t−1) × r(t))`, with `B(0)` = US$15,000.
+  - `r(t)` is the buy-and-hold's return from close `t−1` to close `t`.
+  - `f(t−1)` is the run's invested fraction (holdings ÷ account value) at close `t−1`.
+  - In words: each day it holds the buy-and-hold in the proportion the run was invested the day before, and
+    cash at 0% otherwise. It has no costs and no whole-share rounding. Labelled derived.
 
 **Per run:** net return after costs, maximum drawdown, average invested exposure and time in cash, trade count
 and holding periods, turnover and costs.
 
 No run is selected on its ending balance alone.
 
----
+### 7a. Success tiers (proposal; every threshold [OWNER TO CONFIRM])
+
+**Tier 1: the code does what the plan says** (synthetic data only, before any practice run):
+- every worked example in section 3 reproduces exactly;
+- no look-ahead, future-change and determinism tests pass;
+- accounting identities hold (cash + holdings = account value; costs and dividends reconcile);
+- sizing is hand-checked;
+- there is a scenario for every entry and exit.
+
+**Tier 2: the practice runs show measurable behaviour** (exploratory, 2017-10-02 to 2021-12-31):
+- at least **[OWNER TO CONFIRM: 30]** completed trades per family;
+- each hypothesis H1-H5 has its measures reported;
+- costs are below **[OWNER TO CONFIRM: 1%]** of the average account value per year.
+
+Tier 2 is a test of whether the rules can be judged. It is not evidence that they work.
+
+**Tier 3: the evaluation** (the one run, or the prospective record, chosen in 8a). The frozen candidate, after
+costs:
+- beats the exposure-matched hold (c) on net return; **and**
+- has a maximum drawdown no deeper than the buy-and-hold's (a) **[OWNER TO CONFIRM]**.
+
+**A smaller drawdown earns no credit on its own.** It counts only if the run also beats the exposure-matched
+hold. A run that simply holds more cash than the buy-and-hold will usually show a smaller drawdown.
+
+**Open:** how much lower return the owner would accept for a smaller drawdown. This is not decided. Until it
+is, Tier 3 uses only the two conditions above.
 
 ## 8. Sequence
 
-1. The owner decides the open points in 2.2.
-2. Build, with tests.
-3. The exploratory runs, within the budget.
-4. Freeze the rules.
-5. One evaluation run, on data the owner chooses after reading section 1.
-6. Prospective paper trading.
+1. The owner confirms the [OWNER TO CONFIRM] values in writing. That confirmation is the first entry of
+   `strategy/range-trend/EXPERIMENT-LOG.md`.
+2. Build, with the Tier 1 tests.
+3. The owner chooses the evaluation option and records it in `EVALUATION-PROTOCOL.md` (8a).
+4. The practice runs, within the budget, on separate instruction.
+5. Freeze the candidate.
+6. The evaluation, according to the protocol.
+7. Prospective paper trading.
 
 Once an evaluation result influences any change, that period becomes development data.
 
----
+### 8a. Evaluation protocol
+
+The owner chooses one option:
+
+- **(A) One historical run, 2022-01-03 to 2026-10-21**, with the prior-exposure disclosures of section 1:
+  - the consolidation-breakout runs of 2022-2024, and its holdout window;
+  - HXR's downloads and readiness checks;
+  - the owner's own viewing and trading.
+
+  It is a secondary evaluation, not independent evidence.
+- **(B) Prospective only:** paper trading from a start date onwards, with no historical evaluation.
+- **(C) Both:** (A), then (B).
+
+**The rules:**
+- The choice is recorded in `strategy/range-trend/EVALUATION-PROTOCOL.md` **before the first practice run**.
+  The code refuses practice runs until that file exists.
+- The candidate and the protocol are frozen, with their hashes, **before any evaluation result is
+  accessed**.
+- The evaluation runs once.
 
 ## 9. Limits
 
@@ -297,14 +410,18 @@ Once an evaluation result influences any change, that period becomes development
 
 ## Decisions that need the owner
 
-1. **Range entry default:** dip or recovery. Or let H1/H2 compare them first.
-2. **Breakout entries:** none, immediate or pullback. Or let H3/H4 compare them.
-3. **Support failure:** accept 2 closes, or choose 1.
-4. **Re-entry above the last sale price:** allowed or not. Or let H5 compare them.
-5. **Portfolio settings:** accept the provisional set (US$3,000 per position, 5 positions, no adding, no
-   tech/AI cap), or set your own.
-6. **Decision frequency:** after the close (proposed) or intraday.
-7. **Success measures** for the exploratory runs and the evaluation.
-8. **The experiment budget**, including whether the reserve slot exists.
-9. **Evaluation data**, chosen after reading section 1.
-10. **The stocks:** HXR's ten, or another list.
+1. **Confirm or change every [OWNER TO CONFIRM] value:**
+   - the position cap (20%);
+   - risk per trade (1%);
+   - total risk at entry (5% or none);
+   - both sizing stops;
+   - the Tier 2 thresholds (30 trades, 1% costs);
+   - the Tier 3 drawdown condition.
+
+   The confirmation, in writing, is recorded as the first entry of `EXPERIMENT-LOG.md`, and building starts
+   only after it.
+2. **Choose evaluation option A, B or C**, recorded in `EVALUATION-PROTOCOL.md` before any practice run.
+3. **Return against drawdown:** whether you would accept lower return for a smaller drawdown (open; not needed
+   to build).
+4. **Tech/AI concentration cap:** none in this proposal; add one if you want it.
+5. **Range-trade time limit:** none in this proposal.
