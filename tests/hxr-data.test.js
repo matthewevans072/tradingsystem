@@ -17,7 +17,7 @@ const r4 = (x) => Math.round(x * 10000) / 10000;
 
 const UNIVERSE = {
   symbols: [
-    { symbol: 'AAA', exchange: 'NASDAQ', listedFrom: '2024-01-02', baskets: ['A', 'B'] },
+    { symbol: 'AAA', exchange: 'NASDAQ', listedFrom: '2024-01-02', baskets: ['A', 'B'], techAi: true },
     { symbol: 'BBB', exchange: 'NYSE', listedFrom: '2024-01-02', baskets: ['A'] },
     { symbol: 'NB', exchange: 'NASDAQ', listedFrom: '2024-03-01', baskets: ['B'], note: 'History before 2024-03-01 is another company (Yandex-like) and is never used.' },
     { symbol: 'CCC', exchange: 'NASDAQ', listedFrom: '2024-01-02', baskets: [] },
@@ -169,6 +169,11 @@ test('engine inputs: listing cut-off, dividends before the listing ignored, spli
   seed(db);
   const inp = buildInputs(db, { universe: UNIVERSE, symbols: ['AAA', 'NB', 'CCC'], warmupFrom: '2024-01-02', end: '2024-06-28', excludedSessions: PERIODS.excludedSessions, start: '2024-05-01' });
   assert.deepEqual(inp.symbols.map((s) => s.symbol), ['AAA', 'NB', 'CCC']);
+  // The universe's tech/AI tags reach the engine (EXPERIMENT-LOG entry 18); the data hash covers market data and
+  // listings only, so an untagged copy of the universe gives the same hash.
+  assert.deepEqual(inp.symbols.map((s) => [s.symbol, s.techAi]), [['AAA', true], ['NB', false], ['CCC', false]]);
+  const untagged = { ...UNIVERSE, symbols: UNIVERSE.symbols.map(({ techAi, ...s }) => s) };
+  assert.equal(buildInputs(db, { universe: untagged, symbols: ['AAA', 'NB', 'CCC'], warmupFrom: '2024-01-02', end: '2024-06-28', excludedSessions: PERIODS.excludedSessions, start: '2024-05-01' }).dataHash, inp.dataHash);
   assert.equal(inp.sessions.length, ALL.length - 1);
   assert.ok(!inp.sessions.includes('2024-02-07') && !inp.days.has('2024-02-07'), 'the excluded session is skipped');
   assert.equal(inp.coverage.AAA.excludedSessions, 1);

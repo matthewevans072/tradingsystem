@@ -18,6 +18,7 @@ import { NO_HOST_KEYS } from './no-host-keys.js';
 import { fakeAlpaca, buildMarket, KEY_ID, SECRET_KEY, CRASH } from './hxr-fake-alpaca.js';
 import { loadConfig } from '../server/config.js';
 import { createHxr, attachHxr, NOTICE, REAL_ONLY, FROZEN_VERSION, HISTORICAL_CAVEAT, latestCompleteSession, firstSessionAfter } from '../server/hxr/service.js';
+import * as hxrService from '../server/hxr/service.js';
 import * as store from '../server/hxr/store.js';
 import { loadHxrConfig, hxrConfigHash, PREREG, CRITERIA_PATH } from '../server/hxr/config.js';
 import { createContext } from '../server/context.js';
@@ -234,6 +235,13 @@ test('download, readiness, selection and evaluation ledgers, prospective account
     assert.ok(full.equity.length > 1000 && full.fills.length >= 1 && full.run.metrics.sessions === full.equity.length, `${run.name} ${run.role}`);
     assert.equal(full.run.details.meta.simulated, true);
     if (run.role === 'hold') assert.equal(full.fills.length, 10, 'the fully invested hold buys every stock on day one');
+    // The universe's tags reach the engine, and the run records the code revision and a hash of its symbol metadata (entry 18).
+    if (full.run.kind === 'selection') {
+      assert.deepEqual(full.run.details.meta.symbols.filter((s) => !s.techAi).map((s) => s.symbol), ['VST'], `${run.name}: only VST untagged`);
+      assert.ok(hxrService.CODE_REVISION, 'service.js exports CODE_REVISION');
+      assert.equal(full.run.details.codeRevision, hxrService.CODE_REVISION, run.name);
+      assert.match(full.run.details.symbolsHash, /^[0-9a-f]{64}$/, run.name);
+    }
     if (run.role === 'hold_day_one') assert.ok(full.fills.every((f) => f.initial), 'the day-one hold never sells');
   }
   assert.equal(store.listLedger(db, { kind: 'selection' }).length, 1);
@@ -525,11 +533,13 @@ test('the pick is kept when its neighbour phase is interrupted; the neighbours r
   const dir = tempDir('hxr-svc-');
   const t = fakeClock(T0);
   const fake = fakeAlpaca({ clock: t.clock, market: MARKET, news: NEWS });
-  // Test fixture: a copy of the criteria with the cycle minimum lowered to 4, so that the synthetic prices
-  // (which give at most 4 cycles) produce a pick and the neighbour phase is reached. The repository file is unchanged.
+  // Test fixture: a copy of the criteria with the cycle minimum lowered to 3, so that the synthetic prices produce a
+  // pick and the neighbour phase is reached. With the tech/AI tags reaching the engine (EXPERIMENT-LOG entry 18) the
+  // cap stops further tech buys on day one, and the best candidates (X2B, X2C) complete 3 cycles here, not 4. The
+  // repository's criteria file is unchanged.
   const criteriaPath = path.join(dir, 'criteria-fixture.json');
   const repoCriteria = JSON.parse(fs.readFileSync(CRITERIA_PATH, 'utf8'));
-  fs.writeFileSync(criteriaPath, JSON.stringify({ ...repoCriteria, selection: { ...repoCriteria.selection, minRoundTrips: 4 } }));
+  fs.writeFileSync(criteriaPath, JSON.stringify({ ...repoCriteria, selection: { ...repoCriteria.selection, minRoundTrips: 3 } }));
   const opts = { clock: t.clock, fetchImpl: fake.fetchImpl, sleep: async () => {}, criteriaPath };
   let hxr = createHxr(hxrCtx(dir), opts);
   hxr.fetchData();

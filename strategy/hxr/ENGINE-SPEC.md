@@ -27,7 +27,7 @@ sends a notification or calls any broker or paper-trading endpoint.
 `createEngine({ config, symbols, period, calendar, inputs, state })`:
 
 - `config`: one validated HXR config: rule, costs, execution, dividends, cash and account.
-- `symbols`: `[{ symbol, exchange, listedFrom }]`, one sleeve each, in the listed order.
+- `symbols`: `[{ symbol, exchange, listedFrom, techAi }]`, one sleeve each, in the listed order (`techAi` from the universe; it feeds only the tech/AI exposure cap of risk-sized configs).
 - `period`: `{ warmupFrom, start, end }`. These are exchange-local dates; sessions come from `server/calendar.js` (NYSE).
 - `excludedSessions`: dates skipped for every symbol (`periods-hxr-v3.json`).
 - `inputs` for each session date, through `processSession(date, { bars, splits, dividends })`:
@@ -340,7 +340,9 @@ variants are triples (HXR, hold, day-one hold).
   - **Determinism**: identical output, including ids, on repeated runs.
 - `runBacktest(...)` returns:
   - `{ meta, fills, decisions, episodes, roundTrips, dividends, splits, equity, warnings, pendingAtEnd }`;
-  - `meta` holds the config hash, a data hash of every input used, the calibration hash, the period, the basket, the fill model, the delay and the engine version.
+  - `meta` holds the config hash, a data hash of every input used, the calibration hash, the period, the basket, the symbols with their metadata (`symbol, exchange, listedFrom, techAi`), the fill model, the delay and the engine version.
+  - **What the data hash covers.** `dataHash` (from `data.js` `buildInputs`) covers market data and listings only: the inputs method, each symbol's `symbol, exchange, listedFrom`, the period dates, the excluded sessions, the calibration hash and every session's bars, splits and dividends. It does **not** cover universe classifications such as `techAi`, so the same market data gives the same data hash whatever the tags (EXPERIMENT-LOG entry 18).
+  - **Provenance stored with every run** (`service.js` `storeRun`, from `hxr-code-2026-10-26-techai`): `details.codeRevision` (the `CODE_REVISION` label) and `details.symbolsHash` (SHA-256 of the canonical JSON of `meta.symbols`, the effective symbol metadata including `techAi`). Runs stored without `codeRevision` ran before the tech/AI tags reached backtests: `buildInputs` dropped them, so the tech/AI exposure cap never applied (EXPERIMENT-LOG entries 17 and 18). The prospective account builds its symbol list from `basketSymbols` and always carried the tags.
 
 ## 7. Metrics (`metrics.js`)
 

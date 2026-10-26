@@ -237,10 +237,13 @@ export function buildInputs(db, { universe, symbols, warmupFrom, end, excludedSe
   const byOrder = (a, b) => order.get(a.symbol) - order.get(b.symbol) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   for (const day of days.values()) { day.splits.sort(byOrder); day.dividends.sort(byOrder); }
 
-  const symbolList = entries.map((e) => ({ symbol: e.symbol, exchange: e.exchange, listedFrom: e.listedFrom }));
+  // The engine's symbol list carries the universe's tech/AI tag (EXPERIMENT-LOG entry 18). The data hash covers
+  // market data and listings only (symbol, exchange, listedFrom), not universe classifications such as techAi.
+  const listings = entries.map((e) => ({ symbol: e.symbol, exchange: e.exchange, listedFrom: e.listedFrom }));
+  const symbolList = entries.map((e) => ({ symbol: e.symbol, exchange: e.exchange, listedFrom: e.listedFrom, techAi: !!e.techAi }));
   const calibrationHash = spreadTable?.hash ?? null;
   const h = crypto.createHash('sha256');
-  h.update(canonicalJson({ method: INPUTS_METHOD, symbols: symbolList, warmupFrom, end, start, excluded: [...excluded].sort(), calibrationHash }));
+  h.update(canonicalJson({ method: INPUTS_METHOD, symbols: listings, warmupFrom, end, start, excluded: [...excluded].sort(), calibrationHash }));
   for (const d of sessions) {
     const day = days.get(d);
     const bars = entries.map((e) => { const b = day.bars[e.symbol]; return b ? [b.o, b.h, b.l, b.c, b.v, b.vw15] : null; });

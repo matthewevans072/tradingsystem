@@ -42,6 +42,9 @@ export const SUPERSEDED_FILES = ['hxr-c1-0.1.0.json', 'hxr-c2-0.1.0.json', 'hxr-
 const SUPERSEDED_PREREG = { 'hxr-c1-0.1.0.json': 'hxr-prereg-1', 'hxr-c2-0.1.0.json': 'hxr-prereg-1', 'hxr-c3-0.1.0.json': 'hxr-prereg-1', 'hxr-x1-0.2.0.json': 'hxr-prereg-2', 'hxr-x2-0.2.0.json': 'hxr-prereg-2', 'hxr-x3-0.2.0.json': 'hxr-prereg-2' };
 export const PREREG_FILES = ['PREREGISTRATION.md', 'PREREGISTRATION-2.md', 'PREREGISTRATION-3.md', 'PREREGISTRATION-3a.md', 'ENGINE-SPEC.md', 'universe-hxr-v3.json', 'periods-hxr-v3.json', 'criteria-hxr-v3a.json'];
 export const DAY_ONE_HOLD = 'hold-day-one';
+// Stored with every run (details.codeRevision). Runs stored before this label existed lack it: those ran with the
+// tech/AI tags dropped by data.js buildInputs (EXPERIMENT-LOG entries 17 and 18).
+export const CODE_REVISION = 'hxr-code-2026-10-26-techai';
 // PREREGISTRATION-3.md section 5.4 and PREREGISTRATION-3a.md section 1: one
 // setting changed at a time, for the winning candidate only, on the development
 // period only, reported only (dotted paths into the config).
@@ -379,6 +382,8 @@ export function createHxr(ctx, opts = {}) {
     store.updateRun(db, id, {
       status: 'done', dataHash: result.meta.dataHash, calibrationHash: result.meta.calibrationHash, metrics, finishedAt: at,
       details: {
+        // The code revision and a hash of the effective symbol metadata (meta.symbols, with the tech/AI tags).
+        codeRevision: CODE_REVISION, symbolsHash: sha(canonicalJson(result.meta.symbols)),
         meta: result.meta, roundTrips: result.roundTrips, openExits: result.openExits, pendingAtEnd: result.pendingAtEnd, dividends: result.dividends,
         splits: result.splits, warnings: result.warnings, receivables: result.receivables, sleeves: result.sleeves, ...extra,
       },
