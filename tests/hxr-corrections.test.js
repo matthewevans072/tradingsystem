@@ -185,3 +185,17 @@ test('report items (correction 12): never-entered waits, buy-backs against the s
   near(computeRunMetrics(b).buyBacks.avgChangeFromSalePct, rt.changePct);
   assert.ok(rt.changePct < 0, 'bought back below the sale price');
 });
+
+test('reporting (entry 19): a buy skipped because open risk is already above the budget records openRisk as binding', () => {
+  // ZZZ is held from day one: asks min(40 / 2, 150) = 20 of planned loss at d = 2.5, so 8 shares; L0 = 100.04 - 2.5.
+  // It rises without a recovery point, so its level stays L0 and its open risk grows: 8 x (109 - 97.54) = 91.68 > 40.
+  // AAA (never held: no warm-up bars) gets a fresh-entry signal at session 29; its open-risk room is negative.
+  const holder = [...flat(WARM), [100, 101], [101, 103], [103, 105], [105, 107], [107, 109], [109, 110]];
+  const r = run(small(X1B, { risk: { totalOpenRiskUsd: 40 } }), { AAA: BUYER, ZZZ: holder }, { listed: { AAA: '2024-02-07' } });
+  near(point(r, 29).openRisk, 8 * (109 - (100 * (1 + K) - 2.5)), 'open risk above the budget');
+  const w = r.warnings.find((x) => x.symbol === 'AAA' && x.code === 'entry_skipped' && x.date === r.at(29));
+  assert.ok(w, 'the fresh entry is skipped');
+  assert.ok(w.details.sizing.caps.openRisk < 0, 'the stored open-risk cap is below zero');
+  assert.deepEqual(w.details.sizing.binding, ['openRisk'], 'the cap below zero is recorded as binding');
+  assert.match(w.message, /no whole share fits the budgets \(openRisk binding\)/);
+});

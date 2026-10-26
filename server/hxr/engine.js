@@ -899,7 +899,8 @@ export function createEngine({ config, symbols, period, excludedSessions = [], h
       cash: Math.floor((avail - cpo) / (c * (1 + k) + cps) + EPS),
     };
     let n = Math.max(0, Math.min(...Object.values(caps).filter((v) => v != null)));
-    const binding = Object.entries(caps).filter(([, v]) => v != null && v === n).map(([key]) => key);
+    // The caps that set n; when n is clipped to 0 by caps below zero, those caps (EXPERIMENT-LOG entry 19).
+    const binding = Object.entries(caps).filter(([, v]) => v != null && v <= n).map(([key]) => key);
     const minLoss = risk.minPositionFractionOfPlannedLoss * plannedLoss;
     const ok = n >= 1 && n * d >= minLoss - EPS;
     const reason = ok ? null : n < 1 ? `no whole share fits the budgets (${binding.join(', ')} binding)` : `planned loss ${(n * d).toFixed(2)} is below the minimum ${minLoss.toFixed(2)} (${binding.join(', ')} binding)`;

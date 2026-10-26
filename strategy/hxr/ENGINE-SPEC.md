@@ -215,7 +215,7 @@ snapshots.
   `shares × max(0, lastClose − effective level)`; rooms subtract what pending
   buys reserved (`plannedLoss`, cost and tech cost);
 - **minimum**: `n × d ≥ minPositionFractionOfPlannedLoss × the planned loss
-  asked for`; otherwise the signal lapses (`entry_skipped`, code `budget`,
+  asked for`; otherwise the signal lapses (`entry_skipped`, code `budget`; `binding` lists the caps that set `n`, including every cap below zero when `n` is clipped to 0,
   with every number). The engine reads the pre-registration's "half the
   planned loss" against the amount asked for, so the initial allocation
   (which asks for a share of the open-risk budget) is not lapsed by rounding.

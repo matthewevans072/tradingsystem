@@ -44,7 +44,8 @@ export const PREREG_FILES = ['PREREGISTRATION.md', 'PREREGISTRATION-2.md', 'PRER
 export const DAY_ONE_HOLD = 'hold-day-one';
 // Stored with every run (details.codeRevision). Runs stored before this label existed lack it: those ran with the
 // tech/AI tags dropped by data.js buildInputs (EXPERIMENT-LOG entries 17 and 18).
-export const CODE_REVISION = 'hxr-code-2026-10-26-techai';
+// hxr-code-2026-10-26-binding: sizeBuy records caps below zero as binding (reporting only, entry 19).
+export const CODE_REVISION = 'hxr-code-2026-10-26-binding';
 // PREREGISTRATION-3.md section 5.4 and PREREGISTRATION-3a.md section 1: one
 // setting changed at a time, for the winning candidate only, on the development
 // period only, reported only (dotted paths into the config).
