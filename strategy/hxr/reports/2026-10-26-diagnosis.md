@@ -218,3 +218,45 @@ Method **[Derived]**:
 **[Derived] Conclusion:** the hypothesis that these skips coincide with X1 holdings still at their initial-loss level is **refuted as stated**. Most of the open risk that blocked the entries came from holdings whose X1 level had already risen above the initial-loss level (the column above shows the small share from holdings still at it). What the records do support is the broader point: on every one of these days, the open risk of existing holdings, measured as shares × (close − effective level), exceeded the US$750 budget. The open risk of winners grows as their price rises faster than their exit level.
 
 **[Not stored / not observable]** Overlap between the pause and the budget limits cannot be observed. While the account is paused, a buy signal is skipped before it is sized, so no sizing record exists to show whether a budget would also have blocked it.
+
+---
+
+## Corrections (2026-10-26, third pass)
+
+These correct statements above. The text above is left as it was written.
+
+1. **Labels.** Counts, distinct-stock counts and first/last dates computed from stored rows are **[Derived]**, not
+   [Recorded]. This applies to section 2's per-run counts and to supplement a, b and c.
+   - Formulas: a count is the number of stored warning (or episode) rows matching the stated code and reason in
+     the run's `details.warnings` (or `hxr_episodes`); a distinct-stock count is the number of different
+     `symbol` values among those rows; first/last date is the minimum/maximum `date` among them.
+   - Only the copied field values themselves are [Recorded].
+2. **VWAP reruns.** Supplement a said "the VWAP reruns repeat the base decisions with different fill prices".
+   **That is wrong.** Different fill prices change cash, and with it later sizing and decisions. Each rerun has
+   its own decisions, which is why its counts differ from the base run's. The conclusion stands for a
+   different reason: the base runs are the ones the pick used, and adding reruns to them mixes two different
+   simulations.
+3. **Supplement e, method:**
+   - The initial-loss level is taken from the most recent stored buy fill **on or before** the skip date
+     (`f.date ≤ skip date`; "before" was imprecise).
+   - The stored `openRisk` per holding is `shares × max(0, close − effective level)`, floored at zero.
+   - "Share of summed open risk from holdings at their initial-loss level" **[Derived]** = Σ `openRisk` of
+     holdings at their initial-loss level ÷ Σ `openRisk` of all holdings, both summed over every no-binding
+     skip day of the run.
+4. **Splits and (e).** The stored `initialLossLevel` of a fill made before a split is in pre-split units. The
+   only split in the development runs is TSLA on 2020-08-31.
+   - **[Derived]** In X1A, X1B and X1C, TSLA was not held at that split (stored `sharesBefore` = 0), and no
+     holding counted in (e) was bought before a split it was still held across.
+   - So the (e) counts are unaffected.
+5. **Hypothesis label.** "Most of the open risk that blocked the entries came from holdings whose X1 level had
+   already risen" is a **[Hypothesis]**. The share column measures the opposite group: only the small share
+   from holdings still at their initial-loss level. The rest is not broken down further.
+6. **Not independent support.** "121 of 121 skips fell on a day with stored open risk above US$750" follows
+   from (c). Every one of these records had a negative open-risk cap, which means open risk plus reserved risk
+   exceeded the budget. It is not independent support for anything.
+7. **One paused account did come back.** Supplement d covered base runs only. In the VWAP rerun of X1B (run
+   15), the pause started on 2018-07-31 and ended on 2018-09-04, when the decline from the US$20,483.35 peak
+   was US$719.11 (within US$750). It started again on 2018-10-05 and did not end **[Recorded]**: the stored
+   `pause_start` / `pause_end` warnings.
+8. **Footnote in (d).** "(see section 3 above)" should read: see "Pause episodes" in
+   `strategy/hxr/reports/2026-10-23-development-pick.md`.

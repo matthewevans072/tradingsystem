@@ -199,3 +199,15 @@ test('reporting (entry 19): a buy skipped because open risk is already above the
   assert.deepEqual(w.details.sizing.binding, ['openRisk'], 'the cap below zero is recorded as binding');
   assert.match(w.message, /no whole share fits the budgets \(openRisk binding\)/);
 });
+
+test('reporting (entries 19-20): one cap below zero and another exactly 0 are both recorded as binding', () => {
+  // As above, plus a tech/AI cap of US$900: ZZZ's 8 shares at 109 use US$872, so AAA's tech/AI room is US$28,
+  // less than one share at 53 (cap exactly 0), while its open-risk cap is below zero. Before entry 19 only
+  // the cap at exactly 0 (techAi) was listed.
+  const holder = [...flat(WARM), [100, 101], [101, 103], [103, 105], [105, 107], [107, 109], [109, 110]];
+  const r = run(small(X1B, { risk: { totalOpenRiskUsd: 40, maxTechAiExposureUsd: 900 } }), { AAA: BUYER, ZZZ: holder }, { listed: { AAA: '2024-02-07' } });
+  const w = r.warnings.find((x) => x.symbol === 'AAA' && x.code === 'entry_skipped' && x.date === r.at(29));
+  assert.ok(w.details.sizing.caps.openRisk < 0);
+  assert.equal(w.details.sizing.caps.techAi, 0);
+  assert.deepEqual(w.details.sizing.binding, ['openRisk', 'techAi']);
+});
