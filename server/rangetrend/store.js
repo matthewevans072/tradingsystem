@@ -49,6 +49,13 @@ const MIGRATIONS = [`
   );
   CREATE TRIGGER rt_ledger_no_update BEFORE UPDATE ON rt_ledger BEGIN SELECT RAISE(ABORT, 'rt_ledger is append-only'); END;
   CREATE TRIGGER rt_ledger_no_delete BEFORE DELETE ON rt_ledger BEGIN SELECT RAISE(ABORT, 'rt_ledger is append-only'); END;
+`, `
+  CREATE TABLE rt_settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL, at TEXT NOT NULL);
+  CREATE TRIGGER rt_settings_no_update BEFORE UPDATE ON rt_settings BEGIN SELECT RAISE(ABORT, 'rt_settings rows are written once'); END;
+  CREATE TRIGGER rt_settings_no_delete BEFORE DELETE ON rt_settings BEGIN SELECT RAISE(ABORT, 'rt_settings rows are written once'); END;
+  -- Each planned config once, and one reserve run in all: the ledger slot is taken before a run starts.
+  CREATE UNIQUE INDEX rt_ledger_once ON rt_ledger (config_file) WHERE reserve = 0;
+  CREATE UNIQUE INDEX rt_ledger_one_reserve ON rt_ledger (reserve) WHERE reserve = 1;
 `];
 
 function migrate(db) {
@@ -93,6 +100,29 @@ export function insertEquity(db, id, points) {
   const st = db.prepare('INSERT INTO rt_equity (run_id, date, json) VALUES (?, ?, ?)');
   for (const x of points) st.run(id, x.date, JSON.stringify(x));
 }
+
+// One transaction: the run row and its ledger slot. A second run of the same config (or a second reserve)
+// fails on the unique index and leaves nothing behind.
+export function reserveSlot(db, r) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const id = createRun(db, r);
+    appendLedger(db, { runId: id, configFile: r.configFile, configHash: r.configHash, reserve: !!r.reserve, reserveDetail: r.reserve, at: r.at });
+    db.exec('COMMIT');
+    return id;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
+// Runs left 'running' by an interrupted process: recorded as failed with the reason; their slot stays used.
+export function failInterruptedRuns(db, at) {
+  return Number(db.prepare("UPDATE rt_runs SET status = 'failed', error = 'interrupted: the process stopped before the run finished; the slot stays used', finished_at = ? WHERE status = 'running'").run(at).changes);
+}
+
+export const getSetting = (db, key) => { const r = db.prepare('SELECT value_json FROM rt_settings WHERE key = ?').get(key); return r ? JSON.parse(r.value_json) : null; };
+export const setSettingOnce = (db, key, value, at) => db.prepare('INSERT INTO rt_settings (key, value_json, at) VALUES (?, ?, ?)').run(key, JSON.stringify(value), at);
 
 export function appendLedger(db, e) {
   return Number(db.prepare('INSERT INTO rt_ledger (run_id, config_file, config_hash, reserve, reserve_json, at) VALUES (?, ?, ?, ?, ?, ?)').run(e.runId, e.configFile, e.configHash, e.reserve ? 1 : 0, j(e.reserveDetail), e.at).lastInsertRowid);

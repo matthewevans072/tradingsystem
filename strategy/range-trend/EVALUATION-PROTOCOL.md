@@ -24,7 +24,14 @@
 
 ## How the evaluation dates are chosen
 
-[OWNER TO SET] (before the first practice run)
+**Date-choice rule:** [OWNER TO SET]
+
+The rule for choosing the evaluation dates, written before the first practice run so that no exploratory
+result influences it. It includes whether MU is kept or dropped before any historical evaluation. The
+Strategy Lab's untouched MU holdout window is 2025-01-01 to 2026-06-30 (`PLAN-DRAFT.md` section 1).
+
+The code refuses practice runs while either dedicated field (**Pick rule:** or **Date-choice rule:**) is
+unset: empty, or containing "[OWNER", "TBD", "TODO" or "?".
 
 ## Pick rule
 

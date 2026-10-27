@@ -10,6 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 export const RT_DIR = path.join(ROOT, 'strategy', 'range-trend');
 export const RT_CONFIG_DIR = path.join(RT_DIR, 'configs');
 export const PROTOCOL_PATH = path.join(RT_DIR, 'EVALUATION-PROTOCOL.md');
+export const LOG_PATH = path.join(RT_DIR, 'EXPERIMENT-LOG.md');
 
 // Stored with every run (details.codeRevision); change it with any change that can alter results, including
 // changes to the HXR modules range-trend imports (server/hxr/data.js, config.js, store.js and engine.js: the
@@ -24,6 +25,20 @@ export const PLANNED_CONFIGS = [
   'rt-range-dip-limit-0.1.0.json', 'rt-range-dip-nolimit-0.1.0.json', 'rt-range-recovery-limit-0.1.0.json', 'rt-range-recovery-nolimit-0.1.0.json',
   'rt-trend-immediate-limit-0.1.0.json', 'rt-trend-immediate-nolimit-0.1.0.json', 'rt-trend-pullback-limit-0.1.0.json', 'rt-trend-pullback-nolimit-0.1.0.json',
 ];
+
+// The eight planned configs, pinned: SHA-256 of each file's text with line endings normalised to LF, so the
+// pin does not depend on how the repository was checked out. loadConfig refuses a planned file that differs.
+export const CONFIG_SHA256 = Object.freeze({
+  'rt-range-dip-limit-0.1.0.json': '1ad4126bab51b3887ce142ad8930c7eb4b032b63384a328486fd20372e9a0392',
+  'rt-range-dip-nolimit-0.1.0.json': 'fdff445d4bc9ee8639b5eaa2928575d2b2ebe058f80e234ea63fb0008949871c',
+  'rt-range-recovery-limit-0.1.0.json': '8cec6a9e4ec7f472906de6e4e42e212767609c291157a3595ea221dfc31997a1',
+  'rt-range-recovery-nolimit-0.1.0.json': '6815fa333bf56c71bf2c4d31ec6a7d4166405b73ae0161174cce499a5897edfc',
+  'rt-trend-immediate-limit-0.1.0.json': '889b25f8de8fc5ba6cf11faea93f4c2a5ebf2082f1cecb119b98218bc0c280f4',
+  'rt-trend-immediate-nolimit-0.1.0.json': 'f09e8ea2ced62ffbcc5f1ca7df8158292a0595c58b03b621c005375971cd58b3',
+  'rt-trend-pullback-limit-0.1.0.json': '6db5ddc817317981b36c9ba73fe9f6ba2f66060cf3168fe86558c6ddfcd3eca4',
+  'rt-trend-pullback-nolimit-0.1.0.json': '0abab6e07a3d3c9b6024de1d68e05b5c1271a0dcf8ca428436090792cc9a2316',
+});
+export const textSha256 = (text) => crypto.createHash('sha256').update(String(text).replace(/\r\n/g, '\n')).digest('hex');
 
 const FAMILY_ENTRIES = { range: ['dip', 'recovery'], trend: ['immediate', 'pullback'] };
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -76,7 +91,10 @@ export function validateConfig(c) {
 
 export function loadConfig(file) {
   const full = path.isAbsolute(file) ? file : path.join(RT_CONFIG_DIR, file);
-  const cfg = JSON.parse(fs.readFileSync(full, 'utf8'));
+  const text = fs.readFileSync(full, 'utf8');
+  const pin = CONFIG_SHA256[path.basename(full)];
+  if (pin && textSha256(text) !== pin) throw new Error(`${path.basename(full)} differs from its pinned SHA-256 (config.js CONFIG_SHA256): a planned config is never edited in place`);
+  const cfg = JSON.parse(text);
   const errors = validateConfig(cfg);
   if (errors.length) throw new Error(`${path.basename(full)}: ${errors.join('; ')}`);
   return Object.freeze(cfg);
@@ -93,14 +111,37 @@ export function listConfigs(dir = RT_CONFIG_DIR) {
   });
 }
 
-// EVALUATION-PROTOCOL.md: practice runs need the file and a filled-in pick rule
-// (a line "**Pick rule:** <text>" whose text is not a placeholder).
+// EVALUATION-PROTOCOL.md: practice runs need the file with both dedicated fields filled in: a line
+// "**Pick rule:** <text>" and a line "**Date-choice rule:** <text>". A value is unset when it is empty or
+// contains "[OWNER", "TBD", "TODO" or "?". The hash is of the text with line endings normalised to LF.
+export const UNSET = (v) => !v || !String(v).trim() || /\[OWNER|TBD|TODO|\?/i.test(String(v));
+const field = (text, name) => { const m = text.match(new RegExp(`^\\*\\*${name}:\\*\\*[ \\t]*(.*)$`, 'm')); return m ? m[1].trim() : ''; };
+
 export function protocolStatus(file = PROTOCOL_PATH) {
-  if (!fs.existsSync(file)) return { exists: false, pickRule: null, hash: null, ready: false, reason: 'strategy/range-trend/EVALUATION-PROTOCOL.md does not exist' };
+  if (!fs.existsSync(file)) return { exists: false, pickRule: null, dateChoiceRule: null, hash: null, ready: false, reason: 'strategy/range-trend/EVALUATION-PROTOCOL.md does not exist' };
   const text = fs.readFileSync(file, 'utf8');
-  const hash = crypto.createHash('sha256').update(text).digest('hex');
-  const m = text.match(/^\*\*Pick rule:\*\*[ \t]*(.*)$/m);
-  const rule = m ? m[1].trim() : '';
-  const filled = rule && !/\[OWNER TO SET\]/i.test(rule);
-  return { exists: true, pickRule: filled ? rule : null, hash, ready: !!filled, reason: filled ? null : 'EVALUATION-PROTOCOL.md has no pick rule yet ("**Pick rule:**" is missing or still [OWNER TO SET])' };
+  const pick = field(text, 'Pick rule'), dates = field(text, 'Date-choice rule');
+  const missing = [UNSET(pick) && 'pick rule ("**Pick rule:**")', UNSET(dates) && 'date-choice rule ("**Date-choice rule:**")'].filter(Boolean);
+  return {
+    exists: true, pickRule: UNSET(pick) ? null : pick, dateChoiceRule: UNSET(dates) ? null : dates, hash: textSha256(text), ready: !missing.length,
+    reason: missing.length ? `EVALUATION-PROTOCOL.md has no ${missing.join(' and no ')} yet (unset: empty, [OWNER ...], TBD, TODO or ?)` : null,
+  };
+}
+
+// strategy/range-trend/EXPERIMENT-LOG.md: the owner-decisions entry (a table row whose "What" cell begins with
+// "**Owner decisions D1-D8**" and names each of D1 to D8), and the practice runs it lists (rows beginning
+// "**Practice run**" with "run id: N" and "config hash: <sha256>").
+export function logStatus(file = LOG_PATH) {
+  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, practiceRuns: [] };
+  const text = fs.readFileSync(file, 'utf8');
+  const rows = text.split(/\r?\n/).filter((l) => l.startsWith('|')).map((l) => l.split('|').map((x) => x.trim()));
+  const what = (r) => r[3] || '';
+  const TITLE = /^\*\*Owner decisions D1[-\u2013]D8\*\*/;
+  // Each of D1 to D8 must be named after the title (the title itself names D1 and D8).
+  const owner = rows.find((r) => TITLE.test(what(r)) && [1, 2, 3, 4, 5, 6, 7, 8].every((k) => new RegExp(`\\bD${k}\\b`).test(what(r).replace(TITLE, ''))));
+  const practiceRuns = rows.filter((r) => /^\*\*Practice run\*\*/.test(what(r))).map((r) => {
+    const id = what(r).match(/run id:\s*(\d+)/i), h = what(r).match(/config hash:\s*([0-9a-f]{64})/i);
+    return { runId: id ? Number(id[1]) : null, configHash: h ? h[1] : null };
+  });
+  return { exists: true, ownerDecisions: !!owner, practiceRuns };
 }

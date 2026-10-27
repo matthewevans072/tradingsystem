@@ -8,6 +8,7 @@ import { createCatalog } from './catalog.js';
 import { log } from './log.js';
 import { labDbFile, backupLabDb } from './strategy/store.js';
 import { hxrDbFile, guardHxrFile } from './hxr/store.js';
+import { rtDbFile, guardRtFile } from './rangetrend/store.js';
 
 const KEEP_AUTO = 30;
 
@@ -31,7 +32,8 @@ export function createBackup(ctx, { reason = 'manual' } = {}) {
   pruneAuto(ctx.cfg, ctx.mode);
   const lab = backupLab(ctx, st, reason);
   const hxr = backupHxr(ctx, st, reason);
-  return { name, size: fs.statSync(file).size, createdAt: nowIso(), ...(lab ? { lab } : {}), ...(hxr ? { hxr } : {}) };
+  const rangeTrend = backupRangeTrend(ctx, st, reason);
+  return { name, size: fs.statSync(file).size, createdAt: nowIso(), ...(lab ? { lab } : {}), ...(hxr ? { hxr } : {}), ...(rangeTrend ? { rangeTrend } : {}) };
 }
 
 // The Strategy Lab database is copied into its own folder (backups/strategy-lab),
@@ -87,6 +89,38 @@ function backupHxr(ctx, st, reason) {
     return { name, size: fs.statSync(dest).size };
   } catch (e) {
     log.warn('backup', `HXR backup failed: ${e.message}`);
+    return { error: e.message };
+  }
+}
+
+// The range-trend results database goes into backups/range-trend the same way: a consistent copy taken
+// from a read-only handle, never listed for restore, and a failure never fails the portfolio backup.
+export function rangeTrendBackupDir(cfg) {
+  return path.join(backupDir(cfg), 'range-trend');
+}
+
+function backupRangeTrend(ctx, st, reason) {
+  if (ctx.mode !== 'real') return null;
+  const src = rtDbFile(ctx.cfg.dataDir);
+  if (!fs.existsSync(src)) return null;
+  try {
+    const dir = rangeTrendBackupDir(ctx.cfg);
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `range-trend-sim-${st}-${reason}.sqlite`;
+    const dest = path.join(dir, name);
+    const db = new DatabaseSync(guardRtFile(src), { readOnly: true });
+    try {
+      db.exec('PRAGMA busy_timeout = 5000;');
+      db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+    } finally {
+      db.close();
+    }
+    const auto = fs.readdirSync(dir).filter((f) => f.startsWith('range-trend-sim-') && f.endsWith('-auto.sqlite')).sort().reverse();
+    for (const f of auto.slice(KEEP_AUTO)) fs.rmSync(path.join(dir, f), { force: true });
+    log.info('backup', `created ${name}`);
+    return { name, size: fs.statSync(dest).size };
+  } catch (e) {
+    log.warn('backup', `Range-trend backup failed: ${e.message}`);
     return { error: e.message };
   }
 }
