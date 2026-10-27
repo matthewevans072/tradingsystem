@@ -1,6 +1,15 @@
 // Range-trend levels (strategy/range-trend/PLAN-DRAFT.md section 3). Pure functions.
 // Every level for decision day t is computed from `prior`, the closes up to and
 // including t-1 (oldest first); today's close is only ever compared with them.
+//
+// One comparison convention everywhere (levels and engine): values within EPS are
+// equal. So "x <= b" is x <= b + EPS, "x >= a" is x >= a - EPS, "x > a" is
+// x > a + EPS and "x < b" is x < b - EPS, at the plan's exact edges.
+export const EPS = 1e-9;
+export const le = (x, b) => x <= b + EPS;
+export const ge = (x, a) => x >= a - EPS;
+export const gt = (x, a) => x > a + EPS;
+export const lt = (x, b) => x < b - EPS;
 
 // Mean absolute close-to-close change over the last n changes of `closes`
 // (needs n + 1 closes); null when there are too few.
@@ -18,7 +27,7 @@ export function zoneVisits(closes, a, b, gap) {
   const visits = [];
   let inRun = false, outside = Infinity;
   closes.forEach((c, i) => {
-    const z = c >= a && c <= b;
+    const z = ge(c, a) && le(c, b);
     if (z) {
       if (!inRun) {
         if (visits.length && outside < gap) visits.at(-1).end = i; else visits.push({ start: i, end: i, low: c });
@@ -43,23 +52,23 @@ export function rangeState(prior, L) {
   const bottom = [lo, lo + zone], top = [hi - zone, hi];
   const bottomVisits = zoneVisits(w, bottom[0], bottom[1], L.visitGap);
   const topVisits = zoneVisits(w, top[0], top[1], L.visitGap);
-  const established = bottomVisits.length >= L.minVisits && topVisits.length >= L.minVisits && H > 0 && H >= L.minHeightM * m;
+  const established = bottomVisits.length >= L.minVisits && topVisits.length >= L.minVisits && gt(H, 0) && ge(H, L.minHeightM * m);
   return { lo, hi, H, m, bottom, top, bottomVisits, topVisits, established, windowSessions: w.length };
 }
 
 // Entry conditions at today's close c on the state computed from the prior closes.
 export function isDip(st, c) {
-  return !!st?.established && c > st.lo && c <= st.bottom[1];
+  return !!st?.established && gt(c, st.lo) && le(c, st.bottom[1]);
 }
 
 export function isRecovery(st, c, L) {
   if (!st?.established || !st.bottomVisits.length) return false;
   const v = st.bottomVisits.at(-1);
-  return c >= v.low + L.recoveryM * st.m && c > st.bottom[1] && c <= st.lo + 0.5 * st.H;
+  return ge(c, v.low + L.recoveryM * st.m) && gt(c, st.bottom[1]) && le(c, st.lo + 0.5 * st.H);
 }
 
 export function isBreakout(st, c, L) {
-  return !!st?.established && c > st.hi + L.breakoutM * st.m;
+  return !!st?.established && gt(c, st.hi + L.breakoutM * st.m);
 }
 
 // Breakdown of an untraded range (section 3): the first close below lo - k*m(t-1)
@@ -73,10 +82,15 @@ export function untradedBreakdown(series, from, L) {
     const prior = series.slice(0, t), m = typicalMove(prior, L.mSessions);
     if (frozen == null) {
       const st = rangeState(prior, L);
-      if (st && series[t] < st.lo - L.breakdownM * st.m) { frozen = st.lo; count = 1; }
-    } else if (series[t] < frozen - L.breakdownM * m) count++;
+      if (st && lt(series[t], st.lo - L.breakdownM * st.m)) { frozen = st.lo; count = 1; }
+    } else if (lt(series[t], frozen - L.breakdownM * m)) count++;
     else { frozen = null; count = 0; }
     if (count >= L.breakdownCloses) return t;
   }
   return null;
+}
+
+// Pullback zone (section 3): a close above the old high and within k x m of it.
+export function isPullbackClose(c, oldHi, m, L) {
+  return gt(c, oldHi) && le(c, oldHi + L.pullbackM * m);
 }

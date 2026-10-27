@@ -56,25 +56,49 @@ export function tradeOff(run, c) {
   return { beatsReturnWithoutDeeperDrawdown: beatsReturnNoDeeper, beatsReturnPerDrawdown: beatsRatio, addsValueBeyondCash: beatsReturnNoDeeper || beatsRatio };
 }
 
+// Each completed trade's P/L including what was paid to it after it closed (dividends and cash in lieu it
+// was entitled to: result.postExit). The trade records themselves are never edited.
+export function tradePnls(result) {
+  const post = {};
+  for (const x of result.postExit || []) post[x.tradeId] = (post[x.tradeId] || 0) + x.amount;
+  return (result.trades || []).map((t) => ({ ...t, postExitPaid: post[t.tradeId] || 0, pnlTotal: t.pnl + (post[t.tradeId] || 0) }));
+}
+
+// H5 (PLAN section 5): trades whose entry fills within `within` sessions after a sale of the same stock.
+export const H5_WITHIN_SESSIONS = 20;
+
 export function computeMetrics(result, { hold = null, tier2 = { minTrades: 30, maxStockSharePct: 40 } } = {}) {
   const start = result.meta?.startingCash ?? 15000;
   const eq = result.equity.map((p) => ({ date: p.date, value: p.equity, invested: p.invested }));
   const run = summary(eq, start);
-  const trades = result.trades || [];
+  const trades = tradePnls(result);
+  const open = result.openPositions || [];
   const fills = result.fills || [];
   const costs = sum(fills.map((f) => f.spreadSlippage + f.fees));
   const avgEquity = mean(eq.map((p) => p.value)) || start;
   const y = eq.length ? years(eq[0].date, eq.at(-1).date) : null;
-  const pnls = trades.map((t) => t.pnl);
+  const pnls = trades.map((t) => t.pnlTotal);
   const netPnl = sum(pnls);
-  // Without the best 5% of completed trades (rounded up to whole trades).
-  const nBest = Math.ceil(trades.length * 0.05);
-  const withoutBest = trades.length ? sum([...pnls].sort((a, b) => b - a).slice(nBest)) : null;
+  // Tier 2 checks on every outcome: completed trades and the positions open at the end, marked at the last close.
+  const outcomes = [...trades.map((t) => ({ symbol: t.symbol, pnl: t.pnlTotal, open: false })), ...open.map((o) => ({ symbol: o.symbol, pnl: o.pnl, open: true }))];
+  const outcomePnl = sum(outcomes.map((o) => o.pnl));
+  // Without the best 5% of outcomes (rounded up to whole outcomes).
+  const nBest = Math.ceil(outcomes.length * 0.05);
+  const withoutBest = outcomes.length ? sum(outcomes.map((o) => o.pnl).sort((a, b) => b - a).slice(nBest)) : null;
   const byStock = {};
-  for (const t of trades) byStock[t.symbol] = (byStock[t.symbol] || 0) + t.pnl;
+  for (const o of outcomes) byStock[o.symbol] = (byStock[o.symbol] || 0) + o.pnl;
   const topStock = Object.entries(byStock).sort((a, b) => b[1] - a[1])[0] || null;
-  const topShare = topStock && netPnl > 0 ? (topStock[1] / netPnl) * 100 : null;
+  const topShare = topStock && outcomePnl > 0 ? (topStock[1] / outcomePnl) * 100 : null;
+  const perStock = {};
+  const ps = (sym) => (perStock[sym] = perStock[sym] || { signals: 0, entries: 0, oneShareEntries: 0, skips: {}, pnl: 0 });
+  for (const d of (result.decisions || []).filter((x) => x.action === 'entry')) ps(d.symbol).signals++;
+  for (const k of result.skips || []) { ps(k.symbol).signals++; ps(k.symbol).skips[k.code] = (ps(k.symbol).skips[k.code] || 0) + 1; }
+  for (const f of fills.filter((x) => x.side === 'buy')) { ps(f.symbol).entries++; if (f.shares === 1) ps(f.symbol).oneShareEntries++; }
+  for (const o of outcomes) ps(o.symbol).pnl += o.pnl;
+  const skipsByCode = (result.skips || []).reduce((a, k) => ((a[k.code] = (a[k.code] || 0) + 1), a), {});
+  const near = trades.filter((t) => t.afterSaleOf && t.afterSaleOf.sessionsSinceSale != null && t.afterSaleOf.sessionsSinceSale <= H5_WITHIN_SESSIONS);
   const rangeEntries = trades.filter((t) => t.entryType === 'dip' || t.entryType === 'recovery');
+
   const trendEntries = trades.filter((t) => t.entryType === 'immediate' || t.entryType === 'pullback');
   const out = {
     ...run,
@@ -83,20 +107,22 @@ export function computeMetrics(result, { hold = null, tier2 = { minTrades: 30, m
     completedTrades: trades.length, openAtEnd: (result.openPositions || []).length,
     holdingSessions: { median: median(trades.map((t) => t.sessionsHeld)), longest: trades.length ? Math.max(...trades.map((t) => t.sessionsHeld)) : null },
     costs, turnoverPerYear: y > 0 ? sum(fills.map((f) => f.shares * f.price)) / avgEquity / y : null,
-    netTradePnl: netPnl, skips: (result.skips || []).length,
+    netTradePnl: netPnl, postExitPaid: sum(trades.map((t) => t.postExitPaid)), skips: (result.skips || []).length, skipsByCode,
+    oneShareEntries: fills.filter((f) => f.side === 'buy' && f.shares === 1).length, perStock,
     exits: trades.reduce((a, t) => ((a[t.exitReason] = (a[t.exitReason] || 0) + 1), a), {}),
     // Tier 2 descriptions (PLAN 7b): thresholds [OWNER TO CONFIRM], reported only.
     tier2: {
       thresholds: { ...tier2, status: '[OWNER TO CONFIRM]' },
       enoughTradesToCompare: trades.length >= tier2.minTrades,
-      withoutBestFivePct: { tradesRemoved: nBest, netPnl: withoutBest },
+      outcomes: { completed: trades.length, openAtEnd: open.length, pnl: outcomePnl, note: 'completed trades and positions open at the end (marked at the last close)' },
+      withoutBestFivePct: { outcomesRemoved: nBest, pnl: withoutBest },
       topStock: topStock ? { symbol: topStock[0], pnl: topStock[1], sharePct: topShare, flagged: topShare != null && topShare > tier2.maxStockSharePct } : null,
     },
     // Hypothesis measures (PLAN section 5).
     hypotheses: {
-      H1H2: { trades: rangeEntries.length, avgEntryPosInRange: mean(rangeEntries.map((t) => t.entryPosInRange).filter(fin)), breakdownShare: rangeEntries.length ? rangeEntries.filter((t) => t.exitReason === 'breakdown').length / rangeEntries.length : null, avgBreakdownPnl: mean(rangeEntries.filter((t) => t.exitReason === 'breakdown').map((t) => t.pnl)), convertedToTrend: rangeEntries.filter((t) => t.convertedToTrend).length },
-      H3H4: { trades: trendEntries.length, failedBreakoutShare: trendEntries.length ? trendEntries.filter((t) => t.exitReason === 'below_old_high').length / trendEntries.length : null, avgTrendPnl: mean(trendEntries.map((t) => t.pnl)), breakoutsNeverEntered: (result.watches || []).filter((w) => !w.entered && w.endedOn != null).length },
-      H5: { reentriesAboveLastSale: trades.filter((t) => t.afterSaleOf?.above).length, tradesAfterASale: trades.filter((t) => t.afterSaleOf).length, pnlOfTradesAfterASale: sum(trades.filter((t) => t.afterSaleOf).map((t) => t.pnl)) },
+      H1H2: { trades: rangeEntries.length, avgEntryPosInRange: mean(rangeEntries.map((t) => t.entryPosInRange).filter(fin)), breakdownShare: rangeEntries.length ? rangeEntries.filter((t) => t.exitReason === 'breakdown').length / rangeEntries.length : null, avgBreakdownPnl: mean(rangeEntries.filter((t) => t.exitReason === 'breakdown').map((t) => t.pnlTotal)), convertedToTrend: rangeEntries.filter((t) => t.convertedToTrend).length },
+      H3H4: { trades: trendEntries.length, failedBreakoutShare: trendEntries.length ? trendEntries.filter((t) => t.exitReason === 'below_old_high').length / trendEntries.length : null, avgTrendPnl: mean(trendEntries.map((t) => t.pnlTotal)), breakoutsNeverEntered: (result.watches || []).filter((w) => !w.entered && w.endedOn != null).length },
+      H5: { withinSessions: H5_WITHIN_SESSIONS, reentriesAboveLastSale: trades.filter((t) => t.afterSaleOf?.above).length, tradesWithinOfASale: near.length, pnlOfTradesWithinOfASale: sum(near.map((t) => t.pnlTotal)) },
     },
   };
   if (hold) {

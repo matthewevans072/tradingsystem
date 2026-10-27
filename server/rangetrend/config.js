@@ -11,8 +11,12 @@ export const RT_DIR = path.join(ROOT, 'strategy', 'range-trend');
 export const RT_CONFIG_DIR = path.join(RT_DIR, 'configs');
 export const PROTOCOL_PATH = path.join(RT_DIR, 'EVALUATION-PROTOCOL.md');
 
-// Stored with every run (details.codeRevision); change it with any change that alters results.
-export const CODE_REVISION = 'rt-code-2026-10-26-1';
+// Stored with every run (details.codeRevision); change it with any change that can alter results, including
+// changes to the HXR modules range-trend imports (server/hxr/data.js, config.js, store.js and engine.js: the
+// market-data inputs, the cost helpers, the readiness checks and benchmark (a)).
+// rt-code-2026-10-26-1: the build (b6007e3). rt-code-2026-10-27-1: fix pass 1 (pullback watch, up close,
+// split to zero shares, dividends and cash in lieu per trade, one EPS convention, replaced watches, H5, Tier 2).
+export const CODE_REVISION = 'rt-code-2026-10-27-1';
 
 // PLAN-DRAFT.md section 6: range 4 and trend 4. The combination runs (up to 2) get configs only after both
 // families show measurable behaviour, with an experiment-log entry. The HXR diagnostic is an HXR run.
