@@ -209,8 +209,14 @@ test('same-day signals share cash and risk room equally, whole shares rounded do
   assert.deepEqual(dec(c2, 'entry').map((d) => [d.shares, d.binding.join()]), [[25, 'riskRoom'], [25, 'riskRoom'], [25, 'riskRoom']]);
   assert.deepEqual(c2.fills.map((f) => f.shares), [24, 24, 24]);
   assert.ok(c2.fills.reduce((a, f) => a + f.entryRisk, 0) <= 150 + 1e-9, 'total entry risk within 1% of V');
-  const rev = run('rt-range-dip-nolimit-0.1.0.json', three, { portfolio: { positionCapPct: 100, riskPerTradePct: 100, totalEntryRiskPct: 1 }, order: ['CCC', 'BBB', 'AAA'] });
-  assert.deepEqual(Object.fromEntries(rev.fills.map((f) => [f.symbol, f.shares])), Object.fromEntries(c2.fills.map((f) => [f.symbol, f.shares])), 'the order of the signals never matters');
+  // Order independence, with three different price paths dipping on the same close.
+  const diff = { AAA: [...BASE, 101, 101.5], BBB: [...BASE.map((x) => x * 1.02), 101 * 1.02, 101.5 * 1.02], CCC: [...BASE.map((x) => x * 0.98), 101 * 0.98, 101.5 * 0.98] };
+  const opts = { portfolio: { positionCapPct: 100, riskPerTradePct: 100, totalEntryRiskPct: 1 } };
+  const fwd = run('rt-range-dip-nolimit-0.1.0.json', diff, opts), rev = run('rt-range-dip-nolimit-0.1.0.json', diff, { ...opts, order: ['CCC', 'BBB', 'AAA'] });
+  const shares = (r) => Object.fromEntries(r.fills.map((f) => [f.symbol, f.shares]));
+  assert.equal(new Set(Object.values(shares(fwd))).size > 1, true, 'the paths differ, so the sizes differ');
+  assert.equal(dec(fwd, 'entry').length, 3, 'all three on the same close');
+  assert.deepEqual(shares(rev), shares(fwd), 'the order of the signals never matters');
 });
 
 // ---------- the re-entry limit ----------
