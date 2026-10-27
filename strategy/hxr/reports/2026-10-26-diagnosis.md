@@ -260,3 +260,23 @@ These correct statements above. The text above is left as it was written.
    `pause_start` / `pause_end` warnings.
 8. **Footnote in (d).** "(see section 3 above)" should read: see "Pause episodes" in
    `strategy/hxr/reports/2026-10-23-development-pick.md`.
+
+---
+
+## Corrections (2026-10-27, fourth pass)
+
+These correct statements above. The text above is left as it was written.
+
+1. **The reporting gap of supplement c is fixed for new runs** in `e495870` (HXR EXPERIMENT-LOG entry 19;
+   clarified in entry 20). The stored development-pick runs (runs 1-22) were not re-run: they keep the old
+   records, with an empty `binding` list where a cap was below zero.
+2. **Correction 6 above is itself wrong.** It said that "121 of 121 skips fell on a day with stored open risk
+   above US$750" follows from (c). It does not.
+   - A negative open-risk cap means `(750 − openRiskNow − reservedRisk) / d < 0`: the open risk **plus the risk
+     reserved by buy orders pending that day** exceeded US$750.
+   - That can happen with open risk alone below US$750, so a negative cap does not by itself imply open risk
+     above US$750.
+   - What does imply it is a negative cap with `reservedRisk` = 0, or a stored open risk above US$750.
+   - The "121 of 121" figure is a separate measurement **[Derived]**: the stored equity point of the same close
+     has `openRisk > 750` on all 121 days. That equity point and `openRiskNow` measure the same holdings at the
+     same close, so the figure is consistent with (c) but was not implied by it.
