@@ -5,8 +5,27 @@ import { openDb } from '../server/db.js';
 
 process.env.SIGNAL_DESK_QUIET = '1';
 
+// Every temp directory a test creates is removed when the test process exits (node --test runs each file in
+// its own process). A directory whose files are still open at exit (an unclosed database on Windows) is
+// retried a few times and otherwise left; the test that forgot to close it should close it.
+const created = [];
+let hooked = false;
+export function removeTempDirs() {
+  const left = [];
+  for (const dir of created.splice(0)) {
+    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); } catch { /* still open: retried below */ }
+    if (fs.existsSync(dir)) left.push(dir);
+  }
+  return left;
+}
 export function tempDir(prefix = 'sd-test-') {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  created.push(dir);
+  if (!hooked) {
+    hooked = true;
+    process.on('exit', () => { const left = removeTempDirs(); if (left.length && process.env.SIGNAL_DESK_TEMP_REPORT) process.stderr.write(`temp directories left (files still open at exit): ${left.join(', ')}\n`); });
+  }
+  return dir;
 }
 
 export function tempDb() {
