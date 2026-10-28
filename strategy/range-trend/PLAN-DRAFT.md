@@ -1,16 +1,15 @@
-# Range-trend (working name): plan, version 0.4
+# Range-trend (working name): plan, version 0.5
 
 > **DRAFT.** No range-trend run has been made on market data. Section 0 records the owner's research decisions
-> in the owner's words. Everything else is a proposal unless it says otherwise. Values marked **[OWNER TO
-> CONFIRM]** or **[OWNER TO SET]** are not decided. Nine readings the code currently makes are marked
-> **provisional reading, pending the owner's decision** (D1 to D9, listed at the end); the code keeps its current
-> behaviour until the owner decides, and practice runs stay refused until the owner's decisions on D1 to D8 are
-> logged and D9 is written into `EVALUATION-PROTOCOL.md`. Versions 0.1 to 0.3 written 2026-10-26; version 0.4
-> written 2026-10-27.
+> in the owner's words. **The owner's decisions D1 to D8 of 2026-10-27 are recorded in `EXPERIMENT-LOG.md`
+> entry 7 and built into the eight `rt-*-0.2.0.json` configs; each is an experimental choice, not a claim that it
+> reproduces the owner's trading.** D9 (the pick rule and the rule for choosing the evaluation dates) is still
+> open, and practice runs stay refused until it is written into `EVALUATION-PROTOCOL.md`. Values marked
+> **[OWNER TO CONFIRM]** or **[OWNER TO SET]** are not decided. Versions 0.1 to 0.3 written 2026-10-26; 0.4
+> on 2026-10-27; 0.5 on 2026-10-28.
 
 The idea: a stock that keeps bouncing between a lower and an upper price area is traded as a **range**. A stock
-that breaks out of its range and stays strong is held as a **trend**. The two are tested separately before they
-are combined.
+that breaks out of its range and stays strong is held as a **trend**. The two are tested separately.
 
 ## 0. The owner's research decisions
 
@@ -33,7 +32,9 @@ Anything a pointer adds is a proposal.*
    correctness, exploratory usefulness, and later evaluation. Define any exposure-matched benchmark precisely.
    Explain how we judge the trade-off between lower returns and lower drawdowns. → section 7
 8. Experiment budget: Eleven planned runs plus one reserve for a verified defect correction. Preserve the broken
-   result and log the correction; don't use the reserve for parameter tuning. → section 6
+   result and log the correction; don't use the reserve for parameter tuning. → section 6. **Amended by the
+   owner-decisions entry (`EXPERIMENT-LOG.md` entry 7, 2026-10-27): "Keep the budget at eight exploratory runs
+   plus one verified-defect reserve. No combination runs or HXR diagnostic."**
 9. Evaluation: We can leave the exact dates unresolved now, but document how they will be chosen before
    exploratory results influence that choice. Freeze the candidate and evaluation protocol before accessing
    evaluation results. Preserve the prior-exposure disclosures. → sections 1, 8a
@@ -47,8 +48,18 @@ time-based range exit, no adding to positions, no decline pause and no current-v
 evaluation choice C (section 8a). **The approval covers building only.** No practice run, historical
 evaluation or prospective journal is authorised by it.
 
-**The code exists** (`server/rangetrend/`, EXPERIMENT-LOG entries 2 to 5). Where this plan describes behaviour
-"as implemented", it describes that code.
+**The owner's decisions D1 to D8 of 2026-10-27** (`EXPERIMENT-LOG.md` entry 7, verbatim there): accept
+suggestions 2 and 4 to 8 of version 0.4 as experimental choices; for 1, never retire a stock and apply the
+below-last-sale restriction only to the restricted variants; for 3, invalidate the broken range but let the
+stock qualify again when a new range forms entirely from post-breakdown observations, with no separate
+retirement period; for 4, specify the benchmark's rebalancing convention before testing; eight runs plus one
+reserve, no combination runs, no HXR diagnostic. The owner also chose: the pullback watch ends when its pullback
+entry fills; breaks are detected from the warm-up on; MU, the Tier 3 thresholds and the journal minimums move to
+a separate thresholds file frozen before evaluation; a drop of MU applies to the historical evaluation only.
+The resulting definitions are in sections 2.4, 3, 4, 6 and 7c, each labelled **experimental choice**.
+
+**The code exists** (`server/rangetrend/`, EXPERIMENT-LOG entries 2 to 8; code revision `rt-code-2026-10-28-1`,
+engine `rt-engine-3`). Where this plan describes behaviour "as implemented", it describes that code.
 
 ---
 
@@ -80,7 +91,8 @@ prior exposure, both here and in `strategy/hxr/EXPERIMENT-LOG.md`.
 **The Strategy Lab's MU holdout.** The consolidation-breakout strategy's untouched holdout window is
 **2025-01-01 to 2026-06-30** and MU is one of its 17 stocks. A range-trend historical evaluation covering those
 dates exposes MU's prices in that window. **Whether MU is kept or dropped before any historical evaluation is the
-owner's decision (D9)**, written into `EVALUATION-PROTOCOL.md` before the first practice run.
+owner's decision**, written into `EVALUATION-THRESHOLDS.md` (frozen before any evaluation result is accessed).
+A drop of MU applies to the historical evaluation only: the practice runs keep basket A (decision 10).
 
 **Conclusion.**
 - **No historical period is blind.** Testing different stocks does not remove what was learned about the same
@@ -93,7 +105,7 @@ owner's decision (D9)**, written into `EVALUATION-PROTOCOL.md` before the first 
 
 ---
 
-## 2. Preferences, open points and proposed settings
+## 2. Preferences, open points and settings
 
 ### 2.1 Owner-confirmed preferences (from the owner's answers of 2026-10-26)
 
@@ -114,15 +126,18 @@ owner's decision (D9)**, written into `EVALUATION-PROTOCOL.md` before the first 
 
 ### 2.2 Still open
 
-1. **The provisional readings D1 to D9** (listed at the end). Practice runs are refused until D1 to D8 are
-   decided and logged and D9 is written into `EVALUATION-PROTOCOL.md`.
-2. **Tier 2 and Tier 3 thresholds** (section 7) [OWNER TO CONFIRM / SET].
-3. **Return against drawdown:** how much return to give up for a smaller drawdown than the full buy-and-hold
+1. **D9:** the pick rule and the rule for choosing the evaluation dates, in `EVALUATION-PROTOCOL.md`'s dedicated
+   fields. Practice runs are refused until both are written.
+2. **`EVALUATION-THRESHOLDS.md`:** keep or drop MU before any historical evaluation, the Tier 3 thresholds and
+   the prospective journal's minimums. Frozen before any evaluation result is accessed; never read by the
+   practice-run gate.
+3. **Tier 2 thresholds** (section 7b) [OWNER TO CONFIRM].
+4. **Return against drawdown:** how much return to give up for a smaller drawdown than the full buy-and-hold
    (section 7c).
 
-### 2.3 Proposed experimental settings (each a hypothesis; accepting them is D8)
+### 2.3 Experimental settings (accepted by the owner as experimental choices, D8)
 
-| Setting | Proposal | In plain words |
+| Setting | Setting | In plain words |
 |---|---|---|
 | Typical move `m` | Mean absolute close-to-close change over the last 20 changes | How far the stock usually moves in a day. Used to scale every distance below. |
 | Range window | Closes from 60 sessions back to yesterday | About three months: long enough to see several bounces, short enough to follow a changing market. |
@@ -136,24 +151,24 @@ owner's decision (D9)**, written into `EVALUATION-PROTOCOL.md` before the first 
 | Decision timing | After the close; fills at the next open (decision 6) | Section 2.5. |
 | Costs | HXR's cost model: calibrated half-spread, slippage, US$0 commission, SEC and FINRA sell fees, 15% dividend withholding | So the results can be compared with HXR's. |
 
-**D8, provisional reading, pending the owner's decision:** these settings, and the definitions of section 3,
-are the ones built into the eight configs. The owner has not said whether to accept them as the settings to
-test; nothing in the owner's answers fixes the 60-session window, the 25% zones, 2 visits, 4 typical moves or
-the half-move margins.
+**D8 (experimental choice):** these settings and the definitions of section 3, with D2 and D3, are the ones
+built into the eight configs. Nothing in the owner's answers fixes the 60-session window, the 25% zones, 2
+visits, 4 typical moves or the half-move margins; they are accepted as the settings to test.
 
-### 2.4 Re-entry above the last sale price (decision 4)
+### 2.4 Re-entry above the last sale price (decision 4, D1)
 
-Both variants are tested (H5).
+Both variants are tested (H5). **D1 (experimental choice): no stock is ever retired.**
 
-- **With the limit** (as HXR): after a sale at price `P`, the stock can be bought again only while its decision
-  close is below `P` and the fill is below `P` (both adjusted for splits).
-  - **D1, provisional reading, pending the owner's decision:** as implemented, a close **at or above `P`**
-    before any re-entry retires the stock for the rest of the run (it can never be bought again). The other
-    reading is to refuse only entries at or above `P`, leaving the stock able to enter later below `P`. A fill
-    at or above `P` is cancelled and recorded either way.
-- **Without the limit:** after a sale, the stock is treated like any other stock. Its next valid entry signal
-  counts, whatever the price. For example, a stock sold at 100 forms a new range between 104 and 112, and a dip
-  entry at 105 is allowed.
+- `P` = the last sale's fill price for that stock (half-spread and slippage included), adjusted for splits and
+  replaced at each later sale. A stock never sold has no `P`. A position closed because a split left no whole
+  share is not a sale: `P` is unchanged.
+- **With the limit** ("-limit" variants, as implemented): an entry signal is refused while its decision close is
+  at or above `P`, recorded as a skip with code `reentry_limit` (a refused pullback signal counts as used); a buy
+  whose fill price, half-spread and slippage included, is at or above `P` is cancelled and recorded. The stock
+  keeps being checked at later closes, and enters when a later signal and fill are below `P`.
+- **Without the limit** ("-nolimit" variants): `P` is never used in any entry, fill or retirement decision. It is
+  still tracked for reporting (H5: re-entries above the last sale). For example, a stock sold at 100 forms a new
+  range between 104 and 112, and a dip entry at 105 is allowed.
 
 Without the limit the system stays invested in strong stocks, but it may sell and buy back the same stock
 repeatedly ("whipsaw") and pay costs each time.
@@ -176,7 +191,8 @@ repeatedly ("whipsaw") and pay costs each time.
 ## 3. Range and trend definitions (computable without hindsight)
 
 **No hindsight.** Every reference level for decision day `t` uses closes up to `t−1` only. Today's close is only
-ever compared with those levels.
+ever compared with those levels. **Closes are the stock's own closes:** excluded sessions and days without a bar
+for that stock do not count, for the window, for `m`, and for the counts of D3.
 
 - **Typical move** `m(t−1)`: the mean absolute close-to-close change over the 20 changes ending at `t−1`.
   - Entries use `m(t−1)` at decision time.
@@ -187,34 +203,57 @@ ever compared with those levels.
 - **Visit:** a run of consecutive closes inside a zone. Two visits are separate only if at least 5 closes outside
   that zone lie between them.
 - **Established range:** the window holds at least 2 separate visits to each zone, and `H ≥ 4 × m(t−1)`.
+- **Qualified range (D3, experimental choice):** the range is qualified at close `t` when it is established on
+  `t−60 … t−1` and, if the stock has a confirming close (below), that whole window lies after it. **Dip,
+  recovery and immediate-breakout entries need a qualified range.**
 - **Rolling and freezing:** the boundaries roll daily while no trade is open. They are frozen at the entry
   decision and attached to the trade as `lo, hi, H, m` at entry.
-- **Invalidated:** by a breakout or breakdown close, or when the rolling window no longer meets the conditions.
-  - **D3, provisional reading, pending the owner's decision:** as implemented, an untraded range's breakout or
-    breakdown does not block later range entries by itself. The range is simply recomputed on the rolling
-    window every day, and it must re-qualify there (the break's closes are now part of the window). The
-    other reading is to block range entries for some time after a break.
+- **Break (D3, experimental choice).** A break gives the stock a **confirming close**; it is checked at every
+  close, held or not, warm-up closes included. A break is:
+  - **(a) a confirmed breakdown of a qualified range:** a first close below `lo − 0.5 × m(t−1)` freezes that
+    window's `lo`; the next close confirms it if it is also below the frozen `lo − 0.5 × m(t−1)` of that close
+    (example C). The confirming close is that second close. A next close that is not below drops the frozen
+    `lo`; a later break needs a new first breaking close of a qualified range. (With the two-close setting of
+    decision 3; the code counts `breakdownCloses` consecutive closes.)
+  - **(b) a breakout close of a qualified range:** `close(t) > hi + 0.5 × m(t−1)`. The confirming close is that
+    close.
+  - **(c) a range trade's breakdown-exit decision close, or its conversion close** (section 4).
+
+  **After a confirming close:** the range is not qualified until a window of 60 closes lies entirely after it.
+  **Minimum waiting period: the earliest decision close for a dip, recovery or immediate-breakout entry is the
+  stock's 61st close after the confirming close**, usually later (the new window must also be established).
+  There is no other retirement period, and no stock is ever retired.
+  - **Only a breakout's own close keeps its normal signals:** its immediate-breakout entry and the start of its
+    pullback watch.
+  - **A breakdown's confirming close gives no dip or recovery entry** (the rolling window may then show the first
+    breaking close as its `lo`, and a close just above it would otherwise look like a dip).
+  - **While the range is not qualified**, a close above the rolling `hi + 0.5 × m(t−1)` is not a breakout: no
+    immediate entry, no new or replaced pullback watch, no new confirming close. A close below the rolling
+    `lo − 0.5 × m(t−1)` starts no breakdown either.
+  - **Open trades keep their frozen levels; their exits are unaffected.**
 - **Breakout at `t`:** `close(t) > hi + 0.5 × m(t−1)`, with `hi` taken from `t−60 … t−1` and the range
-  established on that window.
-- **Breakdown:** 2 consecutive closes below `lo − 0.5 × m` (**two closes: a provisional test assumption,
-  decision 3**).
-  - For a trade, `lo` is the trade's frozen `lo` and `m` is `m(entry)`.
-  - For an untraded range, `lo` comes from the window of the **first** breaking close, and `m` is `m(t−1)` at
-    each close.
-- **Dip entry:** in an established range, a close inside the bottom zone and above `lo`.
-- **Recovery entry:** in an established range, after a visit to the bottom zone (the most recent one in the
-  window), a close at least `1 × m(t−1)` above that visit's lowest close, above the bottom zone, and still in the
-  lower half (`≤ lo + 0.5H`).
-  - **D2, provisional reading, pending the owner's decision:** as implemented, this needs no up close and no
-    visit to the top since the bottom visit. So it can fire while the price is falling, for example on a
-    close one typical move above an earlier low that is itself lower than the day before. The other readings
-    add an up-close requirement, or a top visit between the bottom visit and the entry.
+  qualified on that window.
+- **Breakdown of a trade:** 2 consecutive closes below the frozen `lo − 0.5 × m(entry)` (**two closes: a
+  provisional test assumption, decision 3**).
+- **Dip entry:** in a qualified range, a close inside the bottom zone and above `lo`.
+- **Recovery entry (D2, experimental choice):** in a qualified range, after a visit to the bottom zone (the most
+  recent one in the window), a close
+  - at least `1 × m(t−1)` above that visit's lowest close, above the bottom zone, and still in the lower half
+    (`≤ lo + 0.5H`);
+  - **(a) an up close:** `close(t) > close(t−1)`, the stock's previous close;
+  - **(b) with no close of the window `t−60 … t−1` after the last close of that visit lying in the top zone of
+    that same window, and `close(t)` not in it either.**
 - **Pullback entry:** after a breakout, a "pullback close" (above the old `hi` and within `1 × m(t−1)` of it),
   followed by an up close, `close(t) > close(t−1)`. The entry is decided at that up close.
-  - The watch for a pullback starts at a breakout of an established range, is replaced by a new breakout, and
-    ends at a close at or below the old `hi` (the breakout failed). It advances at every close, whether or not
-    the stock is held; only the entry needs the stock not held, no order pending and not retired.
-  - A pullback signal is used once: if it cannot be entered, a later close needs a new pullback close first.
+  - **The watch (the owner's choice of 2026-10-27):** it starts at a breakout of a qualified range (replacing a
+    running watch), and ends at a close at or below the old `hi` (the breakout failed), at a new breakout of a
+    qualified range, or **when its pullback entry fills**. If a decided pullback entry is cancelled or rejected
+    at the fill, the watch continues and needs a new pullback close followed by an up close.
+  - It advances at every trading close, whether or not the stock is held; only the entry needs the stock not
+    held and no order pending. As implemented, watches start from the period's first trading close: a breakout
+    during the warm-up starts no watch.
+  - A pullback signal is used once: if it is not entered (refused, skipped, rejected or cancelled), a later close
+    needs a new pullback close first.
 - **Repeated signals (as implemented):** an entry condition is checked at every close while the stock is not
   held and has no order pending. A signal that cannot be filled (for lack of cash or risk room) can therefore
   recur at a later close, while its condition still holds.
@@ -230,7 +269,7 @@ The arithmetic of each example was checked with a calculation and is reproduced 
 - Every change is 2, so `m = 2`. `lo = 100`, `hi = 110`, `H = 10`.
 - Bottom zone `[100, 102.5]`, top zone `[107.5, 110]`.
 - Each cycle visits both zones (bottom visits: `102, 100, 102`), separated by 7 closes outside the zone.
-- `H = 10 ≥ 4 × 2 = 8`, so the range is **established**.
+- `H = 10 ≥ 4 × 2 = 8`, so the range is **established**, and with no confirming close **qualified**.
 
 **A. Range entries**
 
@@ -238,29 +277,39 @@ The arithmetic of each example was checked with a calculation and is reproduced 
 |---|---|---|---|---|
 | t−1 | 102 | | (end of the window) | |
 | t | 101 | 2 | In `[100, 102.5]` and above 100 | **Dip entry** |
-| t+1 | 103 | 1.95 (19 changes of 2 and one of 1) | Visit's lowest close 101 + 1.95 = 102.95 ≤ 103; above the zone; ≤ lower-half limit 105 | **Recovery entry** (if no dip entry was taken) |
+| t+1 | 103 | 1.95 (19 changes of 2 and one of 1) | Visit's lowest close 101 + 1.95 = 102.95 ≤ 103; above the zone; ≤ lower-half limit 105; an up close (103 > 101); no top-zone close since the visit | **Recovery entry** (if no dip entry was taken) |
+
+Under D2, a recovery close of 103 after a close of 103.5 would not count (not an up close), and neither would
+one after the window had visited the top zone since the bottom visit.
 
 **B. Breakout, then pullback entry.** The window continues the pattern with `100, 102, 104, 106, 108`.
 
 | Day | Close | `hi` (`t−60 … t−1`) | `m(t−1)` | Check | Result |
 |---|---|---|---|---|---|
-| t | 111.5 | 110 | 2 | 111.5 > 110 + 0.5 × 2 = 111 | **Breakout** (an immediate entry is decided here) |
+| t | 111.5 | 110 | 2 | 111.5 > 110 + 0.5 × 2 = 111 | **Breakout** (an immediate entry is decided here; the watch starts; this is a confirming close) |
 | t+1 | 110.8 | (old hi 110) | 2.075 | Above 110 and within 2.075 of it | Pullback close |
 | t+2 | 111.4 | | 2.01 | Up close: 111.4 > 110.8 | **Pullback entry** |
 
 *Check that a breakout is still possible:* `hi` excludes today's close. If `hi` included it, `hi` on day t
 would be 111.5, and no close could ever be above `hi + 0.5m`: the breakout rule could never fire.
 
+*After the breakout (D3):* closes of 113 and 114.5 on t+1 and t+2 are above the rolling top (111.5 + 0.5 ×
+2.075) but the range is not qualified: no second immediate entry, and the watch keeps the old `hi` of 110.
+
 **C. Breakdown of an untraded range.** After the 60-close window:
 
 | Day | Close | Level | Check | Result |
 |---|---|---|---|---|
 | t | 98.5 | `lo` = 100 (window of this first breaking close), `m` = 2 | 98.5 < 100 − 1 = 99 | First breaking close |
-| t+1 | 98 | frozen `lo` = 100, `m(t)` = 2.075 | 98 < 100 − 1.0375 = 98.96 | **Breakdown** |
+| t+1 | 98 | frozen `lo` = 100, `m(t)` = 2.075 | 98 < 100 − 1.0375 = 98.96 | **Breakdown: the confirming close** |
 
 *Why `lo` is frozen at the first breaking close:* a rolling `lo` on day t+1 would already be 98.5. The level
 would then be 97.46, and the second close of 98 would not count. Support that had already failed would never
 be confirmed.
+
+*No dip on the confirming close:* with 98.9 instead of 98 on t+1, the rolling window's bottom zone would be
+`[98.5, 101.375]` and 98.9 would look like a dip; but 98.9 < 98.96 confirms the breakdown, and a breakdown's
+confirming close gives no dip or recovery entry. The earliest entry is then the stock's 61st close after t+1.
 
 **D. Resistance-rejection exit for the dip entry of A.** Frozen at entry: `lo = 100`, `hi = 110`, `H = 10`,
 `m(entry) = 2`. The rule is armed at a close of 107.5 or more, and exits below 107.5 − 1 = 106.5.
@@ -277,12 +326,15 @@ All exits are decided at a close and filled at the next open.
 
 **Range trades** (dip or recovery entry). These exits are part of every range run; none is an optional extra.
 - **Breakout first:** if a close is above the frozen `hi + 0.5 × m(entry)`, the trade becomes a trend trade
-  (old high = the frozen `hi`) and is held under the trend exits from then on.
+  (old high = the frozen `hi`) and is held under the trend exits from then on. **The conversion close is a
+  confirming close of the stock's range (D3 c).**
 - **Breakdown:** 2 consecutive closes below the frozen `lo − 0.5 × m(entry)` (**two closes: provisional,
-  decision 3**). Exit.
+  decision 3**). Exit. **The decision close is a confirming close of the stock's range (D3 c)**, so after the
+  sale the old range gives no new entry: the stock needs a new range entirely after that close.
 - **Resistance rejection** (one proposed exit, experimental):
   - It is armed once a close enters the trade's frozen top zone.
   - It exits when a later close falls back below the top zone's lower edge minus `0.5 × m(entry)`.
+  - It is not a break: the stock's rolling range keeps its qualification.
 - **How this differs from selling automatically at the top zone:** reaching the top only arms the exit. A stock
   that reaches the top and stays there is not sold, and neither is one that breaks out. Only a rejection back
   down is.
@@ -294,9 +346,11 @@ either:
 - 2 consecutive closes back below the old `hi` (**two closes: provisional, decision 3**); or
 - a close more than `3 × m(entry)` below the highest close since buying.
 
+Neither trend exit is a break.
+
 **Other ways a position ends (as implemented):**
 - a split that leaves no whole share closes the position at the split (`split_no_whole_share`); its fraction is
-  paid as cash in lieu to that trade (section 6b).
+  paid as cash in lieu to that trade (section 6b). It is not a sale: `P` is unchanged.
 
 The sizing stops of section 6a are planning levels for sizing. They are **not** exit prices.
 
@@ -309,13 +363,15 @@ The sizing stops of section 6a are planning levels for sizing. They are **not** 
 | H1 | Dip entries buy cheaper but fail support more often | Entry price relative to the range; breakdown exits | Average entry position in the range (0 = `lo`, 1 = `hi`); share of range trades ending in breakdown; average loss per breakdown |
 | H2 | Recovery entries pay a little more but fail support less often | The reverse of H1 | The same measures, compared with H1 |
 | H3 | Immediate breakout entries catch more of a run, with more false breakouts | Trend capture; failed breakouts | Share of trend trades exiting on 2 closes below the old `hi` (**two closes: provisional, decision 3**); gain per completed trend trade; trade count |
-| H4 | Pullback entries have fewer false starts but miss some runs | Fewer failed breakouts; breakouts never entered | The same as H3, plus the number of breakout watches that ended without an entry (a close back at or below the old high, or replaced by a new breakout) |
-| H5 | Removing the below-sale re-entry limit raises time invested and whipsaw costs | Exposure; repeated trading of the same stock | Average invested fraction; re-entries above the last sale; costs; the P/L of trades whose entry fills within 20 sessions of a sale of the same stock |
-| H6 | HXR with the corrected tech/AI cap (diagnostic only) | Explains the 2026-10-23 development results | **D7, open owner decision:** whether to run it at all. If run, it runs under HXR's own ledger as a new HXR version, marked contaminated, never counted. It is not a range-trend config, and no result is predicted. |
+| H4 | Pullback entries have fewer false starts but miss some runs | Fewer failed breakouts; breakouts never entered | The same as H3, plus the number of breakout watches that ended without an entry (a close back at or below the old high, or replaced by a new breakout). **Only watches on stocks not held (and with no buy waiting to fill) when the breakout occurred are counted.** |
+| H5 | Removing the below-sale re-entry limit raises time invested and whipsaw costs | Exposure; repeated trading of the same stock | Average invested fraction; re-entries above the last sale (filled entries decided at or above `P`, open positions included); the limit's refused signals and cancelled fills; costs; the P/L of trades whose entry fills within 20 sessions of a sale of the same stock |
+
+The HXR corrected-cap diagnostic (H6 of versions 0.3 and 0.4) is **dropped by the owner (D7)**: no HXR run is
+part of this plan.
 
 ---
 
-## 6. Experiment budget (decision 8)
+## 6. Experiment budget (decision 8, amended by D6 and D7)
 
 All practice runs use 2017-10-02 to 2021-12-31 and are labelled **exploratory**. That period is already
 development data (section 1).
@@ -324,11 +380,11 @@ development data (section 1).
 |---|---|---|
 | Range | 4 | Dip or recovery entry, each with and without the re-entry limit |
 | Trend | 4 | Immediate or pullback entry, each with and without the re-entry limit |
-| HXR corrected-cap diagnostic | 1 at most | H6. **Whether it runs is D7, the owner's decision now**, not something decided after results |
-| Range + trend combination | 2 at most | **D6, the owner's decision now:** whether the two combination runs are in the budget, and what they combine. Version 0.3 deferred this to "after both families show measurable behaviour"; that would let exploratory results shape the budget, so it is withdrawn. No combination config exists |
-| **Total** | **11 at most** | 8 planned configs exist; the other 3 slots depend on D6 and D7 |
+| **Total** | **8** | The eight `rt-*-0.2.0.json` configs (`config.js` `PLANNED_CONFIGS`), each run once |
 | Reserve | 1 | See below |
 
+- **No combination runs (D6) and no HXR diagnostic (D7).** The budget is eight exploratory runs plus one
+  verified-defect reserve.
 - **The reserve** is used only to re-run a run invalidated by a verified defect (code or data), with only the
   defect corrected. The broken result is kept and logged next to the re-run, with:
   - the defect;
@@ -336,14 +392,19 @@ development data (section 1).
   - the correction.
 
   It is never used for parameter tuning. As implemented, the reserve run must use the config hash of the run it
-  replaces, needs all three of the items above, and only one reserve exists in all.
+  replaces, needs all three of the items above as non-empty text, and only one reserve exists in all.
 - Every run is logged, failures included. As implemented, a run's ledger slot is taken before it starts; a run
   interrupted by a stopped process is recorded as failed and its slot stays used.
 - **The benchmarks are not runs in this budget.** Benchmarks (a), (b) and (c) of section 7 are computed with
-  every practice run, from the same inputs, and do not count against the 11.
-- Range and trend are tested separately before they are combined.
+  every practice run, from the same inputs, and do not count against the eight.
+- Range and trend are tested separately.
 - Constant within each family: HXR's ten stocks (decision 10), HXR's cost model, decisions after the close with
   fills at the next open, US$15,000 shared cash and the portfolio rules of 6a.
+- The superseded `rt-*-0.1.0.json` files (versions 0.3 and 0.4 of this plan) are kept with their pins and cannot
+  run: `validateConfig` requires the declarations of D1 to D4 and of the watch rule (`reentryRetire: false`,
+  `levels.recoveryUpClose: true`, `levels.recoveryNoTopSinceBottom: true`, `levels.brokenRange:
+  "post_break_window"`, `levels.pullbackWatchEndsAt: "fill"`, `benchmark.buyAndHold:
+  "equal_weight_fractional_never_rebalanced"`), which they lack.
 
 ### 6a. Portfolio rules (approved for building, 2026-10-26)
 
@@ -362,7 +423,8 @@ fractions of `V`. There is no adding to a position: one position per stock at a 
 
 **Same-day signals.** When several entry signals arrive at one close:
 - The available cash and the remaining total-risk room (`5% × V` minus the entry risk of open positions and
-  pending orders) are **each shared equally** between that day's signals.
+  pending orders) are **each shared equally** between that day's signals. A signal refused by the re-entry
+  limit (D1) takes no share.
 - Each signal is sized by the smallest of: its cash share, its risk-room share, risk per trade, and the position
   cap.
 - Shares are whole, rounded down.
@@ -373,6 +435,7 @@ fractions of `V`. There is no adding to a position: one position per stock at a 
 - The order was sized at the decision close. At the fill, all its limits are applied again at the **fill
   price**: its cash share including costs, the 20% cap and the 1% risk per trade (both of the decision's `V`),
   and its risk-room share. The share count can be **reduced**, never raised.
+- With the re-entry limit, a fill price at or above `P` is **cancelled** and recorded (D1).
 - If the sizing stop is at or above the fill price, the entry is **rejected** and recorded.
 - If no whole share fits, the order is **cancelled** and recorded.
 - The entry price in the total risk is the fill price.
@@ -405,44 +468,46 @@ Costs and whole shares can lower these slightly at the fill.
   the cash, so more than five fit, and the risk total reaches 5% first.
 - It can also bind after `V` falls, because entry risks are fixed in dollars while `5% × V` shrinks.
 
-**D5, provisional reading, pending the owner's decision: whole shares at raw prices.** Prices are raw
-(unadjusted) daily prices, as HXR uses them. Before their 2022 20-for-1 splits, AMZN traded at about US$1,000
-to US$3,700 and GOOG at about US$1,000 to US$3,000 (2017 to 2021), so on a US$15,000 account the 20% cap
-(US$3,000) allows **0 or 1 share** of either. A 0-share signal is skipped and recorded; a 1-share position has
-its risk set by the price, not by the 1% rule. The same applies to the hold benchmark's US$1,500 sleeves (D4).
-The code keeps whole shares at raw prices and reports 1-share entries and skips per stock. Other readings:
-fractional shares, split-adjusted prices, or a larger simulated account.
+**D5 (experimental choice, accepted): whole shares at raw prices.** Prices are raw (unadjusted) daily prices,
+as HXR uses them. Before their 2022 20-for-1 splits, AMZN traded at about US$1,000 to US$3,700 and GOOG at about
+US$1,000 to US$3,000 (2017 to 2021), so on a US$15,000 account the 20% cap (US$3,000) allows **0 or 1 share** of
+either. A 0-share signal is skipped and recorded; a 1-share position has its risk set by the price, not by the
+1% rule. No design change. **Reported per run, per stock:** signals; decision-time skips by code (including
+`no_whole_share` and `reentry_limit`); fill-time cancellations and rejections by code; 1-share entries; orders
+pending at the period's end; dividends entitled but unpaid at the end.
 
 ### 6b. Splits, excluded sessions and dividends (as implemented)
 
 - **Splits.** On a split's effective session, every stored price and level of that stock moves to post-split
   units (the close history in the window, the last close, a trade's frozen `lo, hi, H, m`, its sizing stop, old
-  high and highest close, the last sale price, the pullback watch, and a pending buy's share count and levels).
-  Shares are multiplied by the ratio and rounded down; the fraction left over is paid as cash in lieu at the
-  next open less the half-spread, to the trade that held it. A split that leaves no whole share closes the
-  position at the split (section 4).
+  high and highest close, the last sale price `P`, the pullback watch, a pending breakdown's frozen `lo`, and a
+  pending buy's share count and levels). Shares are multiplied by the ratio and rounded down; the fraction left
+  over is paid as cash in lieu at the next open less the half-spread, to the trade that held it. A split that
+  leaves no whole share closes the position at the split (section 4).
 - **Excluded sessions.** HXR's excluded sessions (`periods-hxr-v3.json`) are removed from the session list
   before the engine sees them, for every stock. The window and the typical move count closes, so an excluded
   session is simply absent; no decision is made on it.
-- **Dividends.** A dividend is earned by the shares held at the start of the ex-date session, with 15%
-  withheld (HXR's assumption), and paid on the pay date (the ex-date when none is recorded). It belongs to the
-  trade holding the shares on the ex-date and enters that trade's P/L, even if it is paid after the sale: a
-  payment after the trade closed is recorded apart and added to that trade's P/L when the metrics are computed.
-  A closed trade's record is never edited, and nothing is credited to a later trade in the same stock.
+- **Dividends.** A dividend is earned by the shares held at the start of the ex-date session (a position bought
+  at that session's open is not entitled; one sold at that open is), with 15% withheld (HXR's assumption), and
+  paid on the pay date (the ex-date when none is recorded). It belongs to the trade holding the shares on the
+  ex-date and enters that trade's P/L, even if it is paid after the sale: a payment after the trade closed is
+  recorded apart and added to that trade's P/L when the metrics are computed. A closed trade's record is never
+  edited, and nothing is credited to a later trade in the same stock.
 - **Missing bars.** A buy with no bar on its fill session is cancelled and recorded; a sell waits for the next
-  bar.
+  bar. A stock's own closes are what the window, `m` and the counts of D3 use.
 
 ### 6c. Data and storage (as implemented)
 
 - **Market data:** read at run time only, read-only, through HXR's data layer from `data/hxr-sim.sqlite`,
-  which must be in the data directory. **No new download**: the range-trend code downloads nothing; the data is
-  what the HXR page downloaded (HXR EXPERIMENT-LOG entries 14 and 1-2). HXR's readiness check (with the
-  owner's reviewed overnight moves) and its spread calibration must pass for the development period.
+  which must be exactly that file in the configured data directory. **No new download**: the range-trend code
+  downloads nothing; the data is what the HXR page downloaded (HXR EXPERIMENT-LOG entries 14 and 1-2). HXR's
+  readiness check (with the owner's reviewed overnight moves) and its spread calibration must pass for the
+  development period.
 - **Results:** `data/range-trend-sim.sqlite`, range-trend's own database. Its file guard refuses the
   portfolio, demo, Strategy Lab and HXR files, and any file holding other tables. The ledger is append-only.
 - **Hashes recorded with every run:** the config's hash and its pinned file hash, the code revision, the
-  symbol metadata hash, the market-data hash, the spread-calibration hash, the protocol's hash and the HXR
-  engine version used for benchmark (a).
+  symbol metadata hash, the market-data hash, the spread-calibration hash, the protocol's hash, the index
+  method of benchmark (a) and the HXR engine version used for the HXR hold arm.
 - **Backups:** `createBackup` copies the database into `backups/range-trend` the same way as HXR's.
 - **Stocks:** HXR's basket A (decision 10), read from `universe-hxr-v3.json` with its tech/AI tags (unused by
   range-trend: no tech/AI cap).
@@ -466,16 +531,17 @@ fractional shares, split-adjusted prices, or a larger simulated account.
 
 ### 7a. Tier 1: the code is correct
 
-Synthetic data only. Must pass before any practice-run result is looked at. As of EXPERIMENT-LOG entry 5:
-- every worked example in sections 3 and 6a reproduces;
+Synthetic data only. Must pass before any practice-run result is looked at. As of EXPERIMENT-LOG entry 9:
+- every worked example in sections 3 and 6a reproduces, including the D2 and D3 cases;
 - no look-ahead, future-change and determinism tests pass for every planned config;
 - accounting: cash never goes below zero; account value = cash + holdings at every close, with holdings
   recomputed independently in the tests; every fill carries its costs; costs and dividends reconcile with the
   cash; one buy cost and one sell's proceeds with fees are pinned by hand;
 - provenance is stored on every run;
 - sizing is hand-checked, including several same-day signals and next-open gaps up and down;
-- there is a scenario for every entry and exit;
-- 20 planted bugs are each caught by the tests.
+- there is a scenario for every entry and exit, and for each of D1 to D4 and the watch rule;
+- benchmark (a) and the exposure-matched hold are hand-checked on two stocks with a split and a dividend;
+- the planted bugs of `scripts/rangetrend-planted.mjs` are each caught by the tests.
 
 ### 7b. Tier 2: exploratory usefulness
 
@@ -487,34 +553,37 @@ These are descriptions, not pass marks. Every threshold is **[OWNER TO CONFIRM]*
   the end, marked at the last close).
 - Any single stock making more than **[40%]** of a run's net profit (the same outcomes) is flagged.
 - Every run is compared with the exposure-matched hold (7c).
-- Costs are reported as a metric, with no pass mark; so are per-stock signals, skips by code and 1-share
-  entries.
+- Costs are reported as a metric, with no pass mark; so are the per-stock counts of D5.
 
 ### 7c. Tier 3: the evaluation
 
-- Thresholds are **[OWNER TO SET]**. They are written into `EVALUATION-PROTOCOL.md` and frozen with the
-  candidate before any evaluation data is touched.
-- The local simulated prospective journal also needs a minimum length and trade count before anything is
-  concluded, for example **[6 months and 30 completed trades]**.
+- Thresholds are **[OWNER TO SET]**, in `EVALUATION-THRESHOLDS.md`, which also holds keep or drop MU and the
+  prospective journal's minimum length and completed-trade count before anything is concluded. That file is
+  frozen, with its hash, before any evaluation result is accessed; the practice-run gate never reads it.
 
-**Benchmarks** (computed with every run, outside the budget):
-- **(a) Buy and hold.** **D4, provisional reading, pending the owner's decision:** as implemented, (a) is
-  HXR's hold arm (`hxr-hold-0.1.0.json`) run by the HXR engine on the same inputs and costs: US$15,000 split
-  into ten equal sleeves of US$1,500; each sleeve buys **whole shares at the raw price** at the first session's
-  open, with the half-spread and slippage; the cash left in each sleeve after rounding down stays idle at 0%;
-  dividends are credited with 15% withheld; nothing is ever sold; holdings are marked at the last close. So
-  (a) is not fully invested: a sleeve of US$1,500 buys 1 share of a US$960 stock and keeps US$540 in cash, and
-  0 shares of a stock above US$1,500. Other readings: fractional shares, split-adjusted prices, or a larger
-  simulated account.
+**Benchmarks** (computed with every run, outside the budget; each labelled):
+- **(a) Buy and hold (D4, experimental choice): an equal-weight buy-and-hold index of the ten stocks,
+  never rebalanced.** At the open of the run's first trading session (on or after the period's start),
+  US$15,000 ÷ 10 is put into each stock with fractional shares and no costs (a stock without a bar at that open
+  is bought at its first later open, and its share waits as cash at 0%). The weights drift and are never
+  rebalanced. Splits multiply the shares, with no fraction paid out. Dividends are entitled by the shares held at
+  the start of the ex-date session, credited net of 15% withholding on the pay date (the ex-date when none is
+  recorded) and reinvested at that stock's close on the pay date, or at its next close if it has no bar that
+  day. A stock with no bar on a day keeps its last close. The index has a value at every close of the run's
+  equity series; `r(t) = I(t) ÷ I(t−1) − 1`, close to close. It is labelled **derived**: it is not an account
+  that could be traded.
 - **(b) Cash at 0%.** Labelled as cash. It is not an exposure-matched comparison.
 - **(c) Exposure-matched hold (derived):**
-  - `r(t)` = the return of (a)'s account value from close `t−1` to close `t`;
+  - `r(t)` = the index's return from close `t−1` to close `t`;
   - `f(t−1)` = the run's holdings ÷ its account value at close `t−1`;
   - `B(t) = B(t−1) × (1 + f(t−1) × r(t))`, with `B(0)` = US$15,000.
 
   It is labelled **derived**. It is frictionless in its own rebalancing (no costs or whole shares for moving
   between (a) and cash). Its `f` lags the run's own fills by part of a day: the run's positions change at the
   open, `f` is measured at the previous close.
+- **HXR's whole-share hold arm** (`hxr-hold-0.1.0.json` run by the HXR engine on the same inputs: ten US$1,500
+  sleeves, whole shares at raw prices with costs, idle sleeve cash, nothing sold) is still computed and reported
+  beside (a), labelled as such. It is not the benchmark.
 
 **The trade-off rule, exactly as `metrics.js` computes it.** For the run and for (c):
 - *annualised return* = `(end ÷ start)^(1 ÷ years) − 1`, with `years` = the days from the first to the last
@@ -535,7 +604,8 @@ the full buy-and-hold (a) is the owner's preference, and it is **still open**. T
 enforced.
 
 **Per run, always reported:** net return after costs, maximum drawdown, average invested exposure and time in
-cash, trade count and holding periods, turnover and costs, and the comparisons with (a), (b) and (c).
+cash, trade count and holding periods, turnover and costs, the counts of D5, the breaks by kind, and the
+comparisons with (a), (b), (c) and the HXR hold arm.
 
 **The pick rule** that chooses the candidate from the practice runs is open (D9). It is written in
 `EVALUATION-PROTOCOL.md` before the first practice run, and it is never the ending balance alone. No automatic
@@ -547,13 +617,13 @@ winner selection is built.
 
 1. The owner's build approval (done 2026-10-26; first entry of `EXPERIMENT-LOG.md`).
 2. Build, with the Tier 1 tests (done; EXPERIMENT-LOG entries 2 to 5).
-3. The owner decides D1 to D8 (logged in `EXPERIMENT-LOG.md` as "Owner decisions D1-D8") and writes D9 into
-   `EVALUATION-PROTOCOL.md`: the pick rule, how the evaluation dates are chosen, and keep or drop MU. The code
-   refuses practice runs until both are there.
-4. The practice runs, within the budget, on separate instruction.
-5. Freeze the candidate and the protocol.
-6. The evaluation, according to the protocol.
-7. The local simulated prospective journal.
+3. The owner's decisions D1 to D8 (done 2026-10-27; EXPERIMENT-LOG entry 7) and their implementation (entry 8).
+4. The owner writes D9 into `EVALUATION-PROTOCOL.md`: the pick rule and how the evaluation dates are chosen.
+   The code refuses practice runs until both are there and no owner marker remains in that file.
+5. The practice runs, within the budget, on separate instruction.
+6. The owner completes and freezes `EVALUATION-THRESHOLDS.md`; the candidate and the protocol are frozen.
+7. The evaluation, according to the protocol.
+8. The local simulated prospective journal.
 
 Once an evaluation result influences any change, that period becomes development data.
 
@@ -568,12 +638,15 @@ Decision 9 above is the owner's words. The options below are a proposal; the own
 
 **The rules:**
 - `strategy/range-trend/EVALUATION-PROTOCOL.md` states, in its dedicated fields, the pick rule and how the
-  evaluation dates are chosen (including keep or drop MU before any historical evaluation, D9), and the Tier 3
-  thresholds. It is written **before the first practice run**, so that no exploratory result influences those
-  choices.
-- As implemented, practice runs are refused while either dedicated field is unset (empty, or containing
-  "[OWNER", "TBD", "TODO" or "?"), and the protocol's hash is fixed at the first practice run: a later change
-  refuses further runs until the owner logs a new protocol version.
+  evaluation dates are chosen (D9). It is written **before the first practice run**, so that no exploratory
+  result influences those choices. `EVALUATION-THRESHOLDS.md` holds keep or drop MU (historical evaluation
+  only), the Tier 3 thresholds and the journal minimums; it is frozen before any evaluation result is accessed
+  and is never read by the practice-run gate.
+- As implemented, practice runs are refused while either dedicated field is unset (empty, or containing the
+  owner marker, "TBD", "TODO" or "?"), while any owner marker remains anywhere in the protocol, or while a
+  field appears more than once; fields are read outside code fences and HTML comments only. **The protocol's
+  hash is frozen at the first practice run and is final for the practice runs:** a later change refuses further
+  runs until the file is restored to the frozen text. No new protocol version can reopen the practice runs.
 - The candidate and the protocol are frozen, with their hashes, **before any evaluation result is
   accessed**.
 - The evaluation runs once.
@@ -591,23 +664,24 @@ Decision 9 above is the owner's words. The options below are a proposal; the own
 
 ---
 
-## Decisions that need the owner
+## The owner's decisions D1 to D8 (recorded) and D9 (open)
 
-Each of D1 to D9 is a **provisional reading, pending the owner's decision**. The code keeps its current
-behaviour until the owner decides; the decision on each is recorded in `EXPERIMENT-LOG.md` ("Owner decisions
-D1-D8") and, for D9, in `EVALUATION-PROTOCOL.md`. Practice runs stay refused until then.
+Each of D1 to D8 was decided by the owner on 2026-10-27 (`EXPERIMENT-LOG.md` entry 7) as an experimental
+choice and is built into the eight `rt-*-0.2.0.json` configs (entry 8). D9 is written by the owner into
+`EVALUATION-PROTOCOL.md`'s dedicated fields; practice runs stay refused until then.
 
-| | Provisional reading (current behaviour) | The alternative(s) |
+| | Decision (experimental choice) | Where |
 |---|---|---|
-| D1 | With the re-entry limit, a close at or above the last sale price retires the stock for the rest of the run (section 2.4) | Refuse only entries at or above the last sale price; the stock can still enter later below it |
-| D2 | A recovery entry needs only a close one typical move above the latest bottom-visit low, above the zone and in the lower half; it can fire on a falling price (section 3) | Require an up close, or a visit to the top since the bottom visit |
-| D3 | An untraded range's breakdown or breakout does not block later range entries; the range just has to re-qualify on the rolling window (section 3) | Block range entries for a time after a break |
-| D4 | Benchmark (a) is HXR's hold arm: ten US$1,500 sleeves buying whole shares at raw prices with idle sleeve cash (section 7c) | Fractional shares, split-adjusted prices, or a larger simulated account |
-| D5 | Whole shares at raw prices on a US$15,000 account, leaving AMZN and GOOG at 0 or 1 share before their 2022 splits (section 6a) | Fractional shares, split-adjusted prices, or a larger simulated account |
-| D6 | The two combination runs: not configured; whether they are in the budget and what they combine (section 6) | Include them now with a stated design, or drop them (budget 9) |
-| D7 | H6, the HXR corrected-cap diagnostic: not run; whether to run it under HXR's own ledger, contaminated and never counted (section 5) | Run it, or drop it (budget 10 without D6, 8 without both) |
-| D8 | The rule settings of section 2.3 and the definitions of section 3, as built into the eight configs | Change any of them (a new config version, before any run) |
-| D9 | The pick rule, the rule for choosing the evaluation dates, and keep or drop MU before any historical evaluation: all unset in `EVALUATION-PROTOCOL.md` (sections 1, 8a) | Written by the owner in the protocol's dedicated fields |
+| D1 | Re-entry: no stock is ever retired; the "-limit" variants refuse a signal whose decision close is at or above `P` and cancel a fill at or above `P`; the "-nolimit" variants never use `P` | Section 2.4 |
+| D2 | Recovery entry: also needs an up close, and no top-zone close since the last close of the bottom visit (today's included) | Section 3 |
+| D3 | Broken range: a confirmed breakdown, a breakout, a range trade's breakdown exit or its conversion is a confirming close; the range is qualified again only on a window entirely after it; the earliest entry is the stock's 61st close after the confirming close; no other retirement period | Sections 3, 4 |
+| D4 | Benchmark (a): an equal-weight buy-and-hold index with fractional shares, never rebalanced, dividends reinvested; HXR's whole-share hold arm reported beside it | Section 7c |
+| D5 | Whole shares at raw prices on a US$15,000 account, accepted; the effects reported per stock | Section 6a |
+| D6 | Eight runs plus one verified-defect reserve; no combination runs | Section 6 |
+| D7 | No HXR diagnostic (H6 dropped) | Section 5 |
+| D8 | The settings of section 2.3 and the definitions of section 3 accepted as experimental, with D2 and D3 | Sections 2.3, 3 |
+| D9 | **Open:** the pick rule and the rule for choosing the evaluation dates, in `EVALUATION-PROTOCOL.md` | Sections 2.2, 8a |
 
-Also open: the Tier 2 thresholds ([30] completed trades, [40%] single-stock share), the Tier 3 thresholds, the
+Also open: `EVALUATION-THRESHOLDS.md` (keep or drop MU before any historical evaluation, the Tier 3
+thresholds, the journal minimums), the Tier 2 thresholds ([30] completed trades, [40%] single-stock share), the
 return-against-drawdown preference (7c), and a separate instruction to start the practice runs.

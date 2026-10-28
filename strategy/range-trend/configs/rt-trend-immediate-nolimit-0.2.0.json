@@ -1,0 +1,68 @@
+{
+  "strategy": "range-trend",
+  "version": "rt-trend-immediate-nolimit-0.2.0",
+  "label": "Trend: immediate entry, without the below-sale re-entry limit (exploratory)",
+  "status": "planned practice run (PLAN-DRAFT.md v0.5 section 6; the owner's decisions D1-D8, EXPERIMENT-LOG.md entry 7); experimental settings, not the owner's trading",
+  "family": "trend",
+  "entry": "immediate",
+  "reentryLimit": false,
+  "reentryRetire": false,
+  "levels": {
+    "mSessions": 20,
+    "windowSessions": 60,
+    "zoneFraction": 0.25,
+    "minVisits": 2,
+    "visitGap": 5,
+    "minHeightM": 4,
+    "breakoutM": 0.5,
+    "breakdownM": 0.5,
+    "breakdownCloses": 2,
+    "recoveryM": 1,
+    "pullbackM": 1,
+    "recoveryUpClose": true,
+    "recoveryNoTopSinceBottom": true,
+    "brokenRange": "post_break_window",
+    "pullbackWatchEndsAt": "fill"
+  },
+  "exits": {
+    "rejectionM": 0.5,
+    "trendBelowHiCloses": 2,
+    "trendGivebackM": 3
+  },
+  "portfolio": {
+    "startingCash": 15000,
+    "positionCapPct": 20,
+    "riskPerTradePct": 1,
+    "totalEntryRiskPct": 5,
+    "stopM": 0.5,
+    "addToPositions": false
+  },
+  "execution": {
+    "decision": "after_close",
+    "fill": "next_open",
+    "delaySessions": 1
+  },
+  "costs": {
+    "commissionPerOrder": 0,
+    "commissionPerShare": 0,
+    "secFeeRate": 0.0000206,
+    "tafPerShare": 0.000166,
+    "tafMaxPerTrade": 8.3,
+    "halfSpread": "calibrated",
+    "halfSpreadFloorBps": 2,
+    "slippageBps": 2
+  },
+  "dividends": {
+    "withholdingPct": 15
+  },
+  "benchmark": {
+    "buyAndHold": "equal_weight_fractional_never_rebalanced"
+  },
+  "period": {
+    "basket": "A",
+    "warmupFrom": "2016-01-04",
+    "start": "2017-10-02",
+    "end": "2021-12-31"
+  },
+  "notes": "D1: no stock is ever retired; with reentryLimit a signal whose decision close is at or above the last sale price P is refused (skip reentry_limit) and a fill at or above P is cancelled; without it P is only reported. D2: a recovery entry needs an up close and no top-zone close since the bottom visit. D3: after a confirming close (a confirmed breakdown, a breakout, a range trade's breakdown exit or conversion) the range is qualified again only on a window of 60 closes entirely after it, so the earliest entry is the stock's 61st close after it. D4: benchmark (a) is an equal-weight fractional buy-and-hold index, never rebalanced. The pullback watch ends when its entry fills. Two closes for breakdown and for the trend exit is a provisional test assumption (owner decision 3). Decisions after the close with next-open fills do not reproduce the owner's intraday reactions (decision 6). Results apply only to HXR's ten hand-picked stocks (decision 10)."
+}

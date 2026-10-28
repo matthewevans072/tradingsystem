@@ -19,6 +19,7 @@ import { canonicalJson } from '../strategy/config.js';
 import { loadConfig, configHash, PLANNED_CONFIGS, CODE_REVISION, protocolStatus, logStatus, PROTOCOL_PATH, LOG_PATH } from './config.js';
 import { runBacktest, ENGINE_VERSION } from './engine.js';
 import { computeMetrics } from './metrics.js';
+import { holdIndex, INDEX_METHOD } from './benchmark.js';
 import * as store from './store.js';
 import * as hxrStore from '../hxr/store.js';
 import { loadHxrUniverse, loadHxrPeriods, basketSymbols, excludedDates, halfSpreadFor, loadHxrConfig } from '../hxr/config.js';
@@ -129,14 +130,19 @@ export function createRangeTrend({
         trades: result.trades, postExit: result.postExit, openPositions: result.openPositions, fills: result.fills, decisions: result.decisions, skips: result.skips,
         warnings: result.warnings, dividends: result.dividends, splits: result.splits, watches: result.watches,
       };
-      // Benchmark (a) and the metrics: a failure is recorded as such, and the strategy result is kept.
-      let hold = null, metrics = null, errors = [];
+      // Benchmark (a), the index (D4), HXR's hold arm beside it, and the metrics: a failure is recorded as such,
+      // and the strategy result is kept.
+      let hold = null, index = null, metrics = null, errors = [];
+      try {
+        index = holdIndex({ symbols: inputs.symbols, sessions: inputs.sessions, days: inputs.days, start: pr.start, startingCash: config.portfolio.startingCash, withholdingPct: config.dividends.withholdingPct });
+        details.indexMethod = INDEX_METHOD;
+      } catch (e) { errors.push(`benchmark (a) failed: ${e.message}`); details.benchmarkError = e.message; }
       try {
         const holdCfg = loadHxrConfig(holdConfigFile);
         hold = runHxr({ config: holdCfg, symbols: inputs.symbols, period: { warmupFrom: pr.warmupFrom, start: pr.start, end: pr.end }, inputs: { ...inputs, halfSpreadBps: halfSpreadFor(holdCfg, calibrated) }, excludedSessions: excludedDates(periods) });
         Object.assign(details, { benchmarkEngineVersion: HXR_ENGINE_VERSION, holdConfigHash: hold.meta?.configHash ?? null, holdConfigFile });
-      } catch (e) { errors.push(`benchmark (a) failed: ${e.message}`); details.benchmarkError = e.message; }
-      try { metrics = computeMetrics(result, { hold }); } catch (e) { errors.push(`metrics failed: ${e.message}`); details.metricsError = e.message; }
+      } catch (e) { errors.push(`HXR hold arm failed: ${e.message}`); details.hxrHoldArmError = e.message; }
+      try { metrics = computeMetrics(result, { hold, index }); } catch (e) { errors.push(`metrics failed: ${e.message}`); details.metricsError = e.message; }
       store.insertEquity(db, id, result.equity);
       store.finishRun(db, id, { status: 'done', ...prov, metrics, details, error: errors.length ? errors.join('; ') : null, at: clock().toISOString() });
       return { id, status: 'done', configFile, version: config.version, metrics, errors, simulated: true, note: 'Exploratory practice run on development data (2017-10-02 to 2021-12-31). Reported only: no threshold is enforced and no winner is selected.' };

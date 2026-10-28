@@ -1,16 +1,21 @@
-// Range-trend engine (strategy/range-trend/PLAN-DRAFT.md v0.3 sections 3, 4 and 6a).
-// Simulation only: daily bars, decisions after the close, fills at the next open.
-// Streaming and deterministic: processSession(date, day) in session order; levels
+// Range-trend engine (strategy/range-trend/PLAN-DRAFT.md v0.5 sections 3, 4 and 6a, with the owner's
+// decisions D1-D4 of EXPERIMENT-LOG.md entry 7). Simulation only: daily bars, decisions after the close,
+// fills at the next open. Streaming and deterministic: processSession(date, day) in session order; levels
 // for a decision on day t use closes up to t-1 only (no look-ahead).
 import crypto from 'node:crypto';
 import { canonicalJson } from '../strategy/config.js';
 import { sellFees } from '../hxr/engine.js';
-import { rangeState, isDip, isRecovery, isBreakout, isPullbackClose, EPS, le, ge, gt, lt } from './levels.js';
+import { rangeState, isDip, isRecovery, isBreakout, isPullbackClose, breakStep, qualifiedRange, EPS, le, ge, gt, lt } from './levels.js';
 import { configHash, validateConfig } from './config.js';
 
-export const ENGINE_VERSION = 'rt-engine-2';
+// rt-engine-3: D1 (no stock is ever retired; with the re-entry limit a signal at or above the last sale price
+// is refused), D2 (the recovery entry needs an up close and no top-zone close since the bottom visit), D3 (a
+// broken range is qualified again only on a window entirely after the confirming close; breaks are checked at
+// every close, warm-up included) and the pullback watch ending at the fill of its entry.
+export const ENGINE_VERSION = 'rt-engine-3';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const HIST = (L) => Math.max(L.windowSessions, L.mSessions + 1) + 1;
+const JOURNAL = ['decisions', 'fills', 'trades', 'skips', 'warnings', 'equity', 'dividends', 'splits', 'watches', 'postExit', 'breaks'];
 
 // Section 6a sizing at one price: the smallest of the cash share (at price x (1 + k) plus commissions), the
 // position cap, risk per trade and the risk-room share; whole shares rounded down. `binding` lists the caps at
@@ -46,12 +51,14 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
   } else {
     S = {
       engineVersion: ENGINE_VERSION, configHash: cHash, symbols: list, period: { ...config.period }, cash: P.startingCash, lastDate: null,
+      // closes: the stock's own closes so far (D3 counts them); breakAt: its latest confirming close;
+      // breakdownWatch: a first breaking close waiting for confirmation; lastSale: P, the last sale's fill price.
       stocks: Object.fromEntries(list.map((s) => [s.symbol, {
-        symbol: s.symbol, history: [], lastClose: null, position: null, pending: null, lastSale: null, retired: false, watch: null,
-        receivables: [], fractions: [], splitFactor: 1,
+        symbol: s.symbol, history: [], lastClose: null, position: null, pending: null, lastSale: null, watch: null,
+        receivables: [], fractions: [], splitFactor: 1, closes: 0, breakAt: null, breakdownWatch: null, today: null,
       }])),
       // postExit: dividends and cash in lieu paid after their trade closed; they belong to that trade's P/L.
-      journal: { decisions: [], fills: [], trades: [], skips: [], warnings: [], equity: [], dividends: [], splits: [], watches: [], postExit: [] },
+      journal: Object.fromEntries(JOURNAL.map((k) => [k, []])),
       seq: 0,
     };
   }
@@ -62,6 +69,11 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
   const holdingsValue = () => order.reduce((a, s) => { const st = S.stocks[s]; return a + (st.position ? st.position.shares * st.lastClose : 0); }, 0);
   const reserved = () => order.reduce((a, s) => a + (S.stocks[s].pending?.side === 'buy' ? S.stocks[s].pending.cashShare : 0), 0);
   const entryRiskOpen = () => order.reduce((a, s) => { const st = S.stocks[s]; return a + (st.position ? st.position.entryRisk : 0) + (st.pending?.side === 'buy' ? st.pending.plannedRisk : 0); }, 0);
+  // A confirming close (D3): the stock's range is qualified again only on a window entirely after it.
+  const setBreak = (st, kind, date, values) => {
+    st.breakAt = { ordinal: st.closes, date, kind };
+    rec('breaks', { date, symbol: st.symbol, kind, ordinal: st.closes, held: !!st.position, values: clone(values) });
+  };
 
   // ---------- splits: every price and level in post-split units ----------
   function applySplits(date, splits) {
@@ -75,6 +87,7 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
       st.splitFactor *= r;
       if (st.lastSale) st.lastSale.price /= r;
       if (st.watch) { st.watch.oldHi /= r; st.watch.m /= r; if (st.watch.prevClose != null) st.watch.prevClose /= r; }
+      if (st.breakdownWatch) { st.breakdownWatch.frozenLo /= r; st.breakdownWatch.m /= r; }
       const p = st.position;
       if (p) {
         for (const k of ['stop', 'lo', 'hi', 'H', 'm', 'topLow', 'oldHi', 'highest', 'fillPrice']) if (p[k] != null) p[k] /= r;
@@ -94,7 +107,7 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
 
   // A split that leaves no whole share closes the position at the split: no 0-share position, no entry
   // risk held for it, no 0-share sell. Its fraction is paid as cash in lieu at the next open and belongs
-  // to this trade (postExit).
+  // to this trade (postExit). It is not a sale: the last sale price P is unchanged (D1).
   function closeAtSplit(st, date, sharesBefore, r) {
     const p = st.position;
     rec('trades', {
@@ -168,6 +181,7 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
       cost: p.cost, proceeds, dividends: p.dividends || 0, cashInLieu: p.cashInLieu || 0, costs: p.costs + spreadCost + fees.total, pnl, pnlPct: p.cost > 0 ? (pnl / p.cost) * 100 : null,
       afterSaleOf: p.afterSale ?? null, sessionsHeld: p.sessions,
     });
+    // P, the last sale's fill price (D1): replaced at each sale, split-adjusted; tracked in every variant.
     st.lastSale = { price: px, date, sessions: 0 };
     st.position = null;
     st.pending = null;
@@ -176,8 +190,10 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
 
   function buy(st, o, b, date) {
     const k = kOf(st.symbol, date), px = b.o * (1 + k);
-    const reject = (code, message, extra = {}) => { warn(date, st.symbol, code, message, { decisionDate: o.decisionDate, open: b.o, price: px, ...extra }); st.pending = null; };
-    if (o.ceiling != null && !lt(px, o.ceiling)) return reject('order_cancelled', `buy cancelled: the fill price ${px} is not below the last sale price ${o.ceiling} (re-entry limit)`, { code: 'reentry_limit' });
+    const reject = (code, message, extra = {}) => { warn(date, st.symbol, code, message, { decisionDate: o.decisionDate, open: b.o, price: px, entryType: o.entryType, ...extra }); st.pending = null; };
+    // D1 (re-entry limit): a fill price, half-spread and slippage included, at or above P is cancelled. The
+    // stock keeps being checked at later closes; a pullback watch continues (its signal was used).
+    if (o.ceiling != null && !lt(px, o.ceiling)) return reject('order_cancelled', `buy cancelled: the fill price ${px} is not below the last sale price ${o.ceiling} (re-entry limit)`, { code: 'reentry_limit', lastSalePrice: o.ceiling });
     if (!lt(o.stop, px)) return reject('entry_rejected', `entry rejected: the sizing stop ${o.stop} is at or above the fill price ${px}`, { code: 'stop_above_fill', stop: o.stop });
     const dist = px - o.stop, cpo = costs.commissionPerOrder, cps = costs.commissionPerShare;
     const caps = {
@@ -195,13 +211,15 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
     if (S.cash - cost < -EPS) throw new Error(`Range-trend engine: buying ${st.symbol} on ${date} would make cash negative`);
     S.cash -= cost;
     const spreadCost = n * (px - b.o);
-    rec('fills', { date, symbol: st.symbol, side: 'buy', shares: n, open: b.o, price: px, halfSpreadBps: hs(st.symbol, date), slippageBps: costs.slippageBps, spreadSlippage: spreadCost, fees: cpo + cps * n, cost, decisionDate: o.decisionDate, reason: o.reason, entryRisk: n * dist, stop: o.stop, caps });
+    rec('fills', { date, symbol: st.symbol, side: 'buy', shares: n, open: b.o, price: px, halfSpreadBps: hs(st.symbol, date), slippageBps: costs.slippageBps, spreadSlippage: spreadCost, fees: cpo + cps * n, cost, decisionDate: o.decisionDate, reason: o.reason, entryRisk: n * dist, stop: o.stop, caps, afterSaleOf: o.afterSale ?? null });
     st.position = {
       tradeId: `${st.symbol}:${date}`, shares: n, kind: o.kind, entryType: o.entryType, decisionDate: o.decisionDate, fillDate: date, fillPrice: px, stop: o.stop, entryRisk: n * dist, cost, costs: spreadCost + cpo + cps * n,
       lo: o.lo, hi: o.hi, H: o.H, m: o.m, topLow: o.topLow, armed: false, breakdownCount: 0, oldHi: o.oldHi, highest: null, belowHiCount: 0, converted: false,
       entryPosInRange: o.entryPosInRange, afterSale: o.afterSale, sessions: 0, dividends: 0, cashInLieu: 0,
     };
     st.pending = null;
+    // The pullback watch ends when its entry fills (the owner's choice of 2026-10-27), not at the decision.
+    if (o.entryType === 'pullback' && st.watch) endWatch(st, date, 'pullback entry filled', true);
   }
 
   function fills(date, bars) {
@@ -212,13 +230,29 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
         const b = bars[s];
         if (!b) {
           if (side === 'sell') { warn(date, s, 'order_waiting', `sell waits: no ${s} bar on ${date}`, {}); continue; }
-          warn(date, s, 'order_cancelled', `buy cancelled: no ${s} bar on ${date}`, { code: 'no_bar' });
+          warn(date, s, 'order_cancelled', `buy cancelled: no ${s} bar on ${date}`, { code: 'no_bar', entryType: o.entryType });
           st.pending = null;
           continue;
         }
         if (side === 'sell') sell(st, o, b, date); else buy(st, o, b, date);
       }
     }
+  }
+
+  // ---------- the close: history, the range, and D3's breaks (every close, held or not, warm-up included) ----------
+  function closeStep(st, c, date) {
+    st.history.push(c);
+    if (st.history.length > HIST(L)) st.history.splice(0, st.history.length - HIST(L));
+    st.lastClose = c;
+    st.closes++;
+    const prior = st.history.slice(0, -1);
+    const rs = rangeState(prior, L);
+    // Qualified before this close's own break is recorded: a breakout's own close keeps its normal signals.
+    const qualified = qualifiedRange(rs, st.closes, st.breakAt?.ordinal ?? null, L);
+    const { bw, kind, values } = breakStep(st.breakdownWatch, c, rs, qualified, L, date);
+    st.breakdownWatch = bw;
+    if (kind) setBreak(st, kind, date, values);
+    st.today = { c, rs, qualified, breakKind: kind };
   }
 
   // ---------- exits at the close (section 4) ----------
@@ -234,6 +268,7 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
         if (gt(c, p.hi + L.breakoutM * p.m)) {
           Object.assign(p, { kind: 'trend', converted: true, oldHi: p.hi, belowHiCount: 0 });
           rec('decisions', { date, symbol: s, action: 'convert_to_trend', reason: `close ${c} is above the frozen range top ${p.hi} + ${L.breakoutM} x m(entry) ${p.m}: held under the trend exits`, values: { close: c, hi: p.hi, m: p.m } });
+          setBreak(st, 'conversion', date, { close: c, hi: p.hi, m: p.m, tradeId: p.tradeId });
         } else {
           p.breakdownCount = lt(c, p.lo - L.breakdownM * p.m) ? p.breakdownCount + 1 : 0;
           if (ge(c, p.topLow)) p.armed = true;
@@ -250,28 +285,36 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
       if (reason) {
         st.pending = { side: 'sell', decisionDate: date, fillAfter: date, reason: reason.code };
         rec('decisions', { date, symbol: s, action: 'exit', reason: reason.text, code: reason.code, values: { close: c, lo: p.lo, hi: p.hi, m: p.m, highest: p.highest, oldHi: p.oldHi } });
+        // A range trade's breakdown-exit decision close is a confirming close of the stock's range (D3 c).
+        if (reason.code === 'breakdown') setBreak(st, 'trade_breakdown', date, { close: c, lo: p.lo, m: p.m, tradeId: p.tradeId });
       }
     }
   }
 
   // ---------- entry signals at the close (sections 3, 6a) ----------
 
-  // The pullback watch (section 3) advances at every close, held or not: it starts at a breakout of an
-  // established range, is replaced by a new breakout, and ends at a close at or below the old high. A
-  // pullback signal is a pullback close (above the old high, within pullbackM x m(t-1) of it) followed by
-  // an up close, close(t) > close(t-1); a signal is used once, whether or not it can be entered.
-  function advanceWatch(st, c, rs, date) {
+  function endWatch(st, date, reason, entered) {
+    rec('watches', { date: st.watch.since, symbol: st.symbol, endedOn: date, reason, entered, heldAtStart: st.watch.heldAtStart });
+    st.watch = null;
+  }
+
+  // The pullback watch (section 3) advances at every trading close, held or not: it starts at a breakout of a
+  // qualified range (replacing a running watch), ends at a close at or below the old high, and ends when its
+  // pullback entry fills (buy). A pullback signal is a pullback close (above the old high, within pullbackM x
+  // m(t-1) of it) followed by an up close, close(t) > close(t-1); a signal is used once, whether or not it is
+  // entered, so after a refused, rejected or cancelled entry a new pullback close is needed first.
+  function advanceWatch(st, c, rs, qualified, date) {
     if (config.entry !== 'pullback') return null;
-    const end = (reason) => { rec('watches', { date: st.watch.since, symbol: st.symbol, endedOn: date, reason, entered: false }); st.watch = null; };
-    if (rs && isBreakout(rs, c, L)) {
-      if (st.watch) end('replaced');
-      st.watch = { since: date, oldHi: rs.hi, m: rs.m, prevClose: c, prevIsPullback: false };
+    if (qualified && isBreakout(rs, c, L)) {
+      if (st.watch) endWatch(st, date, 'replaced', false);
+      // heldAtStart: held, or with a buy waiting to fill, at the breakout close; H4 counts only the others.
+      st.watch = { since: date, oldHi: rs.hi, m: rs.m, prevClose: c, prevIsPullback: false, heldAtStart: !!(st.position || st.pending?.side === 'buy') };
       return null;
     }
     const w = st.watch;
     if (!w) return null;
     const m = rs?.m ?? w.m;
-    if (le(c, w.oldHi)) { end('a close at or below the old high'); return null; }
+    if (le(c, w.oldHi)) { endWatch(st, date, 'a close at or below the old high', false); return null; }
     let sig = null;
     if (w.prevIsPullback && gt(c, w.prevClose)) {
       sig = { kind: 'trend', entryType: 'pullback', oldHi: w.oldHi, m, stop: w.oldHi - P.stopM * m, values: { close: c, oldHi: w.oldHi, pullbackClose: w.prevClose, m } };
@@ -281,18 +324,20 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
     return sig;
   }
 
-  function signalFor(st, c, prior, date) {
-    const rs = rangeState(prior, L);
-    const pullback = advanceWatch(st, c, rs, date);
-    if (st.position || st.pending || st.retired) return null;
+  function signalFor(st, date) {
+    const { c, rs, qualified, breakKind } = st.today;
+    const pullback = advanceWatch(st, c, rs, qualified, date);
+    if (st.position || st.pending) return null;
     if (pullback) return pullback;
-    if (!rs) return null;
+    // Dip, recovery and immediate-breakout entries need a qualified range (D3).
+    if (!rs || !qualified) return null;
     if (config.family === 'range') {
+      if (breakKind === 'breakdown') return null; // a breakdown's confirming close gives no dip or recovery entry
       const hit = config.entry === 'dip' ? isDip(rs, c) : isRecovery(rs, c, L);
       if (!hit) return null;
       return {
         kind: 'range', entryType: config.entry, lo: rs.lo, hi: rs.hi, H: rs.H, m: rs.m, topLow: rs.top[0], stop: rs.lo - P.stopM * rs.m,
-        entryPosInRange: (c - rs.lo) / rs.H, values: { close: c, lo: rs.lo, hi: rs.hi, H: rs.H, m: rs.m, visitLow: rs.bottomVisits.at(-1)?.low ?? null },
+        entryPosInRange: (c - rs.lo) / rs.H, values: { close: c, lo: rs.lo, hi: rs.hi, H: rs.H, m: rs.m, visitLow: rs.bottomVisits.at(-1)?.low ?? null, prevClose: rs.prevClose },
       };
     }
     if (config.entry === 'immediate' && isBreakout(rs, c, L)) {
@@ -305,15 +350,17 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
     const signals = [];
     for (const s of order) {
       const st = S.stocks[s], b = bars[s];
-      if (!b) continue;
-      const prior = st.history.slice(0, -1);
-      // The re-entry limit: after a sale, a close at or above the sale price before any re-entry retires the stock.
-      if (config.reentryLimit && st.lastSale && !st.position && !st.pending && !st.retired && ge(b.c, st.lastSale.price)) {
-        st.retired = true;
-        warn(date, s, 'retired', `close ${b.c} is at or above the last sale price ${st.lastSale.price}: no re-entry for the rest of the run (re-entry limit)`, { lastSale: st.lastSale });
+      if (!b || !st.today) continue;
+      const c = b.c;
+      const sig = signalFor(st, date);
+      if (!sig) continue;
+      // D1 (re-entry limit): a signal whose decision close is at or above P is refused and recorded; it takes
+      // no share of the day's cash or risk room, and the stock is checked again at later closes. Never retired.
+      if (config.reentryLimit && st.lastSale && ge(c, st.lastSale.price)) {
+        rec('skips', { date, symbol: s, kind: sig.kind, entryType: sig.entryType, values: sig.values, close: c, code: 'reentry_limit', reason: `close ${c} is at or above the last sale price ${st.lastSale.price} (re-entry limit): the signal is refused`, lastSale: clone(st.lastSale) });
+        continue;
       }
-      const sig = signalFor(st, b.c, prior, date);
-      if (sig) signals.push({ st, c: b.c, sig });
+      signals.push({ st, c, sig });
     }
     if (!signals.length) return;
     const V = S.cash + holdingsValue();
@@ -338,7 +385,6 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
         topLow: sig.topLow ?? null, oldHi: sig.oldHi ?? null, entryPosInRange: sig.entryPosInRange ?? null, afterSale,
         ceiling: config.reentryLimit && st.lastSale ? st.lastSale.price : null,
       };
-      if (sig.entryType === 'pullback' && st.watch) { rec('watches', { date: st.watch.since, symbol: st.symbol, endedOn: date, reason: 'pullback entry decided', entered: true }); st.watch = null; }
       rec('decisions', { ...base, action: 'entry', shares, caps, binding, plannedRisk: shares * dist });
     }
   }
@@ -354,7 +400,7 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
   function processSession(date, day = {}) {
     if (S.lastDate && date <= S.lastDate) throw new Error(`Range-trend engine: session ${date} out of order (last ${S.lastDate})`);
     if (S.period.end && date > S.period.end) throw new Error(`Range-trend engine: ${date} is after the period end ${S.period.end}`);
-    out = { date, decisions: [], fills: [], trades: [], skips: [], warnings: [], equity: [], dividends: [], splits: [], watches: [], postExit: [] };
+    out = Object.fromEntries([['date', date], ...JOURNAL.map((k) => [k, []])]);
     const bars = day.bars || {};
     const trading = date >= S.period.start;
     applySplits(date, day.splits);
@@ -362,12 +408,10 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
     entitle(date, day.dividends);
     if (trading) { payReceivables(date); fills(date, bars); }
     for (const s of order) {
-      const b = bars[s];
+      const st = S.stocks[s], b = bars[s];
+      st.today = null;
       if (!b) continue;
-      const st = S.stocks[s];
-      st.history.push(b.c);
-      if (st.history.length > HIST(L)) st.history.splice(0, st.history.length - HIST(L));
-      st.lastClose = b.c;
+      closeStep(st, b.c, date);
       if (trading && st.lastSale) st.lastSale.sessions++;
     }
     if (S.cash < -EPS) throw new Error(`Range-trend engine: cash below zero on ${date}`);
@@ -376,6 +420,7 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
       equityPoint(date);
       entries(date, bars);
     }
+    for (const s of order) S.stocks[s].today = null;
     S.lastDate = date;
     const r = out;
     out = null;
@@ -387,7 +432,11 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
       const st = S.stocks[s], p = st.position, value = p.shares * st.lastClose;
       return { tradeId: p.tradeId, symbol: s, kind: p.kind, entryType: p.entryType, entryDate: p.fillDate, shares: p.shares, entryPrice: p.fillPrice, markPrice: st.lastClose, value, cost: p.cost, pnl: value + p.dividends + p.cashInLieu - p.cost, entryRisk: p.entryRisk, sessionsHeld: p.sessions };
     });
-    return { ...clone(S.journal), openPositions: open, cash: S.cash, lastDate: S.lastDate, configHash: cHash, engineVersion: ENGINE_VERSION };
+    // D5: orders waiting to fill, and dividends entitled but unpaid, at the period's end.
+    const pendingOrders = order.filter((s) => S.stocks[s].pending).map((s) => { const o = S.stocks[s].pending; return { symbol: s, side: o.side, decisionDate: o.decisionDate, entryType: o.entryType ?? null, shares: o.shares ?? null, reason: o.reason }; });
+    const unpaidDividends = order.flatMap((s) => S.stocks[s].receivables.map((r) => ({ symbol: s, exDate: r.exDate, payDate: r.payDate, gross: r.gross, net: r.net, tradeId: r.tradeId })));
+    const lastSales = Object.fromEntries(order.filter((s) => S.stocks[s].lastSale).map((s) => [s, clone(S.stocks[s].lastSale)]));
+    return { ...clone(S.journal), openPositions: open, pendingOrders, unpaidDividends, lastSales, cash: S.cash, lastDate: S.lastDate, configHash: cHash, engineVersion: ENGINE_VERSION };
   }
 
   return { processSession, output, snapshot: () => clone(S), get configHash() { return cHash; } };

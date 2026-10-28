@@ -108,7 +108,8 @@ test('refusals before anything is recorded: confirm, protocol fields, owner deci
     [{ proto: null }, PLANNED_CONFIGS[0], true, 409, /EVALUATION-PROTOCOL.md does not exist/],
     [{ proto: '**Pick rule:** a rule\n' }, PLANNED_CONFIGS[0], true, 409, /no date-choice rule/],
     [{ log: '| 1 | x | nothing | none | No |\n' }, PLANNED_CONFIGS[0], true, 409, /no owner-decisions entry covering D1-D8/],
-    [{}, 'rt-range-dip-nolimit-0.2.0.json', true, 400, /Only the planned configs/],
+    [{}, 'rt-range-dip-nolimit-9.9.9.json', true, 400, /Only the planned configs/],
+    [{}, 'rt-range-dip-limit-0.1.0.json', true, 400, /Only the planned configs/],
     [{}, PLANNED_CONFIGS[0], undefined, 400, /confirm: true/],
     [{}, PLANNED_CONFIGS[0], true, 409, /No HXR market data/],
   ];
@@ -179,7 +180,7 @@ test('practice runs end to end: a trade held across a split, provenance, both be
   const before = hxrCounts();
   const f = files(dir);
   let rt = createRangeTrend({ dataDir: dir, ...f, clock });
-  const file = 'rt-trend-immediate-nolimit-0.1.0.json';
+  const file = 'rt-trend-immediate-nolimit-0.2.0.json';
   const r = await rt.runPractice({ configFile: file, confirm: true });
   assert.equal(r.status, 'done');
   assert.deepEqual(r.errors, []);
@@ -206,16 +207,19 @@ test('practice runs end to end: a trade held across a split, provenance, both be
   await rejectsWith(rt.runPractice({ configFile: file, confirm: true }), 409, /already run/);
   await rejectsWith(rt.runPractice({ configFile: file, confirm: true, reserve: { invalidatedRunId: r.id, defect: 'x' } }), 400, /defect, how it was verified and the correction/);
   const reserve = { invalidatedRunId: r.id, defect: 'test defect', verification: 'test verification', correction: 'test correction' };
-  // A benchmark failure is recorded as such and the strategy result is kept (a missing hold config, test only).
+  // A failure of the HXR hold arm (a missing hold config, test only) is recorded as such; the strategy result,
+  // benchmark (a) and the exposure-matched hold are kept.
   rt.close();
   rt = createRangeTrend({ dataDir: dir, ...f, clock, holdConfigFile: 'hxr-missing-0.0.0.json' });
   const r2 = await rt.runPractice({ configFile: file, confirm: true, reserve });
   assert.equal(r2.status, 'done');
-  assert.match(r2.errors.join(), /benchmark \(a\) failed/);
+  assert.match(r2.errors.join(), /HXR hold arm failed/);
   const run2 = rt.getRun(r2.id);
-  assert.match(run2.error, /benchmark \(a\) failed/);
+  assert.match(run2.error, /HXR hold arm failed/);
   assert.ok(run2.details.trades.length + run2.details.openPositions.length >= 1, 'the strategy result is kept');
-  assert.equal(run2.metrics.benchmarks, undefined);
+  assert.equal(run2.metrics.benchmarks.hxrHoldArm, undefined);
+  assert.ok(run2.metrics.benchmarks.buyAndHold && run2.metrics.benchmarks.exposureMatched, 'benchmark (a) does not depend on the HXR engine');
+  assert.deepEqual(run.metrics.benchmarks.buyAndHold, run2.metrics.benchmarks.buyAndHold, 'the same inputs give the same index');
   assert.deepEqual(rt.ledger().map((e) => [e.run_id, e.reserve]), [[r.id, false], [r2.id, true]]);
   assert.equal(rt.getRun(r.id).status, 'done', 'the earlier result is kept');
   await rejectsWith(rt.runPractice({ configFile: file, confirm: true, reserve }), 409, /reserve run has already been used/);

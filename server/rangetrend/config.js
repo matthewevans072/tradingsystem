@@ -17,18 +17,37 @@ export const LOG_PATH = path.join(RT_DIR, 'EXPERIMENT-LOG.md');
 // market-data inputs, the cost helpers, the readiness checks and benchmark (a)).
 // rt-code-2026-10-26-1: the build (b6007e3). rt-code-2026-10-27-1: fix pass 1 (pullback watch, up close,
 // split to zero shares, dividends and cash in lieu per trade, one EPS convention, replaced watches, H5, Tier 2).
-export const CODE_REVISION = 'rt-code-2026-10-27-1';
+// rt-code-2026-10-28-1: the owner's decisions (EXPERIMENT-LOG.md entry 7): D1 no retirement and the re-entry
+// limit as a refused signal at or above P; D2 the recovery entry's up close and no top-zone close since the
+// bottom visit; D3 the broken range (qualified again only on a window entirely after the confirming close,
+// breaks checked at every close from the warm-up on); D4 benchmark (a) as the equal-weight fractional index,
+// never rebalanced; the pullback watch ending at the fill of its entry; D5's per-stock reporting.
+export const CODE_REVISION = 'rt-code-2026-10-28-1';
 
-// PLAN-DRAFT.md section 6: range 4 and trend 4. The combination runs (up to 2) get configs only after both
-// families show measurable behaviour, with an experiment-log entry. The HXR diagnostic is an HXR run.
+// PLAN-DRAFT.md v0.5 section 6 (D6, D7): range 4 and trend 4, eight runs plus one verified-defect reserve.
+// No combination runs and no HXR diagnostic. The 0.1.0 files are superseded: they keep their pins and are
+// refused by validateConfig (they lack the D1-D4 declarations).
 export const PLANNED_CONFIGS = [
+  'rt-range-dip-limit-0.2.0.json', 'rt-range-dip-nolimit-0.2.0.json', 'rt-range-recovery-limit-0.2.0.json', 'rt-range-recovery-nolimit-0.2.0.json',
+  'rt-trend-immediate-limit-0.2.0.json', 'rt-trend-immediate-nolimit-0.2.0.json', 'rt-trend-pullback-limit-0.2.0.json', 'rt-trend-pullback-nolimit-0.2.0.json',
+];
+export const SUPERSEDED_CONFIGS = [
   'rt-range-dip-limit-0.1.0.json', 'rt-range-dip-nolimit-0.1.0.json', 'rt-range-recovery-limit-0.1.0.json', 'rt-range-recovery-nolimit-0.1.0.json',
   'rt-trend-immediate-limit-0.1.0.json', 'rt-trend-immediate-nolimit-0.1.0.json', 'rt-trend-pullback-limit-0.1.0.json', 'rt-trend-pullback-nolimit-0.1.0.json',
 ];
 
-// The eight planned configs, pinned: SHA-256 of each file's text with line endings normalised to LF, so the
-// pin does not depend on how the repository was checked out. loadConfig refuses a planned file that differs.
+// The planned and superseded configs, pinned: SHA-256 of each file's text with line endings normalised to LF,
+// so the pin does not depend on how the repository was checked out. loadConfig refuses a pinned file that differs.
 export const CONFIG_SHA256 = Object.freeze({
+  'rt-range-dip-limit-0.2.0.json': '3821d3cafd6404c284947ac93dfc83cd0aebe32b4a029a2c6f5fe5121d1e3f45',
+  'rt-range-dip-nolimit-0.2.0.json': 'bb688904c7f7e6002476d3306a10a867da1ae58ed8f7153e9447cccdf458ffbe',
+  'rt-range-recovery-limit-0.2.0.json': 'd2f85cc62fd6b02925336100646e6dcd600a08d11d633136708205343e97c4e8',
+  'rt-range-recovery-nolimit-0.2.0.json': '02d1d1bb3992695cd25a8766ecdcd150c11b2b903bd2dda27e34fc158c88a591',
+  'rt-trend-immediate-limit-0.2.0.json': 'a8bac4bab5cb025a2509767a47a0e09b6d3163b61441377690f2b9605739204f',
+  'rt-trend-immediate-nolimit-0.2.0.json': '4ab4915018ed60ae937f09a1abd04ce90be98ab2e3256de0724b7f24fa604105',
+  'rt-trend-pullback-limit-0.2.0.json': 'ac3bd8058a426eb3367b90dfcf4931ae18d26813eb9f504a5454395a5e78466f',
+  'rt-trend-pullback-nolimit-0.2.0.json': 'b697bf188f041ffe2e1dbeac447e9da26b4742b982a39598189f932c25393422',
+  // Superseded (not runnable), pins kept unchanged.
   'rt-range-dip-limit-0.1.0.json': '1ad4126bab51b3887ce142ad8930c7eb4b032b63384a328486fd20372e9a0392',
   'rt-range-dip-nolimit-0.1.0.json': 'fdff445d4bc9ee8639b5eaa2928575d2b2ebe058f80e234ea63fb0008949871c',
   'rt-range-recovery-limit-0.1.0.json': '8cec6a9e4ec7f472906de6e4e42e212767609c291157a3595ea221dfc31997a1',
@@ -57,7 +76,15 @@ export function validateConfig(c) {
   if (!FAMILY_ENTRIES[c.family]) e.push('family must be range or trend');
   else if (!FAMILY_ENTRIES[c.family].includes(c.entry)) e.push(`entry must be ${FAMILY_ENTRIES[c.family].join(' or ')} for the ${c.family} family`);
   if (typeof c.reentryLimit !== 'boolean') e.push('reentryLimit must be true or false');
+  // The owner's decisions D1-D4 and the watch rule (EXPERIMENT-LOG.md entry 7) are declared in every runnable
+  // config, with the single value the engine implements; the superseded 0.1.0 files lack them and cannot run.
+  if (c.reentryRetire !== false) e.push('reentryRetire must be false (D1: no stock is ever retired)');
   const L = c.levels || {};
+  if (L.recoveryUpClose !== true) e.push('levels.recoveryUpClose must be true (D2: a recovery entry needs an up close)');
+  if (L.recoveryNoTopSinceBottom !== true) e.push('levels.recoveryNoTopSinceBottom must be true (D2: no top-zone close since the bottom visit)');
+  if (L.brokenRange !== 'post_break_window') e.push('levels.brokenRange must be "post_break_window" (D3: a broken range re-qualifies only on a window entirely after the confirming close)');
+  if (L.pullbackWatchEndsAt !== 'fill') e.push('levels.pullbackWatchEndsAt must be "fill" (the pullback watch ends when its entry fills)');
+  if (c.benchmark?.buyAndHold !== 'equal_weight_fractional_never_rebalanced') e.push('benchmark.buyAndHold must be "equal_weight_fractional_never_rebalanced" (D4)');
   num(L.mSessions, 'levels.mSessions', { min: 1, int: true });
   num(L.windowSessions, 'levels.windowSessions', { min: 2, int: true });
   num(L.zoneFraction, 'levels.zoneFraction', { gt: true, max: 0.5 });
@@ -104,9 +131,9 @@ export function listConfigs(dir = RT_CONFIG_DIR) {
   return fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort().map((file) => {
     try {
       const c = loadConfig(path.join(dir, file));
-      return { file, version: c.version, family: c.family, entry: c.entry, reentryLimit: c.reentryLimit, hash: configHash(c), planned: PLANNED_CONFIGS.includes(file), error: null };
+      return { file, version: c.version, family: c.family, entry: c.entry, reentryLimit: c.reentryLimit, hash: configHash(c), planned: PLANNED_CONFIGS.includes(file), superseded: SUPERSEDED_CONFIGS.includes(file), error: null };
     } catch (err) {
-      return { file, version: null, hash: null, planned: PLANNED_CONFIGS.includes(file), error: err.message };
+      return { file, version: null, hash: null, planned: PLANNED_CONFIGS.includes(file), superseded: SUPERSEDED_CONFIGS.includes(file), error: err.message };
     }
   });
 }
