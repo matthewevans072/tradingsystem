@@ -511,6 +511,18 @@ pending at the period's end; dividends entitled but unpaid at the end.
 - **Backups:** `createBackup` copies the database into `backups/range-trend` the same way as HXR's.
 - **Stocks:** HXR's basket A (decision 10), read from `universe-hxr-v3.json` with its tech/AI tags (unused by
   range-trend: no tech/AI cap).
+- **One live service instance per data directory:** a lock file (`range-trend-sim.lock`) refuses a second
+  instance while one is open, so a live run is never marked failed; a lock left by a process that is gone is
+  taken over, and only then are interrupted runs recorded as failed.
+- **Every run is logged before the next starts:** the gate refuses a new run while any stored run, failed
+  ones included, is missing from `EXPERIMENT-LOG.md`, and refuses while any row that mentions a practice run
+  does not have the form "**Practice run** run id: N, config hash: <64 hex>". `runPractice` returns the exact
+  row to paste; a failed run's error carries it too.
+- **The data directory** is `loadConfig().dataDir` (`SIGNAL_DESK_DATA_DIR`, by default `data/`); the hashes of
+  the symbols, data and calibration are computed before the ledger slot is taken, so an interrupted or
+  early-failed run keeps them; the slot, the run row and (at the first practice run) the protocol hash are one
+  transaction. Tests may change the data directory, the protocol, the log or the hold config only with an
+  explicit test flag, recorded in the run's details (`testOverrides`).
 
 ### 6d. Not inherited from HXR, and why
 

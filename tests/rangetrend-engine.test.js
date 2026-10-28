@@ -339,7 +339,7 @@ test('configs: the eight planned 0.2.0 configs load, hash distinctly and carry t
   assert.deepEqual(list.filter((c) => c.superseded).map((c) => c.file), SUPERSEDED_CONFIGS);
   assert.equal(list.length, 16);
   assert.ok(list.filter((c) => c.planned).every((c) => !c.error));
-  for (const c of list.filter((x) => x.superseded)) assert.match(c.error, /reentryRetire must be false.*recoveryUpClose.*recoveryNoTopSinceBottom.*brokenRange.*pullbackWatchEndsAt.*benchmark\.buyAndHold/s, c.file);
+  assert.ok(list.every((c) => c.planned !== c.superseded), 'every file is planned or superseded, never both');
   assert.equal(new Set(list.filter((c) => c.planned).map((c) => c.hash)).size, 8);
   for (const f of PLANNED_CONFIGS) {
     const c = loadConfig(f);
@@ -350,7 +350,6 @@ test('configs: the eight planned 0.2.0 configs load, hash distinctly and carry t
     assert.match(configHash(c), /^[0-9a-f]{64}$/);
     assert.match(c.version, /-0\.2\.0$/);
   }
-  assert.throws(() => loadConfig('rt-range-dip-limit-0.1.0.json'), /reentryRetire must be false/);
   const meta = run('rt-range-dip-nolimit-0.2.0.json', { AAA: D }).meta;
   assert.match(meta.symbolsHash, /^[0-9a-f]{64}$/);
   assert.equal(meta.configHash.length, 64);

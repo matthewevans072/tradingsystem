@@ -138,35 +138,56 @@ export function listConfigs(dir = RT_CONFIG_DIR) {
   });
 }
 
+// EVALUATION-THRESHOLDS.md (keep or drop MU, the Tier 3 thresholds, the journal minimums) is frozen before any
+// evaluation result is accessed and is never read by the practice-run gate.
+export const THRESHOLDS_PATH = path.join(RT_DIR, 'EVALUATION-THRESHOLDS.md');
+
 // EVALUATION-PROTOCOL.md: practice runs need the file with both dedicated fields filled in: a line
-// "**Pick rule:** <text>" and a line "**Date-choice rule:** <text>". A value is unset when it is empty or
-// contains "[OWNER", "TBD", "TODO" or "?". The hash is of the text with line endings normalised to LF.
+// "**Pick rule:** <text>" and a line "**Date-choice rule:** <text>", read outside code fences and HTML comments
+// and each present exactly once. A value is unset when it is empty or contains "[OWNER", "TBD", "TODO" or "?",
+// and the file is not ready while "[OWNER" remains anywhere in it. The hash is of the whole text with line
+// endings normalised to LF; it is frozen at the first practice run and final for the practice runs.
 export const UNSET = (v) => !v || !String(v).trim() || /\[OWNER|TBD|TODO|\?/i.test(String(v));
-const field = (text, name) => { const m = text.match(new RegExp(`^\\*\\*${name}:\\*\\*[ \\t]*(.*)$`, 'm')); return m ? m[1].trim() : ''; };
+const visibleText = (text) => text.replace(/```[\s\S]*?```/g, '').replace(/<!--[\s\S]*?-->/g, '');
+const fields = (text, name) => [...text.matchAll(new RegExp(`^\\*\\*${name}:\\*\\*[ \\t]*(.*)$`, 'gm'))].map((m) => m[1].trim());
 
 export function protocolStatus(file = PROTOCOL_PATH) {
   if (!fs.existsSync(file)) return { exists: false, pickRule: null, dateChoiceRule: null, hash: null, ready: false, reason: 'strategy/range-trend/EVALUATION-PROTOCOL.md does not exist' };
   const text = fs.readFileSync(file, 'utf8');
-  const pick = field(text, 'Pick rule'), dates = field(text, 'Date-choice rule');
-  const missing = [UNSET(pick) && 'pick rule ("**Pick rule:**")', UNSET(dates) && 'date-choice rule ("**Date-choice rule:**")'].filter(Boolean);
+  const visible = visibleText(text);
+  const picks = fields(visible, 'Pick rule'), dates = fields(visible, 'Date-choice rule');
+  const problems = [];
+  if (picks.length > 1) problems.push(`the pick rule ("**Pick rule:**") appears ${picks.length} times`);
+  else if (!picks.length || UNSET(picks[0])) problems.push('no pick rule ("**Pick rule:**")');
+  if (dates.length > 1) problems.push(`the date-choice rule ("**Date-choice rule:**") appears ${dates.length} times`);
+  else if (!dates.length || UNSET(dates[0])) problems.push('no date-choice rule ("**Date-choice rule:**")');
+  const markers = (text.match(/\[OWNER/gi) || []).length;
+  if (markers) problems.push(`an owner marker ("[OWNER") remains in the file (${markers} found)`);
+  const ready = !problems.length;
   return {
-    exists: true, pickRule: UNSET(pick) ? null : pick, dateChoiceRule: UNSET(dates) ? null : dates, hash: textSha256(text), ready: !missing.length,
-    reason: missing.length ? `EVALUATION-PROTOCOL.md has no ${missing.join(' and no ')} yet (unset: empty, [OWNER ...], TBD, TODO or ?)` : null,
+    exists: true, pickRule: picks.length === 1 && !UNSET(picks[0]) ? picks[0] : null, dateChoiceRule: dates.length === 1 && !UNSET(dates[0]) ? dates[0] : null,
+    hash: textSha256(text), ready, reason: ready ? null : `EVALUATION-PROTOCOL.md: ${problems.join('; ')} (a field is unset when empty or containing "[OWNER", "TBD", "TODO" or "?")`,
   };
 }
 
 // strategy/range-trend/EXPERIMENT-LOG.md: the owner-decisions entry (a table row whose "What" cell begins with
 // "**Owner decisions D1-D8**", names each of D1 to D8 after the title, and names the current CODE_REVISION, so a
-// row recorded against other code does not open the gate), and the practice runs it lists (rows beginning
-// "**Practice run**" with "run id: N" and "config hash: <sha256>").
+// row recorded against other code does not open the gate), and the practice runs it lists. A practice-run row's
+// "What" cell begins "**Practice run** run id: N, config hash: <64 hex>" (PRACTICE_ROW); any row whose title
+// (the leading bold text, else the cell's first 80 characters) mentions a practice run but does not have that
+// form is reported as malformed, and the gate refuses while one exists (fail closed: no run goes unread).
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export const namesRevision = (text, revision = CODE_REVISION) => new RegExp(`(^|[^\\w-])${escapeRe(revision)}(?![\\w-])`).test(text);
+export const PRACTICE_ROW = /^\*\*Practice run\*\*\s*run id:\s*(\d+),\s*config hash:\s*([0-9a-f]{64})(?![0-9a-f])/i;
+const MENTIONS_PRACTICE_RUN = /practice[\s-]*run/i;
 
 export function logStatus(file = LOG_PATH) {
-  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, ownerDecisionsProblem: 'strategy/range-trend/EXPERIMENT-LOG.md does not exist', practiceRuns: [] };
+  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, ownerDecisionsProblem: 'strategy/range-trend/EXPERIMENT-LOG.md does not exist', practiceRuns: [], malformed: [], nextNumber: 1 };
   const text = fs.readFileSync(file, 'utf8');
   const rows = text.split(/\r?\n/).filter((l) => l.startsWith('|')).map((l) => l.split('|').map((x) => x.trim()));
   const what = (r) => r[3] || '';
+  const number = (r) => (/^\d+$/.test(r[1] || '') ? Number(r[1]) : null);
+  const nextNumber = Math.max(0, ...rows.map(number).filter((n) => n != null)) + 1;
   const TITLE = /^\*\*Owner decisions D1[-\u2013]D8\*\*/;
   const titled = rows.filter((r) => TITLE.test(what(r)));
   // Each of D1 to D8 must be named after the title (the title itself names D1 and D8), and so must the code revision.
@@ -178,9 +199,12 @@ export function logStatus(file = LOG_PATH) {
     else if (!titled.some(namesAll)) ownerDecisionsProblem = 'the owner-decisions row does not name each of D1 to D8';
     else ownerDecisionsProblem = `the owner-decisions row does not name the current code revision ${CODE_REVISION} (it was recorded against other code)`;
   }
-  const practiceRuns = rows.filter((r) => /^\*\*Practice run\*\*/.test(what(r))).map((r) => {
-    const id = what(r).match(/run id:\s*(\d+)/i), h = what(r).match(/config hash:\s*([0-9a-f]{64})/i);
-    return { runId: id ? Number(id[1]) : null, configHash: h ? h[1] : null };
-  });
-  return { exists: true, ownerDecisions: !!owner, ownerDecisionsProblem, practiceRuns };
+  const title = (cell) => { const m = cell.match(/^\*\*([^*]+)\*\*/); return m ? m[1] : cell.slice(0, 80); };
+  const practiceRuns = [], malformed = [];
+  for (const r of rows) {
+    const cell = what(r), m = cell.match(PRACTICE_ROW);
+    if (m) practiceRuns.push({ runId: Number(m[1]), configHash: m[2].toLowerCase(), number: number(r) });
+    else if (MENTIONS_PRACTICE_RUN.test(title(cell))) malformed.push({ number: number(r), title: title(cell) });
+  }
+  return { exists: true, ownerDecisions: !!owner, ownerDecisionsProblem, practiceRuns, malformed, nextNumber };
 }
