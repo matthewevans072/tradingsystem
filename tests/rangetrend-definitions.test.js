@@ -3,7 +3,9 @@
 // market data or a result.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadConfig, PLANNED_CONFIGS } from '../server/rangetrend/config.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { loadConfig, validateConfig, PLANNED_CONFIGS, SUPERSEDED_CONFIGS, RT_CONFIG_DIR } from '../server/rangetrend/config.js';
 import { createEngine, runBacktest } from '../server/rangetrend/engine.js';
 import { computeMetrics, exposureMatched, tradeOff } from '../server/rangetrend/metrics.js';
 import { holdIndex } from '../server/rangetrend/benchmark.js';
@@ -107,6 +109,83 @@ test('D1: a position closed by a split that leaves no whole share is not a sale:
   assert.deepEqual(r.trades.map((t) => [r.idx(t.exitDate), t.exitReason]), [[68, 'rejection'], [72, 'split_no_whole_share']]);
   near(r.lastSales.AAA.price, 106.2 * (1 - K) / 0.02, 'the sale of 68, split-adjusted');
   assert.equal(r.idx(r.lastSales.AAA.date), 68);
+  // The decision-time copy of P reported with a fill and a trade is split-adjusted too: the dip decided at 69
+  // fills at 70, on the session of a 2-for-1 split, and reports P in post-split units beside its fill price.
+  const sp = run(DIP, { AAA: [...D, 101.5, [50.75, 51], 51.5, 49, 48.5, 48] }, { splits: { 70: [{ symbol: 'AAA', ratio: 2 }] } });
+  const fill = sp.fills.find((f) => f.side === 'buy' && sp.idx(f.date) === 70);
+  near(fill.afterSaleOf.price, 106.2 * (1 - K) / 2);
+  near(fill.price, 50.75 * (1 + K));
+  near(sp.trades.at(-1).afterSaleOf.price, 106.2 * (1 - K) / 2, 'and in the trade record');
+  near(sp.trades.at(-1).entryPrice, 50.75 * (1 + K));
+});
+
+test('D1 with the pullback family: a refused pullback signal counts as used; a pullback fill cancelled by the re-entry limit leaves the watch running', () => {
+  // The first trade: a pullback entry (decided 67, filled 68) exits on two closes below 110 (68, 69) and sells at
+  // the 70 open. Then a new range 95-104.5 (PAT x 0.95) for 60 closes (71..130), entirely after the break at 65,
+  // breaks out at 131 (106 > 104.5 + 0.95): a new watch (old hi 104.5). 132: 105.5 is a pullback close; 133:
+  // 106.2 is an up close, the signal.
+  const LIMIT = CFG('trend', 'pullback', true);
+  const P95 = Array.from({ length: 6 }, () => PAT.map((x) => x * 0.95)).flat();
+  const first = [...B, 110.8, 111.4, 109.5, 109];
+  // (a) Sold at 109: P = 108.96. The signal at 133 (106.2 < P) is entered; its fill gaps to 109.5, at or above P,
+  // and is cancelled; the watch continues: 105.8 (134) is a new pullback close, 106.5 (135) an up close, a new
+  // signal, filled at 136 (open 106.3 < P), which ends the watch.
+  const a = run(LIMIT, { AAA: [...first, [109, 109], ...P95, 106, 105.5, 106.2, [109.5, 105.8], 106.5, [106.3, 107], 107.5] });
+  const P = 109 * (1 - K);
+  near(a.lastSales.AAA.price, P);
+  assert.deepEqual(a.breaks.map((b) => [a.idx(b.date), b.kind]), [[65, 'breakout'], [131, 'breakout']]);
+  assert.deepEqual(idxs(a, dec(a, 'entry')), [67, 133, 135]);
+  assert.deepEqual(a.warnings.filter((w) => w.code === 'order_cancelled').map((w) => [a.idx(w.date), w.details.code, w.details.entryType]), [[134, 'reentry_limit', 'pullback']]);
+  assert.deepEqual(a.watches.map((w) => [a.idx(w.date), a.idx(w.endedOn), w.reason, w.entered]), [[65, 68, 'pullback entry filled', true], [131, 136, 'pullback entry filled', true]]);
+  assert.deepEqual(a.fills.map((f) => [a.idx(f.date), f.side]), [[68, 'buy'], [70, 'sell'], [136, 'buy']]);
+  assert.equal(a.skips.length, 0);
+  // (b) Sold at 105: P = 104.96. The signal at 133 (106.2 >= P) is refused and counts as used: 106.4 (134) is an
+  // up close but gives no signal without a new pullback close (it is one itself); 106.6 (135) is then refused too.
+  const b = run(LIMIT, { AAA: [...first, [105, 105], ...P95, 106, 105.5, 106.2, 106.4, 106.6, 106.8] });
+  near(b.lastSales.AAA.price, 105 * (1 - K));
+  assert.deepEqual(b.skips.map((k) => [b.idx(k.date), k.code, k.entryType]), [[133, 'reentry_limit', 'pullback'], [135, 'reentry_limit', 'pullback']]);
+  assert.deepEqual(idxs(b, dec(b, 'entry')), [67]);
+  assert.deepEqual(b.watches.map((w) => b.idx(w.date)), [65], 'the second watch is still running');
+});
+
+test('D3: a pending breakdown watch (the frozen lo) is split-adjusted; the conversion close is a confirming close', () => {
+  // 98.5 (60) is a first breaking close (lo 100 frozen); a 2-for-1 split at 61 halves the frozen lo to 50 and
+  // m to 1.0375: 49.6 is not below 50 - 0.519 = 49.48, so the watch is dropped (unscaled, 49.6 < 100 - 0.52
+  // would confirm a breakdown); 49.4 would confirm it.
+  const dropped = run(DIP, { AAA: [...BASE, 98.5, [49.2, 49.6], 49.5, 49.4] }, { splits: { 61: [{ symbol: 'AAA', ratio: 2 }] } });
+  assert.deepEqual(dropped.breaks, []);
+  const confirmed = run(DIP, { AAA: [...BASE, 98.5, [49.2, 49.4], 49.5, 49.4] }, { splits: { 61: [{ symbol: 'AAA', ratio: 2 }] } });
+  assert.deepEqual(confirmed.breaks.map((x) => [confirmed.idx(x.date), x.kind, x.values.frozenLo, confirmed.idx(x.values.firstBreakingClose)]), [[61, 'breakdown', 50, 60]]);
+  // A range trade converts at 66 (111.3 > the frozen 110 + 1, while the rolling top 110.8 + 0.5 x m is not
+  // exceeded, so no untraded breakout coincides): that close is a confirming close, so after the trend exit
+  // (two closes below 110, sold at 69) the old range's dips at 70-72 give no entry.
+  const conv = run(DIP, { AAA: [...BASE, 101, 103, 105, 107, 109, 110.8, 111.3, 109.5, 109, 108, 101, 102, 101.5] });
+  assert.deepEqual(conv.breaks.map((x) => [conv.idx(x.date), x.kind]), [[66, 'conversion']]);
+  assert.deepEqual(conv.trades.map((t) => [conv.idx(t.exitDate), t.exitReason, t.convertedToTrend]), [[69, 'below_old_high', true]]);
+  assert.deepEqual(idxs(conv, dec(conv, 'entry')), [60]);
+});
+
+test('D4: a split on a session without a bar moves the last close to post-split units; D5 lists every basket stock and the orders pending at the end', () => {
+  const days = new Map();
+  days.set(SESS[0], { bars: { AAA: { o: 100, c: 102 } }, splits: [], dividends: [] });
+  days.set(SESS[1], { bars: {}, splits: [{ symbol: 'AAA', ratio: 2 }], dividends: [] });
+  days.set(SESS[2], { bars: { AAA: { o: 51, c: 52 } }, splits: [], dividends: [] });
+  const idx = holdIndex({ symbols: ['AAA'], sessions: SESS.slice(0, 3), days, start: SESS[0], startingCash: 7500, withholdingPct: 15 });
+  assert.deepEqual(idx.map((p) => p.value), [75 * 102, 150 * 51, 150 * 52]);
+  // A dip decided on the last session leaves a buy order pending at the end; a stock with no activity has a row of zeros.
+  const r = run(DIP, { AAA: [...BASE, 101], BBB: [...BASE.map((x) => x * 2), 210] });
+  assert.deepEqual(r.pendingOrders.map((o) => [o.symbol, o.side, r.idx(o.decisionDate), o.entryType]), [['AAA', 'buy', 60, 'dip']]);
+  const m = computeMetrics(r);
+  assert.deepEqual([m.pendingAtEnd, m.perStock.AAA.pendingAtEnd, m.perStock.BBB], [1, 1, { signals: 0, entries: 0, oneShareEntries: 0, skips: {}, cancellations: {}, rejections: {}, pendingAtEnd: 0, unpaidDividends: { count: 0, net: 0 }, pnl: 0 }]);
+});
+
+test('validateConfig refuses each superseded 0.1.0 file for the missing D1-D4 and watch declarations', () => {
+  for (const f of SUPERSEDED_CONFIGS) {
+    const c = JSON.parse(fs.readFileSync(path.join(RT_CONFIG_DIR, f), 'utf8'));
+    const errors = validateConfig(c);
+    for (const re of [/reentryRetire must be false/, /recoveryUpClose must be true/, /recoveryNoTopSinceBottom must be true/, /brokenRange must be "post_break_window"/, /pullbackWatchEndsAt must be "fill"/, /benchmark\.buyAndHold must be/]) assert.ok(errors.some((e) => re.test(e)), `${f}: ${re}`);
+    assert.throws(() => loadConfig(f), /reentryRetire must be false/);
+  }
 });
 
 // ---------- D2: the recovery entry ----------

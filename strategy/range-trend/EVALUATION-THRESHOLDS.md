@@ -8,7 +8,7 @@
 
 ## MU
 
-**MU in the historical evaluation:** [OWNER TO SET] (keep or drop)
+**MU in the historical evaluation:** [OWNER TO SET] (example format only: "keep" or "drop"; not a proposal)
 
 The Strategy Lab's untouched MU holdout window is 2025-01-01 to 2026-06-30 (`PLAN-DRAFT.md` section 1), and a
 historical evaluation covering those dates exposes MU's prices in that window. The decision is made **before any
@@ -25,9 +25,9 @@ evaluation result is accessed, never from one.
 
 ## Prospective journal minimums
 
-**Journal minimum length:** [OWNER TO SET] (for example 6 months)
+**Journal minimum length:** [OWNER TO SET] (example format only: "6 months"; not a proposal)
 
-**Journal minimum completed trades:** [OWNER TO SET] (for example 30)
+**Journal minimum completed trades:** [OWNER TO SET] (example format only: "30"; not a proposal)
 
 Nothing is concluded from the local simulated prospective journal before both minimums are met.
 

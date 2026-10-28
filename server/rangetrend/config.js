@@ -22,7 +22,11 @@ export const LOG_PATH = path.join(RT_DIR, 'EXPERIMENT-LOG.md');
 // bottom visit; D3 the broken range (qualified again only on a window entirely after the confirming close,
 // breaks checked at every close from the warm-up on); D4 benchmark (a) as the equal-weight fractional index,
 // never rebalanced; the pullback watch ending at the fill of its entry; D5's per-stock reporting.
-export const CODE_REVISION = 'rt-code-2026-10-28-1';
+// rt-code-2026-10-28-2: the second fix pass (EXPERIMENT-LOG.md entry 12): a pending buy's and a position's
+// decision-time copy of P (afterSale.price, reported with the fill and the trade) is split-adjusted; benchmark
+// (a)'s last close is split-adjusted on a session without a bar; the D5 per-stock report lists every basket
+// stock, with zeros. Reporting and an edge of the index only; no decision, fill or exit changes.
+export const CODE_REVISION = 'rt-code-2026-10-28-2';
 
 // PLAN-DRAFT.md v0.5 section 6 (D6, D7): range 4 and trend 4, eight runs plus one verified-defect reserve.
 // No combination runs and no HXR diagnostic. The 0.1.0 files are superseded: they keep their pins and are
@@ -147,7 +151,7 @@ export const THRESHOLDS_PATH = path.join(RT_DIR, 'EVALUATION-THRESHOLDS.md');
 // and each present exactly once. A value is unset when it is empty or contains "[OWNER", "TBD", "TODO" or "?",
 // and the file is not ready while "[OWNER" remains anywhere in it. The hash is of the whole text with line
 // endings normalised to LF; it is frozen at the first practice run and final for the practice runs.
-export const UNSET = (v) => !v || !String(v).trim() || /\[OWNER|TBD|TODO|\?/i.test(String(v));
+export const UNSET = (v) => !v || !String(v).trim() || /\[OWNER|\bTBD\b|\bTODO\b|\?/i.test(String(v));
 const visibleText = (text) => text.replace(/```[\s\S]*?```/g, '').replace(/<!--[\s\S]*?-->/g, '');
 const fields = (text, name) => [...text.matchAll(new RegExp(`^\\*\\*${name}:\\*\\*[ \\t]*(.*)$`, 'gm'))].map((m) => m[1].trim());
 
@@ -170,20 +174,26 @@ export function protocolStatus(file = PROTOCOL_PATH) {
   };
 }
 
-// strategy/range-trend/EXPERIMENT-LOG.md: the owner-decisions entry (a table row whose "What" cell begins with
-// "**Owner decisions D1-D8**", names each of D1 to D8 after the title, and names the current CODE_REVISION, so a
-// row recorded against other code does not open the gate), and the practice runs it lists. A practice-run row's
-// "What" cell begins "**Practice run** run id: N, config hash: <64 hex>" (PRACTICE_ROW); any row whose title
-// (the leading bold text, else the cell's first 80 characters) mentions a practice run but does not have that
-// form is reported as malformed, and the gate refuses while one exists (fail closed: no run goes unread).
+// strategy/range-trend/EXPERIMENT-LOG.md, read outside code fences and HTML comments (a row inside either is
+// not a row): the owner-decisions entry (a table row whose "What" cell begins with "**Owner decisions D1-D8**",
+// names each of D1 to D8 after the title, and names the current CODE_REVISION, so a row recorded against other
+// code does not open the gate), and the practice runs it lists. A practice-run record's "What" cell begins
+// "**Practice run** run id: N, config hash: <64 hex>" (PRACTICE_ROW). A row counts as a practice-run record,
+// and must have that form or is reported as malformed (the gate refuses while one exists: fail closed), when
+// its bold title (the leading **...**) mentions a practice run, or when its "What" cell carries a numeric run
+// id ("run id:" followed by digits) anywhere, whatever its title. Plain prose that merely mentions practice
+// runs or quotes the form with a placeholder ("run id: N"), in the body of a titled row or in a row without a
+// bold title, is not a record and is ignored.
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export const namesRevision = (text, revision = CODE_REVISION) => new RegExp(`(^|[^\\w-])${escapeRe(revision)}(?![\\w-])`).test(text);
 export const PRACTICE_ROW = /^\*\*Practice run\*\*\s*run id:\s*(\d+),\s*config hash:\s*([0-9a-f]{64})(?![0-9a-f])/i;
 const MENTIONS_PRACTICE_RUN = /practice[\s-]*run/i;
+const RECORD_FIELDS = /run id:\s*\d/i;
+export const isPracticeRecord = (cell) => { const m = cell.match(/^\*\*([^*]+)\*\*/); return (m ? MENTIONS_PRACTICE_RUN.test(m[1]) : false) || RECORD_FIELDS.test(cell); };
 
 export function logStatus(file = LOG_PATH) {
-  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, ownerDecisionsProblem: 'strategy/range-trend/EXPERIMENT-LOG.md does not exist', practiceRuns: [], malformed: [], nextNumber: 1 };
-  const text = fs.readFileSync(file, 'utf8');
+  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, ownerDecisionsProblem: 'strategy/range-trend/EXPERIMENT-LOG.md does not exist', ownerRow: null, practiceRuns: [], malformed: [], nextNumber: 1 };
+  const text = visibleText(fs.readFileSync(file, 'utf8'));
   const rows = text.split(/\r?\n/).filter((l) => l.startsWith('|')).map((l) => l.split('|').map((x) => x.trim()));
   const what = (r) => r[3] || '';
   const number = (r) => (/^\d+$/.test(r[1] || '') ? Number(r[1]) : null);
@@ -204,7 +214,9 @@ export function logStatus(file = LOG_PATH) {
   for (const r of rows) {
     const cell = what(r), m = cell.match(PRACTICE_ROW);
     if (m) practiceRuns.push({ runId: Number(m[1]), configHash: m[2].toLowerCase(), number: number(r) });
-    else if (MENTIONS_PRACTICE_RUN.test(title(cell))) malformed.push({ number: number(r), title: title(cell) });
+    else if (isPracticeRecord(cell)) malformed.push({ number: number(r), title: title(cell) });
   }
-  return { exists: true, ownerDecisions: !!owner, ownerDecisionsProblem, practiceRuns, malformed, nextNumber };
+  // ownerRevisionRows: the revisions named by owner-decisions rows that name D1 to D8 (for the first-run check).
+  const ownerRows = titled.filter(namesAll).map(what);
+  return { exists: true, ownerDecisions: !!owner, ownerDecisionsProblem, ownerRow: owner ? what(owner) : null, ownerRows, practiceRuns, malformed, nextNumber };
 }

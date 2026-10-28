@@ -25,7 +25,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { loadConfig as loadAppConfig } from '../config.js';
 import { canonicalJson } from '../strategy/config.js';
-import { loadConfig, configHash, textSha256, PLANNED_CONFIGS, CODE_REVISION, protocolStatus, logStatus, PROTOCOL_PATH, LOG_PATH, RT_CONFIG_DIR } from './config.js';
+import { loadConfig, configHash, textSha256, PLANNED_CONFIGS, CODE_REVISION, protocolStatus, logStatus, namesRevision, PROTOCOL_PATH, LOG_PATH, RT_CONFIG_DIR } from './config.js';
 import { runBacktest, ENGINE_VERSION } from './engine.js';
 import { computeMetrics } from './metrics.js';
 import { holdIndex, INDEX_METHOD } from './benchmark.js';
@@ -65,14 +65,18 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
   const dir = path.resolve(dataDir ?? loadAppConfig().dataDir);
   const proto = protocolPath ?? PROTOCOL_PATH, logFile = logPath ?? LOG_PATH, holdFile = holdConfigFile ?? DEFAULT_HOLD_CONFIG;
   const hxrFile = path.join(dir, hxrStore.HXR_DB_NAME);
+  const db = store.openRtDb(store.rtDbFile(dir));
   let lock;
-  try { lock = store.acquireLock(dir, { pid: process.pid, at: clock().toISOString() }); } catch (e) { if (e.code === 'RT_LOCKED') throw new RtError(423, e.message); throw e; }
-  let db;
   try {
-    db = store.openRtDb(store.rtDbFile(dir));
-    // Only the lock holder marks interrupted runs failed: no live instance exists beside it.
+    // The lock row is taken in one transaction (store.js acquireLock): a live holder refuses this instance, a
+    // stale row is taken over atomically. Only the lock holder marks interrupted runs failed.
+    lock = store.acquireLock(db, { pid: process.pid, at: clock().toISOString() });
     store.failInterruptedRuns(db, clock().toISOString());
-  } catch (e) { store.releaseLock(lock); throw e; }
+  } catch (e) {
+    try { db.close(); } catch { /* ignore */ }
+    if (e.code === 'RT_LOCKED') throw new RtError(423, e.message);
+    throw e;
+  }
   let busy = false, closed = false;
 
   const rowFor = (run, log = logStatus(logFile)) => practiceLogRow(run, log.nextNumber, (run.finished_at || run.created_at || clock().toISOString()).slice(0, 10));
@@ -84,6 +88,11 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
     const frozen = store.getSetting(db, 'protocolHash');
     if (frozen && frozen.hash !== ps.hash) throw new RtError(409, `Practice runs are refused: EVALUATION-PROTOCOL.md changed since the first practice run (frozen hash ${frozen.hash.slice(0, 12)}, now ${ps.hash.slice(0, 12)}). The protocol frozen at the first practice run is final for the practice runs: restore the file to the frozen text. No new protocol version reopens them.`);
     const log = logStatus(logFile);
+    // All practice runs share the first run's code revision unless an owner-decisions row names the new one.
+    const firstRev = store.getSetting(db, 'codeRevision');
+    if (firstRev && firstRev.revision !== CODE_REVISION && !(log.ownerRows || []).some((row) => namesRevision(row, CODE_REVISION))) {
+      throw new RtError(409, `Practice runs are refused: the code revision changed since the first practice run (run ${firstRev.firstRunId} ran under ${firstRev.revision}; this code is ${CODE_REVISION}). A run under another revision needs an owner-decisions row in EXPERIMENT-LOG.md naming ${CODE_REVISION}.`);
+    }
     if (!log.ownerDecisions) throw new RtError(409, `Practice runs are refused: strategy/range-trend/EXPERIMENT-LOG.md has no owner-decisions entry covering D1-D8 for this code (${log.ownerDecisionsProblem}; a row beginning "**Owner decisions D1-D8**" naming D1 to D8 and the code revision).`);
     if (log.malformed.length) throw new RtError(409, `Practice runs are refused: EXPERIMENT-LOG.md row ${log.malformed[0].number ?? '?'} ("${log.malformed[0].title}") mentions a practice run but is not in the form "**Practice run** run id: N, config hash: <64 hex>". Nothing runs while a practice-run row cannot be read.`);
     for (const pr of log.practiceRuns) {
@@ -113,7 +122,7 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
       if (!old) throw new RtError(409, `Run ${reserve.invalidatedRunId} is not a recorded run of ${configFile}.`);
       if (old.config_hash !== configHash(config)) throw new RtError(409, `The reserve run must use the config hash of the run it replaces (${old.config_hash.slice(0, 12)}); this config hashes to ${configHash(config).slice(0, 12)}.`);
     }
-    return { proto: ps, config, configFileSha256 };
+    return { proto: ps, config, configFileSha256, firstRunCodeRevision: firstRev?.revision ?? null };
   }
 
   // HXR's own gate for a period: readiness with the owner's reviewed overnight moves, and spread calibration
@@ -134,7 +143,7 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
     busy = true;
     let hdb = null, id = null, prov = null;
     try {
-      const { proto: ps, config, configFileSha256 } = gate({ configFile, confirm, reserve });
+      const { proto: ps, config, configFileSha256, firstRunCodeRevision } = gate({ configFile, confirm, reserve });
       // The HXR market data: exactly <dataDir>/hxr-sim.sqlite by real path, opened read-only.
       if (!fs.existsSync(hxrFile)) throw new RtError(409, `No HXR market data at ${path.basename(hxrFile)}: download it through the HXR page first.`);
       const realHxr = fs.realpathSync(hxrFile);
@@ -149,12 +158,14 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
       const calibrated = halfSpreadFn(spread);
       const inputs = buildInputs(hdb, { universe, symbols: symbols.map((s) => s.symbol), warmupFrom: pr.warmupFrom, end: pr.end, excludedSessions: excludedDates(periods), spreadTable: spread, start: pr.start });
       prov = { symbolsHash: symbolsHashOf(inputs.symbols), dataHash: inputs.dataHash, calibrationHash: inputs.calibrationHash };
-      // Everything checked and every hash known: the ledger slot, the run row with the hashes and (at the first
-      // practice run) the protocol hash are written in one transaction, before running.
+      // Everything checked and every hash known: the ledger slot, the run row with the hashes and the provenance
+      // known before running (so an interrupted or failed run keeps them), and (at the first practice run) the
+      // protocol hash and code revision, are written in one transaction, before running.
       const at = clock().toISOString();
+      const provenance = { codeRevision: CODE_REVISION, engineVersion: ENGINE_VERSION, ...prov, configFileSha256, protocolHash: ps.hash, firstRunCodeRevision, testOverrides: overrides.length ? overrides : null };
       let slot;
       try {
-        slot = store.reserveSlot(db, { configFile, version: config.version, configHash: configHash(config), config, reserve, protocolHash: ps.hash, codeRevision: CODE_REVISION, at, ...prov });
+        slot = store.reserveSlot(db, { configFile, version: config.version, configHash: configHash(config), config, reserve, protocolHash: ps.hash, codeRevision: CODE_REVISION, at, ...prov, details: provenance });
       } catch (e) {
         if (/UNIQUE/i.test(e.message)) throw new RtError(409, `${configFile} (or the reserve) is already recorded: each planned config runs once.`);
         throw e;
@@ -162,8 +173,7 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
       id = slot.id;
       const result = runBacktest({ config, symbols: inputs.symbols, sessions: inputs.sessions, days: inputs.days, halfSpreadBps: halfSpreadFor(config, calibrated), dataHash: inputs.dataHash });
       const details = {
-        codeRevision: CODE_REVISION, engineVersion: ENGINE_VERSION, symbolsHash: result.meta.symbolsHash, dataHash: prov.dataHash, calibrationHash: prov.calibrationHash,
-        configFileSha256, protocolHash: ps.hash, protocolFrozenAtRun: slot.protocolFrozenAtRun, testOverrides: overrides.length ? overrides : null, meta: result.meta,
+        ...provenance, symbolsHash: result.meta.symbolsHash, protocolFrozenAtRun: slot.protocolFrozenAtRun, meta: result.meta,
         trades: result.trades, postExit: result.postExit, openPositions: result.openPositions, pendingOrders: result.pendingOrders, unpaidDividends: result.unpaidDividends, lastSales: result.lastSales,
         fills: result.fills, decisions: result.decisions, skips: result.skips, warnings: result.warnings, dividends: result.dividends, splits: result.splits, watches: result.watches, breaks: result.breaks,
       };
@@ -187,11 +197,20 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
     } catch (e) {
       if (id == null) throw e; // refused before the slot was taken: nothing recorded
       const msg = String(e.message || e);
-      // The slot stays used and the hashes stay with the row: every run is logged, failures included.
-      let logRow = null;
-      try { store.finishRun(db, id, { status: 'failed', ...prov, error: msg, at: clock().toISOString() }); logRow = rowFor(store.getRun(db, id)); } catch { /* the next start marks it failed */ }
-      if (e instanceof RtError) { e.logRow = logRow; throw e; }
-      throw new RtError(500, `The practice run failed and is recorded as failed (run ${id}): ${msg}. Paste its log row before the next run.`, { logRow });
+      // The slot stays used, and the hashes and provenance stay with the row: every run is logged, failures
+      // included. If even the failure cannot be recorded now, the row stays 'running' and the next service
+      // start records it as interrupted.
+      let logRow = null, recorded = false;
+      try {
+        const before = store.getRun(db, id);
+        store.finishRun(db, id, { status: 'failed', ...prov, details: before?.details ?? null, error: msg, at: clock().toISOString() });
+        recorded = true;
+        logRow = rowFor(store.getRun(db, id));
+      } catch { /* the next start marks it failed */ }
+      if (e instanceof RtError) { e.logRow = logRow; e.recorded = recorded; throw e; }
+      throw new RtError(500, recorded
+        ? `The practice run failed and is recorded as failed (run ${id}): ${msg}. Paste its log row before the next run.`
+        : `The practice run failed (run ${id}): ${msg}. Its failure could not be recorded now; the next service start records it as interrupted, and its log row must be pasted before the next run.`, { logRow, recorded });
     } finally {
       busy = false;
       try { hdb?.close(); } catch { /* ignore */ }
@@ -199,7 +218,7 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
   }
 
   return {
-    db, dataDir: dir, hxrFile, lockFile: lock, testOverrides: overrides,
+    db, dataDir: dir, hxrFile, lock, testOverrides: overrides,
     protocol: () => protocolStatus(proto),
     log: () => logStatus(logFile),
     runPractice,
@@ -207,6 +226,6 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
     runs: () => store.listRuns(db),
     getRun: (id) => store.getRun(db, id),
     logRowFor: (id) => { const run = store.getRun(db, id); return run ? rowFor(run) : null; },
-    close: () => { if (closed) return; closed = true; try { db.close(); } finally { store.releaseLock(lock); } },
+    close: () => { if (closed) return; closed = true; try { store.releaseLock(db, lock); } finally { db.close(); } },
   };
 }

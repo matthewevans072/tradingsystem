@@ -23,7 +23,12 @@ export function holdIndex({ symbols, sessions, days, start, startingCash, withho
   for (const d of sessions) {
     if (d < start) continue;
     const day = days.get(d) || {}, bars = day.bars || {};
-    for (const sp of day.splits || []) if (shares[sp.symbol] > 0) shares[sp.symbol] *= sp.ratio;
+    // A split moves the shares and the last close to post-split units, so a stock without a bar on the split's
+    // session (or until its next bar) is still valued correctly.
+    for (const sp of day.splits || []) {
+      if (shares[sp.symbol] > 0) shares[sp.symbol] *= sp.ratio;
+      if (lastClose[sp.symbol] != null) lastClose[sp.symbol] /= sp.ratio;
+    }
     // Entitled by the shares held at the start of the session: before this open's buys.
     for (const dv of day.dividends || []) {
       const n = shares[dv.symbol] || 0;

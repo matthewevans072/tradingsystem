@@ -102,6 +102,7 @@ export function computeMetrics(result, { hold = null, index = null, tier2 = { mi
   // 1-share entries; orders pending at the period's end; dividends entitled but unpaid at the end.
   const perStock = {};
   const ps = (sym) => (perStock[sym] = perStock[sym] || { signals: 0, entries: 0, oneShareEntries: 0, skips: {}, cancellations: {}, rejections: {}, pendingAtEnd: 0, unpaidDividends: { count: 0, net: 0 }, pnl: 0 });
+  for (const s of result.meta?.symbols || []) ps(typeof s === 'string' ? s : s.symbol); // every basket stock has a row, with zeros
   for (const d of (result.decisions || []).filter((x) => x.action === 'entry')) ps(d.symbol).signals++;
   for (const k of result.skips || []) { ps(k.symbol).signals++; ps(k.symbol).skips[k.code] = (ps(k.symbol).skips[k.code] || 0) + 1; }
   for (const f of fills.filter((x) => x.side === 'buy')) { ps(f.symbol).entries++; if (f.shares === 1) ps(f.symbol).oneShareEntries++; }

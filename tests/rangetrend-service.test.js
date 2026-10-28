@@ -22,7 +22,7 @@ import { loadHxrPeriods, excludedDates } from '../server/hxr/config.js';
 import { periodSessions } from '../server/hxr/engine.js';
 import { createRangeTrend, periodProblem, practiceLogRow } from '../server/rangetrend/service.js';
 import * as store from '../server/rangetrend/store.js';
-import { protocolStatus, logStatus, loadConfig, configHash, CODE_REVISION, PLANNED_CONFIGS, CONFIG_SHA256, RT_CONFIG_DIR, UNSET, PRACTICE_ROW } from '../server/rangetrend/config.js';
+import { protocolStatus, logStatus, loadConfig, configHash, textSha256, CODE_REVISION, PLANNED_CONFIGS, CONFIG_SHA256, RT_CONFIG_DIR, UNSET, PRACTICE_ROW } from '../server/rangetrend/config.js';
 
 const rejectsWith = async (p, status, re) => { let err = null; await assert.rejects(p, (e) => { err = e; return (e.status === status && (!re || re.test(e.message))) || assert.fail(`${e.status} ${e.message}`); }); return err; };
 const PROTO = '# Evaluation protocol (test copy)\n\n**Date-choice rule:** a test date rule\n\n**Pick rule:** a test pick rule\n';
@@ -45,7 +45,7 @@ function onlyRangeTrendFiles(dir) {
   for (const f of fs.readdirSync(dir)) assert.ok(allowed.has(f), `unexpected file ${f} in ${dir}`);
   const db = new DatabaseSync(path.join(dir, 'range-trend-sim.sqlite'), { readOnly: true });
   try {
-    for (const t of ['rt_runs', 'rt_ledger', 'rt_equity', 'rt_settings']) assert.equal(db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n, 0, `${t} empty`);
+    for (const t of ['rt_runs', 'rt_ledger', 'rt_equity', 'rt_settings', 'rt_lock']) assert.equal(db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n, 0, `${t} empty`);
   } finally { db.close(); }
 }
 
@@ -101,7 +101,16 @@ test('protocol fields: dedicated lines outside fences and comments, once each; u
     if (re) assert.match(s.reason, re, text);
     if (ready) assert.deepEqual([s.pickRule, s.dateChoiceRule], ['a test pick rule', 'a test date rule']);
   }
-  assert.deepEqual(['', '[OWNER TO SET]', 'TBD', 'todo', 'which?', 'a rule'].map(UNSET), [true, true, true, true, true, false]);
+  assert.deepEqual(['', '[OWNER TO SET]', 'TBD', 'todo', 'which?', 'a rule', 'the OWNER decides by return', 'mastodon', 'to be decided', ' tbd ', '[owner]'].map(UNSET), [true, true, true, true, true, false, false, false, false, true, true]);
+  // One line per field: a continuation line is not part of the value; an indented line is not a field.
+  fs.writeFileSync(f, '**Pick rule:** the first line only\n  continued here\n**Date-choice rule:** a rule\n');
+  assert.deepEqual([protocolStatus(f).ready, protocolStatus(f).pickRule], [true, 'the first line only']);
+  fs.writeFileSync(f, '  **Pick rule:** indented\n**Date-choice rule:** a rule\n');
+  assert.deepEqual([protocolStatus(f).ready, protocolStatus(f).pickRule], [false, null]);
+  fs.writeFileSync(f, '**Pick rule:**   \n**Date-choice rule:** a rule\n');
+  assert.match(protocolStatus(f).reason, /no pick rule/);
+  fs.writeFileSync(f, '**Pick rule:** a rule\r\n**Date-choice rule:** b\r\n');
+  assert.deepEqual([protocolStatus(f).pickRule, protocolStatus(f).dateChoiceRule], ['a rule', 'b'], 'CRLF values are trimmed');
   fs.writeFileSync(f, PROTO.replace(/\n/g, '\r\n'));
   const crlf = protocolStatus(f).hash;
   fs.writeFileSync(f, PROTO);
@@ -133,22 +142,36 @@ test('the experiment log: the owner-decisions row names D1-D8 and the current co
   fs.writeFileSync(f, `${LOG}| 2 | x | **Practice run** run id: 7, config hash: ${H}; rt-range-dip-limit-0.2.0.json; status done | development | Yes |\n`);
   assert.deepEqual(logStatus(f).practiceRuns, [{ runId: 7, configHash: H, number: 2 }]);
   assert.deepEqual([logStatus(f).malformed, logStatus(f).nextNumber], [[], 3]);
+  // A record is any row whose bold title mentions a practice run, or whose cell carries a numeric run id
+  // ("run id:" + digits) anywhere, whatever its title; each must have the exact form or is malformed.
   for (const bad of [
     `**Practice run 3** run id 7 config hash ${H}`,
     `**Practice run** run id: 7, config hash: ${H}a`,
     '**Reserve practice run** of run 7',
     `**Practice-run** run id: 7, config hash: ${H}`,
-    'Practice runs stay blocked until the owner decides',
     `**Practice run** config hash: ${H}, run id: 7`,
+    `**Run 7** run id: 7, config hash: ${H}`,
+    `run id: 7, config hash: ${H}; a plain row without a bold title`,
+    '**Note** see run id: 7 above',
   ]) {
     fs.writeFileSync(f, `${LOG}| 2 | x | ${bad} | none | No |\n`);
     const s = logStatus(f);
     assert.deepEqual([s.practiceRuns.length, s.malformed.length, s.malformed[0]?.number], [0, 1, 2], bad);
   }
-  fs.writeFileSync(f, `${LOG}| 2 | x | **Fix pass** practice runs are refused until the owner decides | none | No |\n`);
-  assert.deepEqual([logStatus(f).practiceRuns.length, logStatus(f).malformed.length], [0, 0], 'a mention outside the title is not a practice-run row');
-  // The repository's own log has the owner-decisions row for this code and no malformed row.
-  assert.deepEqual([logStatus().ownerDecisions, logStatus().malformed], [true, []]);
+  // Plain prose that merely mentions practice runs, or quotes the form with a placeholder, is not a record: in
+  // the body of a titled row, or in a row without a bold title and without a numeric run id.
+  for (const prose of ['**Fix pass** practice runs are refused until the owner decides', 'Practice runs stay blocked until the owner decides', 'The next practice run waits for D9', '**Fix pass** rows of the form "**Practice run** run id: N, config hash: <64 hex>" are read', `**Note** the run with config hash: ${H} was looked at`]) {
+    fs.writeFileSync(f, `${LOG}| 2 | x | ${prose} | none | No |\n`);
+    assert.deepEqual([logStatus(f).practiceRuns.length, logStatus(f).malformed.length], [0, 0], prose);
+  }
+  // Rows inside a code fence or an HTML comment are not rows: neither listed nor malformed.
+  fs.writeFileSync(f, `${LOG}\n\`\`\`\n| 2 | x | **Practice run** run id: 7, config hash: ${H} | d | Yes |\n\`\`\`\n<!--\n| 3 | x | **Practice run 9** broken | d | Yes |\n-->\n`);
+  assert.deepEqual([logStatus(f).practiceRuns, logStatus(f).malformed, logStatus(f).nextNumber], [[], [], 2]);
+  fs.writeFileSync(f, `\`\`\`\n${LOG}\`\`\`\n`);
+  assert.equal(logStatus(f).ownerDecisions, false, 'an owner-decisions row inside a fence does not count');
+  // The repository's own log has no malformed row (its entries quote the form with "N", which is prose); whether
+  // its owner-decisions row names this code is the owner's business, not a test's.
+  assert.deepEqual([logStatus().malformed, typeof logStatus().ownerDecisions], [[], 'boolean']);
 });
 
 test('practiceLogRow writes the form PRACTICE_ROW reads, on one line with no "|" inside a cell', () => {
@@ -201,7 +224,6 @@ test('refusals before anything is recorded: confirm, protocol, owner decisions, 
     await rejectsWith(rt.runPractice({ configFile, confirm, reserve }), status, re);
     assert.equal(rt.ledger().length, 0, 'nothing recorded');
     rt.close();
-    assert.ok(!fs.existsSync(path.join(sub, store.RT_LOCK_NAME)), 'the lock is released');
     onlyRangeTrendFiles(sub);
   }
   // hxr-sim.sqlite must be the file itself in the data directory, not a link elsewhere.
@@ -239,24 +261,55 @@ test('the ledger slot is atomic and carries the hashes and the protocol hash; an
   rt.close();
 });
 
-test('the lock: a second instance refuses while one is open and never marks its run failed; a stale lock is taken over', () => {
+test('the lock: a second instance refuses while one is open and never marks its run failed; release checks ownership; a stale row is taken over in one transaction', async () => {
   const dir = tempDir('rt-lock-');
   const a = createRangeTrend({ dataDir: dir, ...files(dir), testOverrides: true });
   const { id } = store.reserveSlot(a.db, { configFile: PLANNED_CONFIGS[2], version: 'v', configHash: 'h', config: {}, protocolHash: 'p', codeRevision: CODE_REVISION, at: '2026-10-28T00:00:00Z' });
   assert.equal(a.getRun(id).status, 'running');
-  assert.throws(() => createRangeTrend({ dataDir: dir, ...files(dir), testOverrides: true }), (e) => e.status === 423 && /holds/.test(e.message));
+  assert.throws(() => createRangeTrend({ dataDir: dir, ...files(dir), testOverrides: true }), (e) => e.status === 423 && /holds the lock/.test(e.message));
   assert.equal(a.getRun(id).status, 'running', 'the refused instance did not touch the live run');
-  assert.ok(fs.existsSync(path.join(dir, store.RT_LOCK_NAME)));
+  assert.deepEqual([store.currentLock(a.db).pid, store.currentLock(a.db).token], [process.pid, a.lock.token]);
+  // Release checks ownership: a row written by another instance (a takeover after this one was declared gone) is left alone.
+  a.db.prepare("UPDATE rt_lock SET pid = ?, token = 'other' WHERE id = 1").run(2147483646);
   a.close();
-  assert.ok(!fs.existsSync(path.join(dir, store.RT_LOCK_NAME)), 'released on close');
-  // A lock left by a process that is gone is stale: taken over, and the interrupted run is then failed.
-  fs.writeFileSync(path.join(dir, store.RT_LOCK_NAME), JSON.stringify({ pid: 2147483646, at: '2026-10-28T00:00:00Z' }));
+  const probe = store.openRtDb(store.rtDbFile(dir));
+  assert.deepEqual([store.currentLock(probe).token, probe.prepare('SELECT status FROM rt_runs WHERE id = ?').get(id).status], ['other', 'running'], 'not released by a non-owner, and the run untouched');
+  probe.close();
+  // The stale row (its process is gone) is taken over, and only then is the interrupted run failed.
   const b = createRangeTrend({ dataDir: dir, ...files(dir), testOverrides: true });
-  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, store.RT_LOCK_NAME), 'utf8')).pid, process.pid);
+  assert.equal(store.currentLock(b.db).pid, process.pid);
   assert.equal(b.getRun(id).status, 'failed');
   b.close();
+  const after = store.openRtDb(store.rtDbFile(dir));
+  assert.equal(after.prepare('SELECT COUNT(*) n FROM rt_lock').get().n, 0, 'released on close by its owner');
+  // Taking the lock is one BEGIN IMMEDIATE transaction: the liveness check and the write cannot interleave with
+  // another taker; a second acquire against a live row fails and leaves the row as it was.
+  const l1 = store.acquireLock(after, { at: 't1' });
+  assert.throws(() => store.acquireLock(after, { at: 't2' }), /holds the lock/);
+  assert.equal(store.currentLock(after).token, l1.token);
+  assert.equal(after.prepare('SELECT COUNT(*) n FROM rt_lock').get().n, 1);
+  assert.equal(store.releaseLock(after, { pid: process.pid, token: 'wrong' }), false, 'a wrong token releases nothing');
+  assert.equal(store.releaseLock(after, l1), true);
+  assert.equal(store.currentLock(after), null);
+  after.close();
   // A closed instance refuses to run.
-  assert.rejects(b.runPractice({ configFile: PLANNED_CONFIGS[0], confirm: true }), /closed/);
+  await assert.rejects(b.runPractice({ configFile: PLANNED_CONFIGS[0], confirm: true }), /closed/);
+});
+
+test('all practice runs share the first run\'s code revision unless an owner-decisions row names the new one', async () => {
+  const dir = tempDir('rt-rev-');
+  const db = store.openRtDb(store.rtDbFile(dir));
+  const first = store.reserveSlot(db, { configFile: PLANNED_CONFIGS[0], version: 'v', configHash: 'h', config: {}, protocolHash: textSha256(PROTO), codeRevision: 'rt-code-2026-01-01-1', at: '2026-10-28T00:00:00Z' });
+  assert.deepEqual(store.getSetting(db, 'codeRevision'), { revision: 'rt-code-2026-01-01-1', firstRunId: first.id });
+  db.close();
+  // The log names only the old revision: refused for the revision change (before the owner-decisions check).
+  const old = createRangeTrend({ dataDir: dir, ...files(dir, { log: LOG.replace(CODE_REVISION, 'rt-code-2026-01-01-1') }), testOverrides: true });
+  await rejectsWith(old.runPractice({ configFile: PLANNED_CONFIGS[1], confirm: true }), 409, /code revision changed since the first practice run.*rt-code-2026-01-01-1/);
+  old.close();
+  // A row naming the new revision lets the gate continue (to the next refusal: run 1 is not listed in the log).
+  const named = createRangeTrend({ dataDir: dir, ...files(dir), testOverrides: true });
+  await rejectsWith(named.runPractice({ configFile: PLANNED_CONFIGS[1], confirm: true }), 409, /not listed in EXPERIMENT-LOG.md/);
+  named.close();
 });
 
 // A fake market in which TSLA forms a range and breaks out just before its 5-for-1 split of 2020-08-31, then
@@ -406,6 +459,9 @@ test('practice runs end to end: a trade held across a split, provenance, the ben
   const r3 = rt.runs().find((x) => x.config_file === crashed);
   assert.deepEqual([r3.status, /interrupted/.test(r3.error)], ['failed', true]);
   for (const h of [r3.symbols_hash, r3.data_hash, r3.calibration_hash]) assert.match(h, /^[0-9a-f]{64}$/);
+  // The provenance written with the slot survives the crash: the interrupted run keeps its details.
+  const d3 = rt.getRun(r3.id).details;
+  assert.deepEqual([d3.codeRevision, d3.configFileSha256, d3.testOverrides, d3.firstRunCodeRevision, d3.symbolsHash], [CODE_REVISION, CONFIG_SHA256[crashed], ['dataDir', 'protocolPath', 'logPath'], CODE_REVISION, r3.symbols_hash]);
   const refused3 = await rejectsWith(rt.runPractice({ configFile: crashed, confirm: true }), 409, /not listed in EXPERIMENT-LOG.md/);
   assert.match(refused3.logRow, /status failed \(interrupted/);
   fs.appendFileSync(f.logPath, `${refused3.logRow}\n`);

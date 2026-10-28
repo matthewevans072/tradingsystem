@@ -58,7 +58,7 @@ entry fills; breaks are detected from the warm-up on; MU, the Tier 3 thresholds 
 a separate thresholds file frozen before evaluation; a drop of MU applies to the historical evaluation only.
 The resulting definitions are in sections 2.4, 3, 4, 6 and 7c, each labelled **experimental choice**.
 
-**The code exists** (`server/rangetrend/`, EXPERIMENT-LOG entries 2 to 8; code revision `rt-code-2026-10-28-1`,
+**The code exists** (`server/rangetrend/`, EXPERIMENT-LOG entries 2 to 12; code revision `rt-code-2026-10-28-2`,
 engine `rt-engine-3`). Where this plan describes behaviour "as implemented", it describes that code.
 
 ---
@@ -511,13 +511,21 @@ pending at the period's end; dividends entitled but unpaid at the end.
 - **Backups:** `createBackup` copies the database into `backups/range-trend` the same way as HXR's.
 - **Stocks:** HXR's basket A (decision 10), read from `universe-hxr-v3.json` with its tech/AI tags (unused by
   range-trend: no tech/AI cap).
-- **One live service instance per data directory:** a lock file (`range-trend-sim.lock`) refuses a second
-  instance while one is open, so a live run is never marked failed; a lock left by a process that is gone is
-  taken over, and only then are interrupted runs recorded as failed.
+- **One live service instance per data directory:** a lock row in the results database (`rt_lock`, taken and
+  released inside transactions, so the liveness check and a stale-row takeover are atomic and instances
+  starting together cannot all hold it) refuses a second instance while one is open, so a live run is never
+  marked failed; a row left by a process that is gone is taken over, and only then are interrupted runs
+  recorded as failed; release deletes the row only when it is the caller's.
 - **Every run is logged before the next starts:** the gate refuses a new run while any stored run, failed
-  ones included, is missing from `EXPERIMENT-LOG.md`, and refuses while any row that mentions a practice run
-  does not have the form "**Practice run** run id: N, config hash: <64 hex>". `runPractice` returns the exact
-  row to paste; a failed run's error carries it too.
+  ones included, is missing from `EXPERIMENT-LOG.md`. The log is read outside code fences and HTML comments
+  (a row inside either is not a row). A row is a practice-run record when its bold title mentions a practice
+  run or when it carries a numeric run id ("run id:" followed by digits) anywhere, whatever its title; every
+  record must have the form "**Practice run** run id: N, config hash: <64 hex>" or the gate refuses. Plain
+  prose that mentions practice runs, or quotes the form with a placeholder, is not a record. `runPractice`
+  returns the exact row to paste; a failed run's error carries it too.
+- **One code revision for the practice runs:** the first practice run's `CODE_REVISION` is stored; a run under
+  another revision is refused unless an owner-decisions row in `EXPERIMENT-LOG.md` names the new one (the
+  change is recorded in the run's details).
 - **The data directory** is `loadConfig().dataDir` (`SIGNAL_DESK_DATA_DIR`, by default `data/`); the hashes of
   the symbols, data and calibration are computed before the ledger slot is taken, so an interrupted or
   early-failed run keeps them; the slot, the run row and (at the first practice run) the protocol hash are one
@@ -543,7 +551,7 @@ pending at the period's end; dividends entitled but unpaid at the end.
 
 ### 7a. Tier 1: the code is correct
 
-Synthetic data only. Must pass before any practice-run result is looked at. As of EXPERIMENT-LOG entry 9:
+Synthetic data only. Must pass before any practice-run result is looked at. As of EXPERIMENT-LOG entry 12:
 - every worked example in sections 3 and 6a reproduces, including the D2 and D3 cases;
 - no look-ahead, future-change and determinism tests pass for every planned config;
 - accounting: cash never goes below zero; account value = cash + holdings at every close, with holdings
@@ -553,7 +561,11 @@ Synthetic data only. Must pass before any practice-run result is looked at. As o
 - sizing is hand-checked, including several same-day signals and next-open gaps up and down;
 - there is a scenario for every entry and exit, and for each of D1 to D4 and the watch rule;
 - benchmark (a) and the exposure-matched hold are hand-checked on two stocks with a split and a dividend;
-- the planted bugs of `scripts/rangetrend-planted.mjs` are each caught by the tests.
+- the planted bugs of `scripts/rangetrend-planted.mjs` are each caught by a named failing test (the check
+  requires a passing baseline first, judges a bug CAUGHT only when the run completes and a named assertion
+  fails, and reports MISSED, INVALID and INCONCLUSIVE apart);
+- the prefix-invariance, future-change and snapshot checks compare every journal, the watch and break journals
+  included.
 
 ### 7b. Tier 2: exploratory usefulness
 
@@ -633,7 +645,8 @@ winner selection is built.
 4. The owner writes D9 into `EVALUATION-PROTOCOL.md`: the pick rule and how the evaluation dates are chosen.
    The code refuses practice runs until both are there and no owner marker remains in that file.
 5. The practice runs, within the budget, on separate instruction.
-6. The owner completes and freezes `EVALUATION-THRESHOLDS.md`; the candidate and the protocol are frozen.
+6. The owner completes and freezes `EVALUATION-THRESHOLDS.md`; the candidate is frozen; the protocol's hash,
+   frozen since the first practice run, is recorded with them.
 7. The evaluation, according to the protocol.
 8. The local simulated prospective journal.
 
@@ -659,8 +672,10 @@ Decision 9 above is the owner's words. The options below are a proposal; the own
   field appears more than once; fields are read outside code fences and HTML comments only. **The protocol's
   hash is frozen at the first practice run and is final for the practice runs:** a later change refuses further
   runs until the file is restored to the frozen text. No new protocol version can reopen the practice runs.
-- The candidate and the protocol are frozen, with their hashes, **before any evaluation result is
-  accessed**.
+- **The freeze moment of the protocol is the first practice run.** Before any evaluation result is accessed,
+  that same protocol hash is recorded in `EXPERIMENT-LOG.md` together with the chosen candidate's config
+  hash, `EVALUATION-THRESHOLDS.md`'s hash and the code revision: a record of the frozen state, not a new
+  freeze (`EVALUATION-PROTOCOL.md` says the same).
 - The evaluation runs once.
 
 ---

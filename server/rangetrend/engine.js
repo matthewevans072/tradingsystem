@@ -91,6 +91,7 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
       const p = st.position;
       if (p) {
         for (const k of ['stop', 'lo', 'hi', 'H', 'm', 'topLow', 'oldHi', 'highest', 'fillPrice']) if (p[k] != null) p[k] /= r;
+        if (p.afterSale?.price != null) p.afterSale.price /= r; // the decision-time copy of P, reported with the trade
         const before = p.shares, after = before * r, whole = Math.floor(after + EPS);
         if (after - whole > EPS) st.fractions.push({ shares: after - whole, tradeId: p.tradeId });
         p.shares = whole;
@@ -100,6 +101,7 @@ export function createEngine({ config, symbols, halfSpreadBps, state = null } = 
       if (o?.side === 'buy') {
         o.shares = Math.floor(o.shares * r + EPS);
         for (const k of ['stop', 'refClose', 'lo', 'hi', 'H', 'm', 'topLow', 'oldHi', 'ceiling']) if (o[k] != null) o[k] /= r;
+        if (o.afterSale?.price != null) o.afterSale.price /= r;
       }
       rec('splits', { date, symbol: sp.symbol, ratio: r, sharesAfter: st.position?.shares ?? 0, closedPosition: !!p && !st.position });
     }

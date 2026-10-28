@@ -298,7 +298,9 @@ function market(seed, n, bump = null) {
   });
   return { days, sessions: SESS.slice(0, n), symbols: syms.map((s) => ({ symbol: s })) };
 }
-const KEYS = ['decisions', 'fills', 'trades', 'skips', 'warnings', 'equity'];
+// Every journal, the watch and break journals included; a watch is dated by its end (it is recorded then).
+const KEYS = ['decisions', 'fills', 'trades', 'skips', 'warnings', 'equity', 'watches', 'breaks', 'postExit', 'dividends', 'splits'];
+const upTo = (k, cut) => (x) => (k === 'watches' ? x.endedOn : (x.date ?? x.exitDate)) <= cut;
 let anyTrades = 0;
 for (const file of PLANNED_CONFIGS) {
   test(`${file}: prefix invariance, future-change, determinism and snapshot round-trip`, () => {
@@ -312,13 +314,14 @@ for (const file of PLANNED_CONFIGS) {
       const e = createEngine({ config, symbols: m.symbols, halfSpreadBps: 2 });
       for (const d of m.sessions) { if (d > cut) break; e.processSession(d, m.days.get(d)); }
       const part = e.output();
-      for (const k of KEYS) assert.deepEqual(part[k], full[k].filter((x) => (x.date ?? x.exitDate) <= cut), `${k} up to ${cut}`);
+      for (const k of KEYS) assert.deepEqual(part[k], full[k].filter(upTo(k, cut)), `${k} up to ${cut}`);
     }
     const T = m.sessions[500];
     for (const factor of [0.7, 1.4]) {
       const b = runBacktest({ config, ...market(11, n, { after: T, factor }), halfSpreadBps: 2 });
-      for (const k of ['decisions', 'fills', 'skips', 'equity']) assert.deepEqual(b[k].filter((x) => x.date <= T), full[k].filter((x) => x.date <= T), `${k} up to ${T} (later prices x${factor})`);
+      for (const k of KEYS) assert.deepEqual(b[k].filter(upTo(k, T)), full[k].filter(upTo(k, T)), `${k} up to ${T} (later prices x${factor})`);
     }
+    assert.ok(full.breaks.length >= 1 && full.watches.length + full.breaks.length >= 2, `${file}: the synthetic market gives breaks (${full.breaks.length}) and watches (${full.watches.length}), so these journals are checked`);
     assert.deepEqual(runBacktest({ config, ...m, halfSpreadBps: 2 }), full, 'deterministic');
     const a = createEngine({ config, symbols: m.symbols, halfSpreadBps: 2 });
     for (const d of m.sessions.slice(0, 200)) a.processSession(d, m.days.get(d));

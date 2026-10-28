@@ -4,8 +4,10 @@
 > drop MU, the Tier 3 thresholds and the journal minimums moved to `EVALUATION-THRESHOLDS.md`). **Nothing in
 > this file authorises a run.** Neither the historical evaluation nor the prospective journal may start without
 > a separate instruction from the owner. The two dedicated fields below are completed by the owner **before the
-> first practice run**, so that no exploratory result influences them. The candidate and this protocol are
-> frozen, with their hashes, before any evaluation result is accessed.
+> first practice run**, so that no exploratory result influences them. **This file is frozen at the first
+> practice run** (the code stores its hash then, and that hash is final for the practice runs). Before any
+> evaluation result is accessed, that same hash is recorded in `EXPERIMENT-LOG.md` with the candidate's, the
+> thresholds file's and the code revision's: a record of the frozen state, not a new freeze.
 
 ## Evaluation choice
 
@@ -53,9 +55,11 @@ and may never be the ending balance alone.
 
 ## Freezing
 
-Before any evaluation result is accessed, the following are recorded with their SHA-256 hashes in
-`EXPERIMENT-LOG.md`:
+This file is frozen at the first practice run: its SHA-256 hash (text with line endings normalised to LF) is
+stored in the results database then and is final for the practice runs. Before any evaluation result is
+accessed, the following are recorded with their SHA-256 hashes in `EXPERIMENT-LOG.md` (`PLAN-DRAFT.md`
+section 8a describes the same moment):
 - the chosen candidate's config;
-- this file;
+- this file (the hash stored at the first practice run);
 - `EVALUATION-THRESHOLDS.md`;
 - the code revision.

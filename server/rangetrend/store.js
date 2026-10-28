@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
 export const RT_DB_NAME = 'range-trend-sim.sqlite';
@@ -57,6 +58,9 @@ const MIGRATIONS = [`
   -- Each planned config once, and one reserve run in all: the ledger slot is taken before a run starts.
   CREATE UNIQUE INDEX rt_ledger_once ON rt_ledger (config_file) WHERE reserve = 0;
   CREATE UNIQUE INDEX rt_ledger_one_reserve ON rt_ledger (reserve) WHERE reserve = 1;
+`, `
+  -- The service lock: one row, taken and released inside transactions (store.js acquireLock/releaseLock).
+  CREATE TABLE rt_lock (id INTEGER PRIMARY KEY CHECK (id = 1), pid INTEGER NOT NULL, token TEXT NOT NULL, host TEXT, at TEXT NOT NULL);
 `];
 
 function migrate(db) {
@@ -87,11 +91,11 @@ export function openRtDb(file) {
 const j = (v) => (v == null ? null : JSON.stringify(v));
 const p = (s) => (s == null ? null : JSON.parse(s));
 
-// The symbols, data and calibration hashes are known before the run starts and stored with the row, so an
-// interrupted or early-failed run keeps them.
+// The symbols, data and calibration hashes, and the provenance known before the run (r.details), are stored
+// with the row when it is created, so an interrupted or early-failed run keeps them.
 export function createRun(db, r) {
-  return Number(db.prepare(`INSERT INTO rt_runs (kind, config_file, version, config_hash, config_json, status, reserve_json, protocol_hash, code_revision, symbols_hash, data_hash, calibration_hash, created_at)
-    VALUES ('practice', ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)`).run(r.configFile, r.version, r.configHash, j(r.config), j(r.reserve), r.protocolHash, r.codeRevision, r.symbolsHash ?? null, r.dataHash ?? null, r.calibrationHash ?? null, r.at).lastInsertRowid);
+  return Number(db.prepare(`INSERT INTO rt_runs (kind, config_file, version, config_hash, config_json, status, reserve_json, protocol_hash, code_revision, symbols_hash, data_hash, calibration_hash, details_json, created_at)
+    VALUES ('practice', ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?)`).run(r.configFile, r.version, r.configHash, j(r.config), j(r.reserve), r.protocolHash, r.codeRevision, r.symbolsHash ?? null, r.dataHash ?? null, r.calibrationHash ?? null, j(r.details ?? null), r.at).lastInsertRowid);
 }
 
 export function finishRun(db, id, r) {
@@ -114,6 +118,9 @@ export function reserveSlot(db, r) {
     appendLedger(db, { runId: id, configFile: r.configFile, configHash: r.configHash, reserve: !!r.reserve, reserveDetail: r.reserve, at: r.at });
     let protocolFrozenAtRun = false;
     if (r.protocolHash && !getSetting(db, 'protocolHash')) { setSettingOnce(db, 'protocolHash', { hash: r.protocolHash, firstRunId: id }, r.at); protocolFrozenAtRun = true; }
+    // The first practice run's code revision: later runs under another revision need an owner-decisions row
+    // naming the new one (service.js gate).
+    if (r.codeRevision && !getSetting(db, 'codeRevision')) setSettingOnce(db, 'codeRevision', { revision: r.codeRevision, firstRunId: id }, r.at);
     db.exec('COMMIT');
     return { id, protocolFrozenAtRun };
   } catch (e) {
@@ -122,34 +129,41 @@ export function reserveSlot(db, r) {
   }
 }
 
-// One live service instance per data directory: a lock file holding the owner's pid. A second instance refuses
-// to open while the first is alive (so a live run is never marked failed); a lock left by a process that is
-// gone is stale and taken over. If a lock looks live although its process is gone (pid reuse), the owner
-// deletes the file.
-export const RT_LOCK_NAME = 'range-trend-sim.lock';
-export const lockFile = (dataDir) => path.join(dataDir, RT_LOCK_NAME);
+// One live service instance per data directory: a single lock row in the results database (rt_lock, migration
+// 2) holding the owner's pid and a random token. Taking the lock is one BEGIN IMMEDIATE transaction, so the
+// liveness check and the takeover of a stale row (its process gone) are atomic: instances starting together
+// cannot all hold it. A second instance refuses while the holder is alive, so a live run is never marked
+// failed. Release deletes the row only when the pid and token are the caller's. If a row looks live although
+// its process is gone (pid reuse), the owner deletes the row (DELETE FROM rt_lock).
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+export const isAlive = alive;
 
-export function acquireLock(dataDir, info) {
-  fs.mkdirSync(dataDir, { recursive: true });
-  const file = lockFile(dataDir);
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try { fs.writeFileSync(file, JSON.stringify({ ...info, host: os.hostname() }), { flag: 'wx' }); return file; } catch (e) { if (e.code !== 'EEXIST') throw e; }
-    let held = null;
-    try { held = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { held = null; }
-    if (held && Number.isInteger(held.pid) && alive(held.pid)) {
-      const err = new Error(`Another range-trend service instance holds ${file} (pid ${held.pid} since ${held.at}): a second instance never opens the results database beside a live one, so a live run is never marked failed. If that process is gone, delete the lock file.`);
+export function acquireLock(db, { pid = process.pid, at, token = crypto.randomBytes(12).toString('hex') } = {}) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const held = db.prepare('SELECT pid, token, host, at FROM rt_lock WHERE id = 1').get();
+    if (held && alive(held.pid)) {
+      const err = new Error(`Another range-trend service instance holds the lock on this results database (pid ${held.pid} on ${held.host} since ${held.at}): a second instance never runs beside a live one, so a live run is never marked failed. If that process is gone, delete the row: DELETE FROM rt_lock.`);
       err.code = 'RT_LOCKED';
       throw err;
     }
-    try { fs.unlinkSync(file); } catch { /* taken by someone else meanwhile: retry */ }
+    db.prepare('INSERT OR REPLACE INTO rt_lock (id, pid, token, host, at) VALUES (1, ?, ?, ?, ?)').run(pid, token, os.hostname(), at);
+    db.exec('COMMIT');
+    return { pid, token, tookOverStale: held ? { pid: held.pid, at: held.at } : null };
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* not in a transaction */ }
+    throw e;
   }
-  throw new Error(`could not take ${file}`);
 }
 
-export function releaseLock(file) {
-  try { fs.unlinkSync(file); } catch { /* already gone */ }
+// Only the holder releases: a row written by another instance (a takeover after this one was declared gone)
+// is left alone. Returns true when this call removed its own row.
+export function releaseLock(db, lock) {
+  if (!lock) return false;
+  return Number(db.prepare('DELETE FROM rt_lock WHERE id = 1 AND pid = ? AND token = ?').run(lock.pid, lock.token).changes) === 1;
 }
+
+export const currentLock = (db) => db.prepare('SELECT pid, token, host, at FROM rt_lock WHERE id = 1').get() ?? null;
 
 // Runs left 'running' by an interrupted process: recorded as failed with the reason; their slot stays used.
 export function failInterruptedRuns(db, at) {

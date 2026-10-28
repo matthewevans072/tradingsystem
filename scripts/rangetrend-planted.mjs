@@ -60,6 +60,11 @@ export const BUGS = [
   { name: 'D4 dividend reinvested on the ex-date', file: BM, find: 'payDate: dv.payDate || d, net:', replace: 'payDate: d, net:' },
   { name: 'D4 index rebalanced daily', file: BM, find: '    out.push({ date: d, value: holdings + cash, holdings, cash });', replace: '    out.push({ date: d, value: holdings + cash, holdings, cash });\n    for (const s of syms) if (bought[s] && lastClose[s] > 0) shares[s] = (holdings + cash) / syms.length / lastClose[s];' },
   { name: 'watch ended at the decision instead of the fill', file: E, find: "      rec('decisions', { ...base, action: 'entry', shares, caps, binding, plannedRisk: shares * dist });", replace: "      if (sig.entryType === 'pullback' && st.watch) endWatch(st, date, 'pullback entry decided', true);\n      rec('decisions', { ...base, action: 'entry', shares, caps, binding, plannedRisk: shares * dist });" },
+  // The second fix pass (EXPERIMENT-LOG.md entry 12).
+  { name: 'split: pending breakdown watch (frozen lo) not rescaled', file: E, find: '      if (st.breakdownWatch) { st.breakdownWatch.frozenLo /= r; st.breakdownWatch.m /= r; }\n', replace: '' },
+  { name: 'D3 conversion close not a confirming close', file: E, find: "          setBreak(st, 'conversion', date, { close: c, hi: p.hi, m: p.m, tradeId: p.tradeId });\n", replace: '' },
+  { name: "split: a pending buy's decision-time copy of P (afterSale.price) not rescaled", file: E, find: '        if (o.afterSale?.price != null) o.afterSale.price /= r;\n', replace: '' },
+  { name: 'D4 last close not split-adjusted on a session without a bar', file: BM, find: '      if (lastClose[sp.symbol] != null) lastClose[sp.symbol] /= sp.ratio;\n', replace: '' },
 ];
 
 function parseArgs(argv) {
@@ -149,7 +154,11 @@ export function runPlanted({ ref = 'HEAD', workingTree = false, only = null, kee
       try { execFileSync('git', ['worktree', 'remove', '--force', wt], { cwd: ROOT, stdio: 'pipe' }); } catch { /* fall through */ }
       try { fs.rmSync(wt, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* ignore */ }
       try { execFileSync('git', ['worktree', 'prune'], { cwd: ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
+      // The worktree's metadata under .git/worktrees can outlive the prune on a synced folder: remove it too.
+      const meta = path.join(ROOT, '.git', 'worktrees', path.basename(wt));
+      try { fs.rmSync(meta, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* ignore */ }
       if (fs.existsSync(wt)) log(`warning: ${wt} could not be removed`);
+      if (fs.existsSync(meta)) log(`warning: ${meta} could not be removed`);
     } else log(`worktree kept at ${wt}`);
   }
   return { baseline, results };
