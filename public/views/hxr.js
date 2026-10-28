@@ -706,6 +706,9 @@ function readinessView(P, r) {
     const cells = [
       h('div', {}, h('span', { class: 'sym' }, s.symbol), h('span', { class: 'exch' }, ` ${s.exchange}`),
         u.name ? h('div', { class: 'cell-sub' }, u.name) : null,
+        // An external reference for the owner's manual price cross-check (strategy/range-trend/PRICE-CROSSCHECK.md).
+        // A plain link only: nothing in the simulation reads Yahoo; Alpaca stays the sole price source.
+        h('div', { class: 'cell-sub' }, extLink(`https://finance.yahoo.com/quote/${encodeURIComponent(s.symbol)}`, 'Yahoo Finance'), ' (external reference; never read by the simulation)'),
         u.kind === 'leveraged_etf' ? h('div', {}, badge('leveraged ETF', 'lev')) : null,
         u.identity && u.identity !== 'confirmed' ? h('div', {}, badge('identity pending', 'warn')) : null,
         h('div', { class: 'cell-sub' }, (u.baskets || []).map((b) => (b === 'prospective' ? 'prospective only' : `basket ${b}`)).join(' · '))),

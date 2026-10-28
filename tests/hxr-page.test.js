@@ -19,7 +19,13 @@ test('the page builds text nodes only and calls nothing but the HXR API', () => 
   const src = read('public/views/hxr.js');
   assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|DOMParser|createContextualFragment|srcdoc/.test(src), 'no markup built from strings');
   assert.ok(!/\beval\s*\(|new Function\s*\(/.test(src));
-  assert.ok(!/\bhttps?:\/\//.test(src), 'no external host');
+  // The only external host is Yahoo Finance, and only as a plain reference link built by extLink (an anchor,
+  // never fetched): the simulation never reads it (strategy/range-trend/PRICE-CROSSCHECK.md).
+  const yahoo = /extLink\(`https:\/\/finance\.yahoo\.com\/quote\/\$\{encodeURIComponent\(s\.symbol\)\}`, 'Yahoo Finance'\)/g;
+  assert.equal((src.match(yahoo) || []).length, 1, 'one Yahoo Finance reference link');
+  assert.ok(src.includes('(external reference; never read by the simulation)'));
+  assert.ok(!/\bhttps?:\/\//.test(src.replace(yahoo, '')), 'no other external host');
+  assert.ok(!/fetch\([^)]*yahoo/i.test(src), 'nothing fetched from Yahoo');
   assert.ok(!/localStorage|sessionStorage|indexedDB/.test(src), 'nothing stored in the browser');
   const calls = [...src.matchAll(/['`](\/api\/[^'`?$]*)/g)].map((m) => m[1]);
   assert.ok(calls.length >= 10, `found ${calls.length} API paths`);
