@@ -1,13 +1,19 @@
 // Range-trend planted-bug check (strategy/range-trend/PLAN-DRAFT.md section 7a). Run manually:
 //
-//   node scripts/rangetrend-planted.mjs [--ref <commit>] [--working-tree] [--only <substring>] [--keep]
+//   node scripts/rangetrend-planted.mjs [--ref <commit>] [--working-tree] [--only <substring>] [--keep] [--timeout <ms>]
 //
-// Each listed bug is planted, one at a time, in a scratch git worktree of <commit> (default HEAD), the
-// range-trend Tier 1 tests are run there, the file is restored, and the result is printed; the worktree is
-// removed at the end (--keep leaves it). --working-tree copies the current, possibly uncommitted,
-// server/rangetrend/*.js and tests/rangetrend-*.test.js into the worktree first. Every bug must be CAUGHT
-// (at least one test fails); the exit code is 1 otherwise. Synthetic test data only: nothing here reads
-// market data, opens a database or runs a strategy on prices.
+// A scratch git worktree of <commit> (default HEAD) is created; --working-tree copies the current, possibly
+// uncommitted, server/rangetrend/*.js, tests/rangetrend-*.test.js and the range-trend configs into it. First
+// the unmodified tests must pass there (the baseline); otherwise nothing is planted. Then each listed bug is
+// planted, one at a time: the planted file must still load (node --check), or the bug is INVALID; the tests
+// are run with the TAP reporter and a timeout, and the bug is CAUGHT only when the run completes (a TAP plan
+// is printed, no timeout or crash) and at least one named test assertion fails ("not ok" with a name);
+// MISSED when the run completes with no failure; INCONCLUSIVE on a timeout, a crash, a disk-space or other
+// infrastructure failure, or missing output. The file is restored after each bug. The worktree and its
+// directory are removed in a finally block, crash included (--keep leaves it). The free space of the temp
+// volume is printed at the start and the check refuses to run under 1 GB. Exit code 0 only when every bug
+// is CAUGHT. Synthetic test data only: nothing here reads market data, opens a database or runs a strategy
+// on prices.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,6 +23,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const E = 'server/rangetrend/engine.js', LV = 'server/rangetrend/levels.js', BM = 'server/rangetrend/benchmark.js';
 export const TESTS = ['tests/rangetrend-engine.test.js', 'tests/rangetrend-fixes.test.js', 'tests/rangetrend-planted.test.js', 'tests/rangetrend-definitions.test.js', 'tests/rangetrend-gaps.test.js'];
+export const MIN_FREE_BYTES = 1024 ** 3;
+export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 // { name, file, find, replace }: `find` must occur exactly once in `file`.
 export const BUGS = [
@@ -55,23 +63,54 @@ export const BUGS = [
 ];
 
 function parseArgs(argv) {
-  const o = { ref: 'HEAD', workingTree: false, only: null, keep: false };
+  const o = { ref: 'HEAD', workingTree: false, only: null, keep: false, timeoutMs: DEFAULT_TIMEOUT_MS };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--ref') o.ref = argv[++i];
     else if (a === '--working-tree') o.workingTree = true;
     else if (a === '--only') o.only = argv[++i];
     else if (a === '--keep') o.keep = true;
+    else if (a === '--timeout') o.timeoutMs = Number(argv[++i]);
     else throw new Error(`unknown argument ${a}`);
   }
   return o;
 }
 
-export function runPlanted({ ref = 'HEAD', workingTree = false, only = null, keep = false, log = console.log } = {}) {
-  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'rt-planted-'));
-  execFileSync('git', ['-c', 'core.autocrlf=false', 'worktree', 'add', '--detach', wt, ref], { cwd: ROOT, stdio: 'pipe' });
+export function freeBytes(dir) {
+  const s = fs.statfsSync(dir);
+  return Number(s.bavail) * Number(s.bsize);
+}
+
+// Run the Tier 1 files with the TAP reporter. The outcome is 'completed' only when the process exited by
+// itself (no timeout, no signal) and printed a TAP plan; the failing top-level tests are the "not ok" lines
+// at the outer indentation, with their names.
+export function runTests(cwd, tests, timeoutMs) {
+  const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--test', '--test-reporter=tap', ...tests], { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: timeoutMs, killSignal: 'SIGKILL' });
+  const out = `${r.stdout || ''}`, err = `${r.stderr || ''}`;
+  const lines = out.split(/\r?\n/);
+  const plan = lines.some((l) => /^1\.\.\d+$/.test(l));
+  const failing = lines.filter((l) => /^not ok \d+ - /.test(l)).map((l) => l.replace(/^not ok \d+ - /, '').replace(/ # (SKIP|TODO).*$/, ''));
+  const passing = lines.filter((l) => /^ok \d+ - /.test(l)).length;
+  const infra = /ENOSPC|out of memory|heap out of memory|EMFILE|ENOMEM|disk full/i.test(out + err);
+  let outcome = 'completed';
+  if (r.error && r.error.code === 'ETIMEDOUT') outcome = 'timeout';
+  else if (r.error) outcome = `spawn error: ${r.error.message}`;
+  else if (r.signal) outcome = `killed by ${r.signal}`;
+  else if (infra) outcome = 'infrastructure failure';
+  else if (!plan) outcome = r.status === 0 && !out.trim() ? 'no output' : `no TAP plan (exit ${r.status})`;
+  return { outcome, failing, passing, status: r.status, stderr: err.slice(-2000) };
+}
+
+export function runPlanted({ ref = 'HEAD', workingTree = false, only = null, keep = false, timeoutMs = DEFAULT_TIMEOUT_MS, log = console.log } = {}) {
+  const tmpRoot = os.tmpdir();
+  const free = freeBytes(tmpRoot);
+  log(`free space on the temp volume: ${(free / 1024 ** 3).toFixed(1)} GB`);
+  if (free < MIN_FREE_BYTES) throw new Error(`refusing to run: under 1 GB free on ${tmpRoot}`);
+  const wt = fs.mkdtempSync(path.join(tmpRoot, 'rt-planted-'));
   const results = [];
+  let baseline = null;
   try {
+    execFileSync('git', ['-c', 'core.autocrlf=false', 'worktree', 'add', '--detach', wt, ref], { cwd: ROOT, stdio: 'pipe' });
     if (workingTree) {
       for (const f of fs.readdirSync(path.join(ROOT, 'server/rangetrend')).filter((x) => x.endsWith('.js'))) fs.copyFileSync(path.join(ROOT, 'server/rangetrend', f), path.join(wt, 'server/rangetrend', f));
       for (const f of fs.readdirSync(path.join(ROOT, 'tests')).filter((x) => /^rangetrend-.*\.test\.js$/.test(x))) fs.copyFileSync(path.join(ROOT, 'tests', f), path.join(wt, 'tests', f));
@@ -79,20 +118,28 @@ export function runPlanted({ ref = 'HEAD', workingTree = false, only = null, kee
     }
     const tests = TESTS.filter((t) => fs.existsSync(path.join(wt, t)));
     log(`worktree ${wt} at ${ref}${workingTree ? ' (working-tree files copied)' : ''}; tests: ${tests.join(', ')}`);
+    // The baseline: the unmodified tests must pass, or nothing is planted.
+    baseline = runTests(wt, tests, timeoutMs);
+    log(`baseline: ${baseline.outcome}, ${baseline.passing} passing, ${baseline.failing.length} failing`);
+    if (baseline.outcome !== 'completed' || baseline.failing.length || baseline.status !== 0) {
+      throw new Error(`baseline not passing (${baseline.outcome}; failing: ${baseline.failing.join('; ') || 'none'}; exit ${baseline.status}): refusing to plant bugs`);
+    }
     for (const bug of BUGS) {
       if (only && !bug.name.includes(only)) continue;
       const file = path.join(wt, bug.file);
       const orig = fs.readFileSync(file, 'utf8');
-      if (orig.split(bug.find).length !== 2) { results.push({ ...bug, status: 'NOT PLANTED', detail: `pattern found ${orig.split(bug.find).length - 1} times` }); log(`NOT PLANTED | ${bug.name}`); continue; }
+      const n = orig.split(bug.find).length - 1;
+      if (n !== 1) { results.push({ name: bug.name, status: 'INVALID', detail: `pattern found ${n} times`, failing: [] }); log(`INVALID      | ${bug.name} | pattern found ${n} times`); continue; }
       fs.writeFileSync(file, orig.replace(bug.find, bug.replace));
       try {
-        const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--test', ...tests], { cwd: wt, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-        const out = `${r.stdout || ''}\n${r.stderr || ''}`;
-        const failed = [...new Set(out.split(/\r?\n/).filter((l) => /^✖ /.test(l) && !/^✖ (failing tests|tests )/.test(l)).map((l) => l.replace(/^✖ /, '').replace(/ \([\d.]+ms\)$/, '')))];
-        const count = Number((out.match(/^ℹ fail (\d+)/m) || [])[1] ?? NaN);
-        const caught = failed.length > 0 || count > 0 || r.status !== 0;
-        results.push({ ...bug, status: caught ? 'CAUGHT' : 'MISSED', detail: failed.slice(0, 3).join('; ') || (r.status !== 0 ? `exit ${r.status}` : ''), failedCount: Number.isNaN(count) ? null : count });
-        log(`${caught ? 'CAUGHT  ' : 'MISSED  '} | ${bug.name} | ${failed.slice(0, 2).join('; ')}`);
+        const check = spawnSync(process.execPath, ['--check', file], { cwd: wt, encoding: 'utf8' });
+        if (check.status !== 0) { results.push({ name: bug.name, status: 'INVALID', detail: `the planted file does not load: ${(check.stderr || '').trim().split('\n').slice(-1)[0]}`, failing: [] }); log(`INVALID      | ${bug.name} | planted file does not load`); continue; }
+        const r = runTests(wt, tests, timeoutMs);
+        let status;
+        if (r.outcome !== 'completed') status = 'INCONCLUSIVE';
+        else status = r.failing.length ? 'CAUGHT' : 'MISSED';
+        results.push({ name: bug.name, status, detail: r.outcome === 'completed' ? '' : r.outcome, failing: r.failing, passing: r.passing, exit: r.status });
+        log(`${status.padEnd(12)} | ${bug.name} | ${r.failing.length ? r.failing.join('; ') : r.outcome}`);
       } finally {
         fs.writeFileSync(file, orig);
       }
@@ -100,18 +147,23 @@ export function runPlanted({ ref = 'HEAD', workingTree = false, only = null, kee
   } finally {
     if (!keep) {
       try { execFileSync('git', ['worktree', 'remove', '--force', wt], { cwd: ROOT, stdio: 'pipe' }); } catch { /* fall through */ }
-      try { fs.rmSync(wt, { recursive: true, force: true }); } catch { /* ignore */ }
+      try { fs.rmSync(wt, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* ignore */ }
       try { execFileSync('git', ['worktree', 'prune'], { cwd: ROOT, stdio: 'pipe' }); } catch { /* ignore */ }
+      if (fs.existsSync(wt)) log(`warning: ${wt} could not be removed`);
     } else log(`worktree kept at ${wt}`);
   }
-  return results;
+  return { baseline, results };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const opts = parseArgs(process.argv.slice(2));
-  const results = runPlanted(opts);
-  const caught = results.filter((r) => r.status === 'CAUGHT').length;
-  console.log(`\n${caught} of ${results.length} planted bugs caught${results.length === BUGS.length ? '' : ` (${BUGS.length} listed)`}`);
-  for (const r of results.filter((x) => x.status !== 'CAUGHT')) console.log(`  ${r.status}: ${r.name} ${r.detail || ''}`);
-  process.exit(results.length && results.every((r) => r.status === 'CAUGHT') ? 0 : 1);
+  const { results } = runPlanted(opts);
+  const counts = { CAUGHT: 0, MISSED: 0, INVALID: 0, INCONCLUSIVE: 0 };
+  for (const r of results) counts[r.status]++;
+  console.log('\nResults:');
+  for (const r of results) console.log(`  ${r.status.padEnd(12)} ${r.name}${r.failing.length ? `\n      failing: ${r.failing.join('; ')}` : r.detail ? `\n      ${r.detail}` : ''}`);
+  console.log(`\nCAUGHT ${counts.CAUGHT}, MISSED ${counts.MISSED}, INVALID ${counts.INVALID}, INCONCLUSIVE ${counts.INCONCLUSIVE} of ${results.length} run (${BUGS.length} listed)`);
+  const verified = results.length === BUGS.length && results.every((r) => r.status === 'CAUGHT' && r.failing.length);
+  console.log(verified ? 'every listed bug is caught by a named failing test' : 'NOT verified: a bug is missed, invalid, inconclusive or not run');
+  process.exit(verified ? 0 : 1);
 }
