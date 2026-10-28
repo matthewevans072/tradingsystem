@@ -129,19 +129,31 @@ export function protocolStatus(file = PROTOCOL_PATH) {
 }
 
 // strategy/range-trend/EXPERIMENT-LOG.md: the owner-decisions entry (a table row whose "What" cell begins with
-// "**Owner decisions D1-D8**" and names each of D1 to D8), and the practice runs it lists (rows beginning
+// "**Owner decisions D1-D8**", names each of D1 to D8 after the title, and names the current CODE_REVISION, so a
+// row recorded against other code does not open the gate), and the practice runs it lists (rows beginning
 // "**Practice run**" with "run id: N" and "config hash: <sha256>").
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const namesRevision = (text, revision = CODE_REVISION) => new RegExp(`(^|[^\\w-])${escapeRe(revision)}(?![\\w-])`).test(text);
+
 export function logStatus(file = LOG_PATH) {
-  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, practiceRuns: [] };
+  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, ownerDecisionsProblem: 'strategy/range-trend/EXPERIMENT-LOG.md does not exist', practiceRuns: [] };
   const text = fs.readFileSync(file, 'utf8');
   const rows = text.split(/\r?\n/).filter((l) => l.startsWith('|')).map((l) => l.split('|').map((x) => x.trim()));
   const what = (r) => r[3] || '';
   const TITLE = /^\*\*Owner decisions D1[-\u2013]D8\*\*/;
-  // Each of D1 to D8 must be named after the title (the title itself names D1 and D8).
-  const owner = rows.find((r) => TITLE.test(what(r)) && [1, 2, 3, 4, 5, 6, 7, 8].every((k) => new RegExp(`\\bD${k}\\b`).test(what(r).replace(TITLE, ''))));
+  const titled = rows.filter((r) => TITLE.test(what(r)));
+  // Each of D1 to D8 must be named after the title (the title itself names D1 and D8), and so must the code revision.
+  const namesAll = (r) => [1, 2, 3, 4, 5, 6, 7, 8].every((k) => new RegExp(`\\bD${k}\\b`).test(what(r).replace(TITLE, '')));
+  const owner = titled.find((r) => namesAll(r) && namesRevision(what(r)));
+  let ownerDecisionsProblem = null;
+  if (!owner) {
+    if (!titled.length) ownerDecisionsProblem = 'no row beginning "**Owner decisions D1-D8**"';
+    else if (!titled.some(namesAll)) ownerDecisionsProblem = 'the owner-decisions row does not name each of D1 to D8';
+    else ownerDecisionsProblem = `the owner-decisions row does not name the current code revision ${CODE_REVISION} (it was recorded against other code)`;
+  }
   const practiceRuns = rows.filter((r) => /^\*\*Practice run\*\*/.test(what(r))).map((r) => {
     const id = what(r).match(/run id:\s*(\d+)/i), h = what(r).match(/config hash:\s*([0-9a-f]{64})/i);
     return { runId: id ? Number(id[1]) : null, configHash: h ? h[1] : null };
   });
-  return { exists: true, ownerDecisions: !!owner, practiceRuns };
+  return { exists: true, ownerDecisions: !!owner, ownerDecisionsProblem, practiceRuns };
 }

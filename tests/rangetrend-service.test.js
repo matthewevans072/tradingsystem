@@ -23,7 +23,7 @@ import { protocolStatus, logStatus, loadConfig, configHash, CODE_REVISION, PLANN
 
 const rejectsWith = async (p, status, re) => assert.rejects(p, (e) => (e.status === status && (!re || re.test(e.message))) || assert.fail(`${e.status} ${e.message}`));
 const PROTO = '# Evaluation protocol (test copy)\n\n**Date-choice rule:** a test date rule\n\n**Pick rule:** a test pick rule\n';
-const LOG = '| # | When | What | Data touched | Results seen? |\n|---|---|---|---|---|\n| 1 | 2026-10-27 | **Owner decisions D1-D8** (test copy): D1 a, D2 b, D3 c, D4 d, D5 e, D6 f, D7 g, D8 h. | none | No |\n';
+const LOG = `| # | When | What | Data touched | Results seen? |\n|---|---|---|---|---|\n| 1 | 2026-10-27 | **Owner decisions D1-D8** (test copy): D1 a, D2 b, D3 c, D4 d, D5 e, D6 f, D7 g, D8 h. Code revision: ${CODE_REVISION}. | none | No |\n`;
 function files(dir, { proto = PROTO, log = LOG } = {}) {
   const protocolPath = path.join(dir, 'proto.md'), logPath = path.join(dir, 'log.md');
   if (proto != null) fs.writeFileSync(protocolPath, proto);
@@ -67,13 +67,22 @@ test('protocol fields: dedicated lines only; empty, [OWNER, TBD, TODO and ? coun
   assert.equal(protocolStatus(f).hash, crlf);
 });
 
-test('the experiment log: the owner-decisions entry needs its own row naming D1-D8; listed practice runs are read', () => {
+test('the experiment log: the owner-decisions entry needs its own row naming D1-D8 and the current code revision; listed practice runs are read', () => {
   const dir = tempDir('rt-log-');
   const f = path.join(dir, 'log.md');
   fs.writeFileSync(f, LOG);
   assert.equal(logStatus(f).ownerDecisions, true);
   fs.writeFileSync(f, LOG.replace('D8 h', 'D9 h'));
   assert.equal(logStatus(f).ownerDecisions, false, 'D8 missing');
+  assert.match(logStatus(f).ownerDecisionsProblem, /does not name each of D1 to D8/);
+  // A row recorded against other code does not open the gate: the revision must match exactly, as a whole word.
+  for (const other of [`${CODE_REVISION}0`, `x${CODE_REVISION}`, CODE_REVISION.replace(/\d+$/, (n) => String(Number(n) + 1)), 'rt-code-2026-01-01-1']) {
+    fs.writeFileSync(f, LOG.replace(CODE_REVISION, other));
+    assert.equal(logStatus(f).ownerDecisions, false, `revision ${other}`);
+    assert.match(logStatus(f).ownerDecisionsProblem, /does not name the current code revision/);
+  }
+  fs.writeFileSync(f, LOG.replace(`Code revision: ${CODE_REVISION}.`, `Code revision: ${CODE_REVISION}; configs: the eight rt-*-0.2.0.json.`));
+  assert.equal(logStatus(f).ownerDecisions, true, 'followed by a semicolon');
   fs.writeFileSync(f, '| 1 | x | **Provisional readings D1-D9, pending the owner\'s decision**: D1 D2 D3 D4 D5 D6 D7 D8 | none | No |\n');
   assert.equal(logStatus(f).ownerDecisions, false, 'a provisional-readings entry is not the owner\'s decisions');
   fs.writeFileSync(f, LOG + `| 2 | x | **Practice run** run id: 7, config hash: ${'a'.repeat(64)} | none | Yes |\n`);

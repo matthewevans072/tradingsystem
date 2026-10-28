@@ -60,7 +60,7 @@ export function createRangeTrend({
     const firstHash = store.getSetting(db, 'protocolHash');
     if (firstHash && firstHash.hash !== proto.hash) throw new RtError(409, `Practice runs are refused: EVALUATION-PROTOCOL.md changed since the first practice run (stored hash ${firstHash.hash.slice(0, 12)}, now ${proto.hash.slice(0, 12)}). A change needs a logged new protocol version on the owner's instruction.`);
     const log = logStatus(logPath);
-    if (!log.ownerDecisions) throw new RtError(409, 'Practice runs are refused: strategy/range-trend/EXPERIMENT-LOG.md has no owner-decisions entry covering D1-D8 (a row beginning "**Owner decisions D1-D8**").');
+    if (!log.ownerDecisions) throw new RtError(409, `Practice runs are refused: strategy/range-trend/EXPERIMENT-LOG.md has no owner-decisions entry covering D1-D8 for this code (${log.ownerDecisionsProblem}; a row beginning "**Owner decisions D1-D8**" naming D1 to D8 and the code revision).`);
     for (const pr of log.practiceRuns) {
       const run = pr.runId == null ? null : store.getRun(db, pr.runId);
       if (!run || run.config_hash !== pr.configHash) throw new RtError(409, `Practice runs are refused: EXPERIMENT-LOG.md lists practice run ${pr.runId} (config hash ${String(pr.configHash).slice(0, 12)}) that this database does not contain. A fresh or different database cannot reset the budget.`);
