@@ -8,13 +8,14 @@
 
 ## MU
 
-**MU in the historical evaluation:** [OWNER TO SET] (example format only: "keep" or "drop"; not a proposal)
+**MU in the historical evaluation:** KEEP (the owner's decision of 2026-11-02: "Keep MU in this evaluation and
+leave its 2025-mid-2026 holdout untouched")
 
-The Strategy Lab's untouched MU holdout window is 2025-01-01 to 2026-06-30 (`PLAN-DRAFT.md` section 1), and a
-historical evaluation covering those dates exposes MU's prices in that window. The decision is made **before any
-historical evaluation**. A drop of MU applies to the historical evaluation only: the practice runs keep basket
-A, HXR's ten stocks (decision 10). The evaluation has no code path; dropping MU there is implemented, if at all,
-together with the evaluation itself, on a separate instruction from the owner.
+The Strategy Lab's untouched MU holdout window is 2025-01-01 to 2026-06-30 (`PLAN-DRAFT.md` section 1). The
+adopted evaluation window, 2022-01-03 to 2023-12-29 (`PROPOSED-RULES.md` Part B), does not touch it, and
+2024-01-02 to 2026-10-21 stays unused as a reserve window, so MU stays in the ten-stock universe for the
+evaluation and its holdout stays untouched. The practice runs keep basket A, HXR's ten stocks (decision 10).
+The evaluation has no code path yet; it needs the owner's separate authorization.
 
 ## Tier 3 thresholds
 

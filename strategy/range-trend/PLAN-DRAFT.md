@@ -661,7 +661,7 @@ all three tests against its own exposure-matched hold (c) hold: annualised retur
 (c)'s; maximum drawdown at most (c)'s; and the best-5% robustness test (`adjustedNetPL > 0` and
 `adjustedAnnualised` above (c)'s annualised return). Return per unit of drawdown alone never advances a
 variant. **Score** = the run's annualised return minus (c)'s, as a decimal fraction. **The 0.5-point rule, no
-chaining:** `top` = the highest score; `T0` = the passing variants with `score >= top − 0.005`; one variant in
+chaining (values rounded to the nearest 1e-6 before comparing):** `top` = the highest score; `T0` = the passing variants with `score >= top − 0.005`; one variant in
 `T0` is chosen; else `T1` = those in `T0` with maximum drawdown `<= minDD + 0.005` (`minDD` the smallest in
 `T0`); one is chosen; else `T2` = those in `T1` with the most completed trades; one is chosen; else **NONE
 advances**. One variant across both families. **None advances** also when no run qualifies or none passes; then

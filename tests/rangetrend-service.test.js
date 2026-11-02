@@ -103,8 +103,10 @@ test('protocol fields: dedicated lines outside fences and comments, once each; u
   const crlf = protocolStatus(f).hash;
   fs.writeFileSync(f, PROTO);
   assert.equal(protocolStatus(f).hash, crlf);
-  // The repository's own protocol is not ready: D9 is the owner's to write.
-  assert.equal(protocolStatus().ready, false);
+  // The repository's own protocol is ready (D9 adopted by the owner on 2026-11-02); practice runs still need the
+  // owner's separate authorization row, so the gate refuses regardless.
+  assert.equal(protocolStatus().ready, true);
+  assert.ok(!/\[OWNER/.test(fs.readFileSync(new URL('../strategy/range-trend/EVALUATION-PROTOCOL.md', import.meta.url), 'utf8')));
 });
 
 test('the experiment log: the owner-decisions row names D1-D8 and the current code revision; practice-run rows must parse; the next number', () => {

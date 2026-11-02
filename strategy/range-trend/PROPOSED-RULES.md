@@ -65,7 +65,9 @@ variant does all of this, **none advances**, and that is a normal outcome.
    advances a variant** (it stays reported).
 7. **Score** (passing variants only): the annualised return minus (c)'s annualised return, in percentage
    points of return (as a decimal fraction: 0.012 is 1.2 points).
-8. **Choosing among passing variants (the 0.5-point rule, no chaining):** let `top` = the highest score.
+8. **Choosing among passing variants (the 0.5-point rule, no chaining; scores and drawdowns are rounded to
+   the nearest 1e-6 before these comparisons, so floating-point noise never decides a tie):** let `top` = the
+   highest score.
    `T0` = the passing variants with `score >= top − 0.005`. If `|T0| = 1` it is chosen. Else `minDD` = the
    smallest maximum drawdown in `T0` and `T1` = the variants in `T0` with `maximum drawdown <= minDD + 0.005`;
    if `|T1| = 1` it is chosen. Else `T2` = the variants in `T1` with the most completed trades; if `|T2| = 1`
