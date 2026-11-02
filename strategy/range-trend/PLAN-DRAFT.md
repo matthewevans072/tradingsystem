@@ -1,12 +1,13 @@
-# Range-trend (working name): plan, version 0.5
+# Range-trend (working name): plan, version 0.6
 
 > **DRAFT.** No range-trend run has been made on market data. Section 0 records the owner's research decisions
 > in the owner's words. **The owner's decisions D1 to D8 of 2026-10-27 are recorded in `EXPERIMENT-LOG.md`
 > entry 7 and built into the eight `rt-*-0.2.0.json` configs; each is an experimental choice, not a claim that it
-> reproduces the owner's trading.** D9 (the pick rule and the rule for choosing the evaluation dates) is still
-> open, and practice runs stay refused until it is written into `EVALUATION-PROTOCOL.md`. Values marked
-> **[OWNER TO CONFIRM]** or **[OWNER TO SET]** are not decided. Versions 0.1 to 0.3 written 2026-10-26; 0.4
-> on 2026-10-27; 0.5 on 2026-10-28.
+> reproduces the owner's trading.** On 2026-11-02 the owner adopted the pick rule and the evaluation-date rule
+> (D9) as experimental settings (`PROPOSED-RULES.md`, now the adopted specification; sections 7b, 7c and 8a
+> mirror it). Practice runs stay refused until the owner's separate "**Practice runs authorized**" row is in
+> `EXPERIMENT-LOG.md`. Values marked **[OWNER TO SET]** are not decided. Versions 0.1 to 0.3 written
+> 2026-10-26; 0.4 on 2026-10-27; 0.5 on 2026-10-28; 0.6 on 2026-11-02.
 
 The idea: a stock that keeps bouncing between a lower and an upper price area is traded as a **range**. A stock
 that breaks out of its range and stays strong is held as a **trend**. The two are tested separately.
@@ -90,9 +91,10 @@ prior exposure, both here and in `strategy/hxr/EXPERIMENT-LOG.md`.
 
 **The Strategy Lab's MU holdout.** The consolidation-breakout strategy's untouched holdout window is
 **2025-01-01 to 2026-06-30** and MU is one of its 17 stocks. A range-trend historical evaluation covering those
-dates exposes MU's prices in that window. **Whether MU is kept or dropped before any historical evaluation is the
-owner's decision**, written into `EVALUATION-THRESHOLDS.md` (frozen before any evaluation result is accessed).
-A drop of MU applies to the historical evaluation only: the practice runs keep basket A (decision 10).
+dates exposes MU's prices in that window. **The owner's decision of 2026-11-02: MU is kept** in the evaluation
+(`EVALUATION-THRESHOLDS.md`), and the adopted evaluation window, 2022-01-03 to 2023-12-29, does not touch the
+holdout; **2024-01-02 to 2026-10-21 stays unused as a reserve window**, which keeps the holdout untouched. The
+prospective journal runs on future sessions after the owner starts it and is not tied to 2024-2026 data.
 
 **Conclusion.**
 - **No historical period is blind.** Testing different stocks does not remove what was learned about the same
@@ -126,14 +128,14 @@ A drop of MU applies to the historical evaluation only: the practice runs keep b
 
 ### 2.2 Still open
 
-1. **D9:** the pick rule and the rule for choosing the evaluation dates, in `EVALUATION-PROTOCOL.md`'s dedicated
-   fields. Practice runs are refused until both are written.
-2. **`EVALUATION-THRESHOLDS.md`:** keep or drop MU before any historical evaluation, the Tier 3 thresholds and
-   the prospective journal's minimums. Frozen before any evaluation result is accessed; never read by the
-   practice-run gate.
-3. **Tier 2 thresholds** (section 7b) [OWNER TO CONFIRM].
-4. **Return against drawdown:** how much return to give up for a smaller drawdown than the full buy-and-hold
-   (section 7c).
+1. **The owner's separate authorization of the eight practice runs:** a "**Practice runs authorized**" row in
+   `EXPERIMENT-LOG.md` (section 8a). The gate refuses every practice run without it. (D9, the pick rule and
+   the evaluation-date rule, was adopted on 2026-11-02 and written into `EVALUATION-PROTOCOL.md`.)
+2. **`EVALUATION-THRESHOLDS.md`:** the Tier 3 thresholds and the prospective journal's minimums (MU: kept,
+   decided 2026-11-02). Frozen before any evaluation result is accessed; never read by the practice-run gate.
+3. **Return against drawdown:** how much return to give up for a smaller drawdown than the full buy-and-hold
+   (section 7c); the adopted pick rule answers it for the practice runs (a passing variant must beat (c) on
+   both), the owner's wider preference stays open.
 
 ### 2.3 Experimental settings (accepted by the owner as experimental choices, D8)
 
@@ -569,21 +571,42 @@ Synthetic data only. Must pass before any practice-run result is looked at. As o
 
 ### 7b. Tier 2: exploratory usefulness
 
-These are descriptions, not pass marks. Every threshold is **[OWNER TO CONFIRM]**.
+These are descriptions, not pass marks for the practice runs; the thresholds are the **experimental defaults
+adopted by the owner on 2026-11-02** (`PROPOSED-RULES.md`, definitions 1 to 6, which the code implements).
 - Each hypothesis's predicted behaviour is reported as appearing, not appearing, or insufficient.
-- A comparison between two runs is read only if each run has at least **[30]** completed trades. Otherwise it
-  is marked insufficient.
-- Each result is also reported without the run's best 5% of outcomes (completed trades and positions open at
-  the end, marked at the last close).
-- Any single stock making more than **[40%]** of a run's net profit (the same outcomes) is flagged.
-- Every run is compared with the exposure-matched hold (7c).
+- **Completed trades:** a closed trade with a recorded exit in the practice period (a position closed by
+  `split_no_whole_share` counts; positions open at the end do not). A run is read, and can qualify, only with
+  at least **30** completed trades (experimental default).
+- **Outcomes:** every completed trade's net P/L after all costs and net dividends (`pnlTotal`, post-exit
+  dividends included) plus every position open at the end, valued at the last close with no exit costs
+  deducted; each open position is one outcome.
+- **Single-stock gross-gain share:** `P(s)` = the sum of stock s's outcomes; `G` = the sum over stocks of
+  `max(0, P(s))`; `share(s) = max(0, P(s)) / G`. The gate is `max share <= 0.40` (experimental default),
+  compared exactly in integer cents; losing stocks count as zero and are never subtracted; `G = 0` makes the
+  share undefined and the run not qualified. The net-based share `P(s) / sum of P(s)` (null when the net total
+  is zero or negative), `P(s)`, `share(s)` and the number of stocks with `P(s) > 0` are reported as information
+  only. Worked examples: {A +100, B −80, C +20}: `G = 120`, A 83.3%, fails (the net-based 250% is information);
+  {A +40, B +35, C +30, D −50}: `G = 105`, max 38.1%, passes; two winning stocks cannot pass; all losses: `G = 0`.
+- **Best-5% removal (a stress calculation, not a re-simulation):** `n` outcomes; `K = ceil(0.05 × n)`, at
+  least 1; the `K` outcomes with the highest P/L are removed (ties: earlier entry date, then symbol, then
+  trade id); `adjustedNetPL` = the sum of all outcomes minus the removed sum; `adjustedEnd = startingCash +
+  adjustedNetPL`; `adjustedAnnualised = (adjustedEnd / startingCash)^(1 / years) − 1` with the run's own
+  `years`. Removing outcomes after the fact changes no later sizing, and the drawdown is not recomputed.
+- Every run is compared with the exposure-matched hold (7c) by the adopted pick rule's three tests.
 - Costs are reported as a metric, with no pass mark; so are the per-stock counts of D5.
 
 ### 7c. Tier 3: the evaluation
 
-- Thresholds are **[OWNER TO SET]**, in `EVALUATION-THRESHOLDS.md`, which also holds keep or drop MU and the
-  prospective journal's minimum length and completed-trade count before anything is concluded. That file is
-  frozen, with its hash, before any evaluation result is accessed; the practice-run gate never reads it.
+- Thresholds are **[OWNER TO SET]**, in `EVALUATION-THRESHOLDS.md`, which also holds MU (kept, decided
+  2026-11-02) and the prospective journal's minimum length and completed-trade count before anything is
+  concluded. That file is frozen, with its hash, before any evaluation result is accessed; the practice-run
+  gate never reads it.
+- **The evaluation window (adopted 2026-11-02):** 2022-01-03 to 2023-12-29, `periods-hxr-v3.json`'s validation
+  dates, used once, after the pick rule has produced a candidate and the owner's separate authorization. MU
+  stays in the ten-stock universe. 2024-01-02 to 2026-10-21 stays unused as a reserve window. Any later HXR
+  version records the 2022-2023 exposure in both experiment logs. The window is secondary evidence with
+  disclosed prior exposure (section 1), not independent evidence; the prospective journal, on future sessions
+  after the owner starts it, gives fresh evidence only after enough duration, trades and realistic execution.
 
 **Benchmarks** (computed with every run, outside the budget; each labelled):
 - **(a) Buy and hold (D4, experimental choice): an equal-weight buy-and-hold index of the ten stocks,
@@ -631,9 +654,19 @@ enforced.
 cash, trade count and holding periods, turnover and costs, the counts of D5, the breaks by kind, and the
 comparisons with (a), (b), (c) and the HXR hold arm.
 
-**The pick rule** that chooses the candidate from the practice runs is open (D9). It is written in
-`EVALUATION-PROTOCOL.md` before the first practice run, and it is never the ending balance alone. No automatic
-winner selection is built.
+**The pick rule (adopted 2026-11-02, `PROPOSED-RULES.md` definitions 5 to 9; the code's `pickRuleReport` is a
+report only, no automatic winner selection).** A run is *qualified* with at least 30 completed trades, recorded
+by the gate with no benchmark or metrics error, and the gross-gain gate passed. A qualified run *passes* only if
+all three tests against its own exposure-matched hold (c) hold: annualised return after costs strictly above
+(c)'s; maximum drawdown at most (c)'s; and the best-5% robustness test (`adjustedNetPL > 0` and
+`adjustedAnnualised` above (c)'s annualised return). Return per unit of drawdown alone never advances a
+variant. **Score** = the run's annualised return minus (c)'s, as a decimal fraction. **The 0.5-point rule, no
+chaining:** `top` = the highest score; `T0` = the passing variants with `score >= top − 0.005`; one variant in
+`T0` is chosen; else `T1` = those in `T0` with maximum drawdown `<= minDD + 0.005` (`minDD` the smallest in
+`T0`); one is chosen; else `T2` = those in `T1` with the most completed trades; one is chosen; else **NONE
+advances**. One variant across both families. **None advances** also when no run qualifies or none passes; then
+the reserve is not used to try again, the evaluation and the prospective journal do not start, and a new
+candidate needs a new plan version. It is never the ending balance alone.
 
 ---
 
@@ -642,13 +675,17 @@ winner selection is built.
 1. The owner's build approval (done 2026-10-26; first entry of `EXPERIMENT-LOG.md`).
 2. Build, with the Tier 1 tests (done; EXPERIMENT-LOG entries 2 to 5).
 3. The owner's decisions D1 to D8 (done 2026-10-27; EXPERIMENT-LOG entry 7) and their implementation (entry 8).
-4. The owner writes D9 into `EVALUATION-PROTOCOL.md`: the pick rule and how the evaluation dates are chosen.
-   The code refuses practice runs until both are there and no owner marker remains in that file.
-5. The practice runs, within the budget, on separate instruction.
-6. The owner completes and freezes `EVALUATION-THRESHOLDS.md`; the candidate is frozen; the protocol's hash,
+4. D9 adopted (done 2026-11-02; `PROPOSED-RULES.md`, `EVALUATION-PROTOCOL.md`'s two fields, MU kept in
+   `EVALUATION-THRESHOLDS.md`).
+5. The practice runs, within the budget, on the owner's separate authorization: a "**Practice runs
+   authorized**" row in `EXPERIMENT-LOG.md` quoting the owner's message, naming the code revision and the eight
+   configs; the gate refuses without it. The gated launcher (`scripts/rangetrend-run.mjs`, `npm run rt:run`)
+   runs one config per call, checks every condition first, and appends each run's log row.
+6. The pick rule's report (`pickRuleReport`) on the eight runs: one variant or NONE; the owner reads it.
+7. The owner completes and freezes `EVALUATION-THRESHOLDS.md`; the candidate is frozen; the protocol's hash,
    frozen since the first practice run, is recorded with them.
-7. The evaluation, according to the protocol.
-8. The local simulated prospective journal.
+8. The evaluation on 2022-01-03 to 2023-12-29, according to the protocol, on the owner's separate authorization.
+9. The local simulated prospective journal, on future sessions after the owner starts it.
 
 Once an evaluation result influences any change, that period becomes development data.
 
@@ -707,8 +744,8 @@ choice and is built into the eight `rt-*-0.2.0.json` configs (entry 8). D9 is wr
 | D6 | Eight runs plus one verified-defect reserve; no combination runs | Section 6 |
 | D7 | No HXR diagnostic (H6 dropped) | Section 5 |
 | D8 | The settings of section 2.3 and the definitions of section 3 accepted as experimental, with D2 and D3 | Sections 2.3, 3 |
-| D9 | **Open:** the pick rule and the rule for choosing the evaluation dates, in `EVALUATION-PROTOCOL.md` | Sections 2.2, 8a |
+| D9 | **Adopted 2026-11-02:** the pick rule (30 completed trades, the 0.40 gross-gain gate, the three tests against (c), the best-5% stress, the 0.5-point tie rule, NONE advances) and the evaluation window 2022-01-03 to 2023-12-29 with MU kept; `PROPOSED-RULES.md`, `EVALUATION-PROTOCOL.md` | Sections 7b, 7c, 8a |
 
-Also open: `EVALUATION-THRESHOLDS.md` (keep or drop MU before any historical evaluation, the Tier 3
-thresholds, the journal minimums), the Tier 2 thresholds ([30] completed trades, [40%] single-stock share), the
-return-against-drawdown preference (7c), and a separate instruction to start the practice runs.
+Still open: `EVALUATION-THRESHOLDS.md`'s Tier 3 thresholds and journal minimums, the owner's wider
+return-against-drawdown preference (7c), and the owner's separate authorization of the practice runs (a
+"**Practice runs authorized**" row in `EXPERIMENT-LOG.md`).
