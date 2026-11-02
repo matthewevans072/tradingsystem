@@ -12,12 +12,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { tempDir } from './helpers.js';
-import { NO_HOST_KEYS } from './no-host-keys.js';
-import { fakeAlpaca, buildMarket, KEY_ID, SECRET_KEY } from './hxr-fake-alpaca.js';
-import { loadConfig as loadAppConfig } from '../server/config.js';
+import { buildMarket } from './hxr-fake-alpaca.js';
+import { PROTO, LOG, LOG_OWNER_ONLY, files, cfgFile, marketWithTslaBreakout, hxrData } from './rangetrend-fixtures.js';
 import { createContext } from '../server/context.js';
 import { createBackup, rangeTrendBackupDir } from '../server/backup.js';
-import { createHxr } from '../server/hxr/service.js';
 import { loadHxrPeriods, excludedDates } from '../server/hxr/config.js';
 import { periodSessions } from '../server/hxr/engine.js';
 import { createRangeTrend, periodProblem, practiceLogRow } from '../server/rangetrend/service.js';
@@ -25,16 +23,6 @@ import * as store from '../server/rangetrend/store.js';
 import { protocolStatus, logStatus, loadConfig, configHash, textSha256, CODE_REVISION, PLANNED_CONFIGS, CONFIG_SHA256, RT_CONFIG_DIR, UNSET, PRACTICE_ROW } from '../server/rangetrend/config.js';
 
 const rejectsWith = async (p, status, re) => { let err = null; await assert.rejects(p, (e) => { err = e; return (e.status === status && (!re || re.test(e.message))) || assert.fail(`${e.status} ${e.message}`); }); return err; };
-const PROTO = '# Evaluation protocol (test copy)\n\n**Date-choice rule:** a test date rule\n\n**Pick rule:** a test pick rule\n';
-const LOG = `| # | When | What | Data touched | Results seen? |\n|---|---|---|---|---|\n| 1 | 2026-10-27 | **Owner decisions D1-D8** (test copy): D1 a, D2 b, D3 c, D4 d, D5 e, D6 f, D7 g, D8 h. Code revision: ${CODE_REVISION}. | none | No |\n`;
-function files(dir, { proto = PROTO, log = LOG } = {}) {
-  const protocolPath = path.join(dir, 'proto.md'), logPath = path.join(dir, 'log.md');
-  if (proto != null) fs.writeFileSync(protocolPath, proto);
-  if (log != null) fs.writeFileSync(logPath, log);
-  return { protocolPath, logPath };
-}
-const open = (dir, extra = {}) => createRangeTrend({ dataDir: dir, ...files(dir, extra.files), clock: extra.clock, holdConfigFile: extra.holdConfigFile ?? null, testOverrides: true });
-const cfgFile = (family, entry, limit) => PLANNED_CONFIGS.find((f) => f === `rt-${family}-${entry}-${limit ? 'limit' : 'nolimit'}-0.2.0.json`);
 function trySymlink(target, link) {
   try { fs.symlinkSync(target, link, 'file'); return true; } catch (e) { if (['EPERM', 'EACCES', 'ENOSYS', 'UNKNOWN'].includes(e.code)) return false; throw e; }
 }
@@ -123,7 +111,7 @@ test('the experiment log: the owner-decisions row names D1-D8 and the current co
   const dir = tempDir('rt-log-');
   const f = path.join(dir, 'log.md');
   fs.writeFileSync(f, LOG);
-  assert.deepEqual([logStatus(f).ownerDecisions, logStatus(f).nextNumber, logStatus(f).malformed], [true, 2, []]);
+  assert.deepEqual([logStatus(f).ownerDecisions, logStatus(f).nextNumber, logStatus(f).malformed, logStatus(f).practiceAuthorized], [true, 3, [], true]);
   fs.writeFileSync(f, LOG.replace('D8 h', 'D9 h'));
   assert.equal(logStatus(f).ownerDecisions, false, 'D8 missing');
   assert.match(logStatus(f).ownerDecisionsProblem, /does not name each of D1 to D8/);
@@ -139,9 +127,9 @@ test('the experiment log: the owner-decisions row names D1-D8 and the current co
   assert.equal(logStatus(f).ownerDecisions, false, 'a provisional-readings entry is not the owner\'s decisions');
   // Practice-run rows: the exact form is read; any row whose title mentions a practice run but differs refuses.
   const H = 'a'.repeat(64);
-  fs.writeFileSync(f, `${LOG}| 2 | x | **Practice run** run id: 7, config hash: ${H}; rt-range-dip-limit-0.2.0.json; status done | development | Yes |\n`);
-  assert.deepEqual(logStatus(f).practiceRuns, [{ runId: 7, configHash: H, number: 2 }]);
-  assert.deepEqual([logStatus(f).malformed, logStatus(f).nextNumber], [[], 3]);
+  fs.writeFileSync(f, `${LOG}| 3 | x | **Practice run** run id: 7, config hash: ${H}; rt-range-dip-limit-0.2.0.json; status done | development | Yes |\n`);
+  assert.deepEqual(logStatus(f).practiceRuns, [{ runId: 7, configHash: H, number: 3 }]);
+  assert.deepEqual([logStatus(f).malformed, logStatus(f).nextNumber], [[], 4]);
   // A record is any row whose bold title mentions a practice run, or whose cell carries a numeric run id
   // ("run id:" + digits) anywhere, whatever its title; each must have the exact form or is malformed.
   for (const bad of [
@@ -165,8 +153,8 @@ test('the experiment log: the owner-decisions row names D1-D8 and the current co
     assert.deepEqual([logStatus(f).practiceRuns.length, logStatus(f).malformed.length], [0, 0], prose);
   }
   // Rows inside a code fence or an HTML comment are not rows: neither listed nor malformed.
-  fs.writeFileSync(f, `${LOG}\n\`\`\`\n| 2 | x | **Practice run** run id: 7, config hash: ${H} | d | Yes |\n\`\`\`\n<!--\n| 3 | x | **Practice run 9** broken | d | Yes |\n-->\n`);
-  assert.deepEqual([logStatus(f).practiceRuns, logStatus(f).malformed, logStatus(f).nextNumber], [[], [], 2]);
+  fs.writeFileSync(f, `${LOG}\n\`\`\`\n| 3 | x | **Practice run** run id: 7, config hash: ${H} | d | Yes |\n\`\`\`\n<!--\n| 4 | x | **Practice run 9** broken | d | Yes |\n-->\n`);
+  assert.deepEqual([logStatus(f).practiceRuns, logStatus(f).malformed, logStatus(f).nextNumber], [[], [], 3]);
   fs.writeFileSync(f, `\`\`\`\n${LOG}\`\`\`\n`);
   assert.equal(logStatus(f).ownerDecisions, false, 'an owner-decisions row inside a fence does not count');
   // The repository's own log has no malformed row (its entries quote the form with "N", which is prose); whether
@@ -210,6 +198,7 @@ test('refusals before anything is recorded: confirm, protocol, owner decisions, 
     [{ proto: `${PROTO}**Pick rule:** twice\n` }, PLANNED_CONFIGS[0], true, 409, /appears 2 times/],
     [{ log: '| 1 | x | nothing | none | No |\n' }, PLANNED_CONFIGS[0], true, 409, /no owner-decisions entry covering D1-D8/],
     [{ log: LOG.replace(CODE_REVISION, 'rt-code-2026-01-01-1') }, PLANNED_CONFIGS[0], true, 409, /does not name the current code revision/],
+    [{ log: LOG_OWNER_ONLY }, PLANNED_CONFIGS[0], true, 409, /not authorized.*no row beginning "\*\*Practice runs authorized\*\*"/],
     [{ log: `${LOG}| 2 | x | **Practice run 1** run id 1 config hash abc | development | Yes |\n` }, PLANNED_CONFIGS[0], true, 409, /not in the form/],
     [{}, 'rt-range-dip-nolimit-9.9.9.json', true, 400, /Only the planned configs/],
     [{}, 'rt-range-dip-limit-0.1.0.json', true, 400, /Only the planned configs/],
@@ -312,39 +301,6 @@ test('all practice runs share the first run\'s code revision unless an owner-dec
   named.close();
 });
 
-// A fake market in which TSLA forms a range and breaks out just before its 5-for-1 split of 2020-08-31, then
-// rises gently through it, so the immediate-breakout config holds a position across the split. Prices are
-// continuous and keep the raw split factors, so HXR's readiness checks still pass.
-function marketWithTslaBreakout() {
-  const market = buildMarket();
-  const bars = market.TSLA, dates = [...bars.keys()].sort();
-  const factor = (d) => (d < '2020-08-31' ? 15 : d < '2022-08-25' ? 3 : 1);
-  const ib = dates.findIndex((d) => d >= '2020-08-17');
-  const adj = (d) => bars.get(d).c / factor(d);
-  const s = adj(dates[ib - 66]) / 100;
-  const PAT = [100, 102, 104, 106, 108, 110, 108, 106, 104, 102];
-  const path0 = [...Array.from({ length: 6 }, () => PAT).flat(), 100, 102, 104, 106, 108, 111.5, ...Array.from({ length: 26 }, (_, k) => 112 + 0.5 * k)];
-  let prevRaw = bars.get(dates[ib - 66]).c;
-  path0.forEach((x, k) => {
-    const d = dates[ib - 65 + k], c = x * s * factor(d), o = (prevRaw / factor(dates[ib - 66 + k])) * factor(d);
-    bars.set(d, { ...bars.get(d), o, c, h: Math.max(o, c) * 1.002, l: Math.min(o, c) * 0.998, vw: (o + c) / 2, vw15: o });
-    prevRaw = c;
-  });
-  const last = ib - 65 + path0.length - 1, g = adj(dates[last]) / adj(dates[last + 1]);
-  for (const d of dates.slice(last + 1)) { const b = bars.get(d); bars.set(d, { ...b, o: b.o * g, h: b.h * g, l: b.l * g, c: b.c * g, vw: b.vw * g, vw15: b.vw15 * g }); }
-  return market;
-}
-async function hxrData(dir, market, handler = null) {
-  let now = Date.parse('2026-10-22T22:00:00Z');
-  const clock = () => new Date(now);
-  const fake = fakeAlpaca({ clock, market, news: [], handler });
-  const cfg = loadAppConfig({ ENV_FILE: path.join(dir, 'none.env'), ...NO_HOST_KEYS, SIGNAL_DESK_DATA_DIR: dir, MARKET_DATA_PROVIDER: 'none', ALPACA_API_KEY_ID: KEY_ID, ALPACA_API_SECRET_KEY: SECRET_KEY });
-  const hxr = createHxr({ cfg, mode: 'real' }, { clock, fetchImpl: fake.fetchImpl, sleep: async () => {} });
-  hxr.fetchData();
-  await hxr.fetchDone;
-  return { hxr, cfg, clock };
-}
-
 test('the gate refuses when HXR\'s development period is not ready or has no spread calibration; nothing is recorded', { timeout: 300000 }, async () => {
   // A missing MU bar inside the development period: HXR's readiness marks the period unusable.
   const gap = tempDir('rt-gap-');
@@ -374,6 +330,10 @@ test('practice runs end to end: a trade held across a split, provenance, the ben
   const f = files(dir);
   let rt = createRangeTrend({ dataDir: dir, ...f, clock, testOverrides: true });
   const file = cfgFile('trend', 'immediate', false);
+  // Every gate condition holds before the first run, the HXR data included; the pick report has nothing yet.
+  assert.deepEqual(rt.gateStatus({ configFile: file }).filter((c) => !c.ok), []);
+  assert.equal(rt.hxrStatus({ configFile: file }).ok, true);
+  assert.match(rt.pickReport().outcome.reason, /not all 8 practice runs are recorded \(0 of 8\)/);
   const r = await rt.runPractice({ configFile: file, confirm: true });
   assert.deepEqual([r.status, r.simulated, r.errors], ['done', true, []]);
   const run = rt.getRun(r.id);
@@ -406,8 +366,13 @@ test('practice runs end to end: a trade held across a split, provenance, the ben
   assert.ok(b.exposureMatched.endValue > 0 && Math.abs(b.exposureMatched.endValue - 15000) < Math.abs(b.buyAndHold.endValue - 15000), 'it moves less than the fully invested index');
   assert.notEqual(b.buyAndHold.endValue, b.hxrHoldArm.endValue, 'the index is not the whole-share arm');
   assert.equal(typeof run.metrics.tradeOffVsExposureMatched.addsValueBeyondCash, 'boolean');
-  assert.equal(run.metrics.tier2.thresholds.status, '[OWNER TO CONFIRM]');
+  assert.match(run.metrics.tier2.thresholds.status, /adopted experimental defaults/);
+  assert.deepEqual([run.metrics.pick.settings.completedTrades, run.metrics.pick.settings.grossGainMaxShare, typeof run.metrics.pick.passesComparison, typeof run.metrics.pick.grossGain.passes], [30, 0.4, 'boolean', 'boolean']);
   assert.equal(typeof run.metrics.perStock.TSLA.signals, 'number');
+  const report = rt.pickReport();
+  assert.deepEqual([report.rows.length, report.outcome.chosen], [1, null]);
+  assert.match(report.outcome.reason, /1 of 8/);
+  assert.equal(rt.gateStatus({ configFile: PLANNED_CONFIGS[0] }).find((c) => c.name.startsWith('database: every run')).ok, false, 'run 1 is not logged yet');
   assert.deepEqual(hxrCounts(), before, 'the HXR database was only read');
   // The log row: the exact row to paste; until it is pasted, no further run starts.
   const whatCell = r.logRow.split('|').map((x) => x.trim())[3];
@@ -483,8 +448,8 @@ test('practice runs end to end: a trade held across a split, provenance, the ben
   await rejectsWith(rt4.runPractice({ configFile: PLANNED_CONFIGS[0], confirm: true }), 409, /does not contain/);
   rt4.close();
   hxr.close();
-  // The HXR database is opened read-only, and only there.
+  // The HXR database is opened read-only, in the run and in the launcher's data check, and nowhere else.
   const src = fs.readFileSync(new URL('../server/rangetrend/service.js', import.meta.url), 'utf8');
-  assert.equal((src.match(/openHxrDb\(/g) || []).length, 1);
-  assert.ok(src.includes('openHxrDb(realHxr, { readOnly: true })'));
+  const opens = (src.match(/openHxrDb\(/g) || []).length;
+  assert.deepEqual([opens, (src.match(/openHxrDb\(realHxr, \{ readOnly: true \}\)/g) || []).length], [2, 2]);
 });

@@ -15,7 +15,8 @@
     "briefing": "node --disable-warning=ExperimentalWarning scripts/run-briefing.js",
     "lab:backtest": "node --disable-warning=ExperimentalWarning scripts/strategy-backtest.js",
     "lab:compare-tv": "node --disable-warning=ExperimentalWarning scripts/strategy-compare-tv.js",
-    "rt:planted": "node --disable-warning=ExperimentalWarning scripts/rangetrend-planted.mjs"
+    "rt:planted": "node --disable-warning=ExperimentalWarning scripts/rangetrend-planted.mjs",
+    "rt:run": "node --disable-warning=ExperimentalWarning scripts/rangetrend-run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

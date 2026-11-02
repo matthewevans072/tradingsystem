@@ -26,7 +26,11 @@ export const LOG_PATH = path.join(RT_DIR, 'EXPERIMENT-LOG.md');
 // decision-time copy of P (afterSale.price, reported with the fill and the trade) is split-adjusted; benchmark
 // (a)'s last close is split-adjusted on a session without a bar; the D5 per-stock report lists every basket
 // stock, with zeros. Reporting and an edge of the index only; no decision, fill or exit changes.
-export const CODE_REVISION = 'rt-code-2026-10-28-2';
+// rt-code-2026-11-02-1: the adopted pick-rule inputs in every run's metrics (PROPOSED-RULES.md definitions
+// 1-7: outcomes, the gross-gain share gate in integer cents, the best-5% stress calculation, the three tests
+// against (c) and the score; the Tier 2 net-profit single-stock check replaced), pick.js (a report only), the
+// gate's practice-runs-authorized row and the gated launcher. No decision, fill or exit changes.
+export const CODE_REVISION = 'rt-code-2026-11-02-1';
 
 // PLAN-DRAFT.md v0.5 section 6 (D6, D7): range 4 and trend 4, eight runs plus one verified-defect reserve.
 // No combination runs and no HXR diagnostic. The 0.1.0 files are superseded: they keep their pins and are
@@ -189,10 +193,15 @@ export const namesRevision = (text, revision = CODE_REVISION) => new RegExp(`(^|
 export const PRACTICE_ROW = /^\*\*Practice run\*\*\s*run id:\s*(\d+),\s*config hash:\s*([0-9a-f]{64})(?![0-9a-f])/i;
 const MENTIONS_PRACTICE_RUN = /practice[\s-]*run/i;
 const RECORD_FIELDS = /run id:\s*\d/i;
-export const isPracticeRecord = (cell) => { const m = cell.match(/^\*\*([^*]+)\*\*/); return (m ? MENTIONS_PRACTICE_RUN.test(m[1]) : false) || RECORD_FIELDS.test(cell); };
+// The owner's authorization of the eight practice runs: a row whose bold title is exactly this, quoting the
+// owner's message, naming the current CODE_REVISION and all eight planned configs, present exactly once
+// (outside fences and comments). The gate refuses every practice run without it; the code never writes it.
+export const AUTHORIZED_TITLE = 'Practice runs authorized';
+const AUTH_ROW = /^\*\*Practice runs authorized\*\*/;
+export const isPracticeRecord = (cell) => { const m = cell.match(/^\*\*([^*]+)\*\*/); if (m && m[1].trim() === AUTHORIZED_TITLE) return false; return (m ? MENTIONS_PRACTICE_RUN.test(m[1]) : false) || RECORD_FIELDS.test(cell); };
 
 export function logStatus(file = LOG_PATH) {
-  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, ownerDecisionsProblem: 'strategy/range-trend/EXPERIMENT-LOG.md does not exist', ownerRow: null, practiceRuns: [], malformed: [], nextNumber: 1 };
+  if (!fs.existsSync(file)) return { exists: false, ownerDecisions: false, ownerDecisionsProblem: 'strategy/range-trend/EXPERIMENT-LOG.md does not exist', ownerRow: null, ownerRows: [], practiceAuthorized: false, practiceAuthorizedProblem: 'strategy/range-trend/EXPERIMENT-LOG.md does not exist', practiceRuns: [], malformed: [], nextNumber: 1 };
   const text = visibleText(fs.readFileSync(file, 'utf8'));
   const rows = text.split(/\r?\n/).filter((l) => l.startsWith('|')).map((l) => l.split('|').map((x) => x.trim()));
   const what = (r) => r[3] || '';
@@ -218,5 +227,19 @@ export function logStatus(file = LOG_PATH) {
   }
   // ownerRevisionRows: the revisions named by owner-decisions rows that name D1 to D8 (for the first-run check).
   const ownerRows = titled.filter(namesAll).map(what);
-  return { exists: true, ownerDecisions: !!owner, ownerDecisionsProblem, ownerRow: owner ? what(owner) : null, ownerRows, practiceRuns, malformed, nextNumber };
+  // The practice-runs-authorized row: exactly one, naming this code revision and every planned config, quoting
+  // the owner's message (a double-quoted passage).
+  const authRows = rows.filter((r) => AUTH_ROW.test(what(r)));
+  let practiceAuthorized = false, practiceAuthorizedProblem = null;
+  if (!authRows.length) practiceAuthorizedProblem = `no row beginning "**${AUTHORIZED_TITLE}**"`;
+  else if (authRows.length > 1) practiceAuthorizedProblem = `${authRows.length} rows beginning "**${AUTHORIZED_TITLE}**" (exactly one is read)`;
+  else {
+    const cell = what(authRows[0]);
+    const missing = PLANNED_CONFIGS.filter((f) => !cell.includes(f));
+    if (!namesRevision(cell)) practiceAuthorizedProblem = `the authorization row does not name the current code revision ${CODE_REVISION}`;
+    else if (missing.length) practiceAuthorizedProblem = `the authorization row does not name ${missing.join(', ')}`;
+    else if (!/"[^"]{8,}"/.test(cell)) practiceAuthorizedProblem = 'the authorization row does not quote the owner\'s message';
+    else practiceAuthorized = true;
+  }
+  return { exists: true, ownerDecisions: !!owner, ownerDecisionsProblem, ownerRow: owner ? what(owner) : null, ownerRows, practiceAuthorized, practiceAuthorizedProblem, practiceRuns, malformed, nextNumber };
 }

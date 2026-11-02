@@ -28,6 +28,7 @@ import { canonicalJson } from '../strategy/config.js';
 import { loadConfig, configHash, textSha256, PLANNED_CONFIGS, CODE_REVISION, protocolStatus, logStatus, namesRevision, PROTOCOL_PATH, LOG_PATH, RT_CONFIG_DIR } from './config.js';
 import { runBacktest, ENGINE_VERSION } from './engine.js';
 import { computeMetrics } from './metrics.js';
+import { pickRuleReport } from './pick.js';
 import { holdIndex, INDEX_METHOD } from './benchmark.js';
 import * as store from './store.js';
 import * as hxrStore from '../hxr/store.js';
@@ -94,6 +95,8 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
       throw new RtError(409, `Practice runs are refused: the code revision changed since the first practice run (run ${firstRev.firstRunId} ran under ${firstRev.revision}; this code is ${CODE_REVISION}). A run under another revision needs an owner-decisions row in EXPERIMENT-LOG.md naming ${CODE_REVISION}.`);
     }
     if (!log.ownerDecisions) throw new RtError(409, `Practice runs are refused: strategy/range-trend/EXPERIMENT-LOG.md has no owner-decisions entry covering D1-D8 for this code (${log.ownerDecisionsProblem}; a row beginning "**Owner decisions D1-D8**" naming D1 to D8 and the code revision).`);
+    // The owner's separate authorization of the eight practice runs: the code never writes this row.
+    if (!log.practiceAuthorized) throw new RtError(409, `Practice runs are refused: they are not authorized (${log.practiceAuthorizedProblem}). The owner's separate message creates the "**Practice runs authorized**" row in EXPERIMENT-LOG.md, quoting it and naming the code revision ${CODE_REVISION} and the eight planned configs.`);
     if (log.malformed.length) throw new RtError(409, `Practice runs are refused: EXPERIMENT-LOG.md row ${log.malformed[0].number ?? '?'} ("${log.malformed[0].title}") mentions a practice run but is not in the form "**Practice run** run id: N, config hash: <64 hex>". Nothing runs while a practice-run row cannot be read.`);
     for (const pr of log.practiceRuns) {
       const run = store.getRun(db, pr.runId);
@@ -123,6 +126,58 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
       if (old.config_hash !== configHash(config)) throw new RtError(409, `The reserve run must use the config hash of the run it replaces (${old.config_hash.slice(0, 12)}); this config hashes to ${configHash(config).slice(0, 12)}.`);
     }
     return { proto: ps, config, configFileSha256, firstRunCodeRevision: firstRev?.revision ?? null };
+  }
+
+  // Every gate condition with its status, for the launcher's check mode: the same facts gate() refuses on,
+  // each evaluated on its own (gate() stops at the first). The HXR data condition is separate (hxrStatus),
+  // because it opens the HXR database; the launcher checks it only when everything else holds.
+  function gateStatus({ configFile } = {}) {
+    const conds = [];
+    const add = (name, ok, detail) => conds.push({ name, ok: !!ok, detail });
+    const planned = PLANNED_CONFIGS.includes(configFile);
+    add('config: one of the eight planned rt-*-0.2.0.json files', planned, planned ? configFile : `${configFile} is not planned`);
+    let config = null, configProblem = null;
+    if (planned) { try { config = loadConfig(configFile); } catch (e) { configProblem = e.message; } }
+    add('config: matches its pinned SHA-256 and HXR\'s development period', !!config && !periodProblem(config, loadHxrPeriods().periods.development), config ? (periodProblem(config, loadHxrPeriods().periods.development) || `version ${config.version}`) : configProblem || 'not checked');
+    const ps = protocolStatus(proto);
+    add('EVALUATION-PROTOCOL.md: pick rule and date-choice rule set, no owner marker, each once', ps.ready, ps.ready ? `hash ${ps.hash.slice(0, 12)}` : ps.reason);
+    const frozen = store.getSetting(db, 'protocolHash');
+    add('protocol hash: the one frozen at the first practice run', !frozen || frozen.hash === ps.hash, frozen ? (frozen.hash === ps.hash ? `matches the hash frozen at run ${frozen.firstRunId}` : `changed since run ${frozen.firstRunId}: restore the frozen text`) : 'not yet frozen (it is frozen at the first practice run)');
+    const log = logStatus(logFile);
+    add('EXPERIMENT-LOG.md: owner-decisions row (D1-D8, naming this code revision)', log.ownerDecisions, log.ownerDecisions ? 'present' : log.ownerDecisionsProblem);
+    const firstRev = store.getSetting(db, 'codeRevision');
+    const revOk = !firstRev || firstRev.revision === CODE_REVISION || (log.ownerRows || []).some((row) => namesRevision(row, CODE_REVISION));
+    add('code revision: the first practice run\'s, or named by an owner-decisions row', revOk, firstRev ? `first run ${firstRev.firstRunId} under ${firstRev.revision}; this code is ${CODE_REVISION}` : `no practice run yet; this code is ${CODE_REVISION}`);
+    add('EXPERIMENT-LOG.md: practice-runs-authorized row (the owner\'s separate message, this code revision, the eight configs, once)', log.practiceAuthorized, log.practiceAuthorized ? 'present, exactly once' : log.practiceAuthorizedProblem);
+    add('EXPERIMENT-LOG.md: no malformed practice-run row', !log.malformed.length, log.malformed.length ? `row ${log.malformed[0].number ?? '?'} ("${log.malformed[0].title}") is not in the form` : 'none');
+    const notInDb = log.practiceRuns.filter((pr) => { const run = store.getRun(db, pr.runId); return !run || run.config_hash !== pr.configHash; });
+    add('EXPERIMENT-LOG.md: every practice run it lists is in this database', !notInDb.length, notInDb.length ? `run ${notInDb[0].runId} is listed but not here` : `${log.practiceRuns.length} listed`);
+    const unlogged = store.listRuns(db).filter((run) => !log.practiceRuns.some((p) => p.runId === run.id && p.configHash === run.config_hash));
+    add('database: every run (failed ones included) is listed in EXPERIMENT-LOG.md', !unlogged.length, unlogged.length ? `run ${unlogged[0].id} (${unlogged[0].config_file}, ${unlogged[0].status}) is not logged: paste its row first` : `${store.listRuns(db).length} recorded`);
+    const prior = store.listLedger(db).filter((e) => e.config_file === configFile);
+    add('ledger: this config has not run yet (the reserve needs a separate instruction)', !prior.length, prior.length ? `already run (run ${prior.at(-1).run_id})` : 'not yet run');
+    let free = null;
+    try { const s = fs.statfsSync(dir); free = Number(s.bavail) * Number(s.bsize); } catch { /* unknown */ }
+    add('disk: at least 1 GB free on the data directory\'s volume', free != null && free >= 1024 ** 3, free == null ? 'unknown' : `${(free / 1024 ** 3).toFixed(1)} GB free`);
+    const held = store.currentLock(db);
+    add('lock: held by this service instance', !!held && held.token === lock.token, held ? `pid ${held.pid}` : 'no lock row');
+    return conds;
+  }
+
+  // The HXR data condition (opens data/hxr-sim.sqlite read-only): readiness with the owner's reviewed overnight
+  // moves, and spread calibration for the development period, with the config's half-spread floor.
+  function hxrStatus({ configFile } = {}) {
+    const name = 'HXR data: readiness and spread calibration for the development period (read-only)';
+    if (!fs.existsSync(hxrFile)) return { name, ok: false, detail: `no HXR market data at ${path.basename(hxrFile)}` };
+    let hdb = null;
+    try {
+      const realHxr = fs.realpathSync(hxrFile);
+      if (realHxr !== path.join(fs.realpathSync(dir), hxrStore.HXR_DB_NAME)) return { name, ok: false, detail: `${path.basename(hxrFile)} is a link to ${realHxr}` };
+      const floor = PLANNED_CONFIGS.includes(configFile) ? loadConfig(configFile).costs.halfSpreadFloorBps : 2;
+      hdb = hxrStore.openHxrDb(realHxr, { readOnly: true });
+      const problem = hxrDataProblem(hdb, loadHxrUniverse(), loadHxrPeriods(), floor);
+      return { name, ok: !problem, detail: problem || 'ready and calibrated' };
+    } catch (e) { return { name, ok: false, detail: e.message }; } finally { try { hdb?.close(); } catch { /* ignore */ } }
   }
 
   // HXR's own gate for a period: readiness with the owner's reviewed overnight moves, and spread calibration
@@ -221,7 +276,9 @@ export function createRangeTrend({ dataDir = null, protocolPath = null, logPath 
     db, dataDir: dir, hxrFile, lock, testOverrides: overrides,
     protocol: () => protocolStatus(proto),
     log: () => logStatus(logFile),
+    gateStatus, hxrStatus,
     runPractice,
+    pickReport: () => pickRuleReport(store.listRuns(db).map((r) => ({ ...store.getRun(db, r.id) }))),
     ledger: () => store.listLedger(db),
     runs: () => store.listRuns(db),
     getRun: (id) => store.getRun(db, id),
