@@ -21,8 +21,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const E = 'server/rangetrend/engine.js', LV = 'server/rangetrend/levels.js', BM = 'server/rangetrend/benchmark.js';
-export const TESTS = ['tests/rangetrend-engine.test.js', 'tests/rangetrend-fixes.test.js', 'tests/rangetrend-planted.test.js', 'tests/rangetrend-definitions.test.js', 'tests/rangetrend-gaps.test.js'];
+const E = 'server/rangetrend/engine.js', LV = 'server/rangetrend/levels.js', BM = 'server/rangetrend/benchmark.js', MT = 'server/rangetrend/metrics.js', PK = 'server/rangetrend/pick.js', CF = 'server/rangetrend/config.js', LN = 'scripts/rangetrend-run.mjs';
+export const TESTS = ['tests/rangetrend-engine.test.js', 'tests/rangetrend-fixes.test.js', 'tests/rangetrend-planted.test.js', 'tests/rangetrend-definitions.test.js', 'tests/rangetrend-gaps.test.js', 'tests/rangetrend-pick.test.js', 'tests/rangetrend-launcher.test.js'];
 export const MIN_FREE_BYTES = 1024 ** 3;
 export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -65,6 +65,19 @@ export const BUGS = [
   { name: 'D3 conversion close not a confirming close', file: E, find: "          setBreak(st, 'conversion', date, { close: c, hi: p.hi, m: p.m, tradeId: p.tradeId });\n", replace: '' },
   { name: "split: a pending buy's decision-time copy of P (afterSale.price) not rescaled", file: E, find: '        if (o.afterSale?.price != null) o.afterSale.price /= r;\n', replace: '' },
   { name: 'D4 last close not split-adjusted on a session without a bar', file: BM, find: '      if (lastClose[sp.symbol] != null) lastClose[sp.symbol] /= sp.ratio;\n', replace: '' },
+  // The adopted pick rule (EXPERIMENT-LOG.md entry 14).
+  { name: 'pick: net-profit denominator for the single-stock share', file: MT, find: '  const passes = G > 0 && maxCents * 100 <= limitPct * G;', replace: '  const passes = net > 0 && maxCents * 100 <= limitPct * net;' },
+  { name: 'pick: losses subtracted from G', file: MT, find: '  const G = Object.values(cents).reduce((a, c) => a + Math.max(0, c), 0);', replace: '  const G = Object.values(cents).reduce((a, c) => a + c, 0);' },
+  { name: 'pick: open positions excluded from P(s)', file: MT, find: '  return { completed, open, outcomes: [...completed, ...open], completedTrades: completed.length };', replace: '  return { completed, open, outcomes: [...completed], completedTrades: completed.length };' },
+  { name: 'pick: <= replaced by < in the gross-gain gate', file: MT, find: 'maxCents * 100 <= limitPct * G', replace: 'maxCents * 100 < limitPct * G' },
+  { name: 'pick: open positions counted in N', file: MT, find: 'completedTrades: completed.length };', replace: 'completedTrades: completed.length + open.length };' },
+  { name: 'pick: K by floor', file: MT, find: 'K = Math.max(1, Math.ceil(0.05 * n));', replace: 'K = Math.max(1, Math.floor(0.05 * n));' },
+  { name: 'pick: the best outcome kept instead of removed', file: MT, find: '  const removed = sorted.slice(0, K);', replace: '  const removed = sorted.slice(1, K + 1);' },
+  { name: 'pick: adjustedAnnualised compared with the wrong hold', file: MT, find: '  const bestFive = bestFiveRemoval(outcomes, { startingCash, years: y, holdAnnualised });\n  const tests', replace: '  const bestFive = bestFiveRemoval(outcomes, { startingCash, years: y, holdAnnualised: 0 });\n  const tests' },
+  { name: 'pick: tie chain', file: PK, find: '  const T0 = passing.filter((r) => u(r.score) >= top - tie);', replace: '  const sortedS = [...passing].sort((a, b) => u(b.score) - u(a.score));\n  const T0 = sortedS.filter((r, i) => i === 0 || u(sortedS[i - 1].score) - u(r.score) <= tie);' },
+  { name: 'pick: tie ignoring drawdown', file: PK, find: '  const T1 = T0.filter((r) => u(r.maxDrawdown) <= minDD + tie);', replace: '  const T1 = T0;' },
+  { name: 'launcher running without the authorization row', file: LN, find: '    let allOk = conds.every((c) => c.ok);', replace: "    let allOk = conds.filter((c) => !c.name.includes('practice-runs-authorized')).every((c) => c.ok);" },
+  { name: 'the authorization row (and any row) accepted inside a code fence', file: CF, find: "  const text = visibleText(fs.readFileSync(file, 'utf8'));\n  const rows = text.split", replace: "  const text = fs.readFileSync(file, 'utf8');\n  const rows = text.split" },
 ];
 
 function parseArgs(argv) {
@@ -118,8 +131,9 @@ export function runPlanted({ ref = 'HEAD', workingTree = false, only = null, kee
     execFileSync('git', ['-c', 'core.autocrlf=false', 'worktree', 'add', '--detach', wt, ref], { cwd: ROOT, stdio: 'pipe' });
     if (workingTree) {
       for (const f of fs.readdirSync(path.join(ROOT, 'server/rangetrend')).filter((x) => x.endsWith('.js'))) fs.copyFileSync(path.join(ROOT, 'server/rangetrend', f), path.join(wt, 'server/rangetrend', f));
-      for (const f of fs.readdirSync(path.join(ROOT, 'tests')).filter((x) => /^rangetrend-.*\.test\.js$/.test(x))) fs.copyFileSync(path.join(ROOT, 'tests', f), path.join(wt, 'tests', f));
+      for (const f of fs.readdirSync(path.join(ROOT, 'tests')).filter((x) => /^rangetrend-.*\.js$/.test(x))) fs.copyFileSync(path.join(ROOT, 'tests', f), path.join(wt, 'tests', f));
       for (const f of fs.readdirSync(path.join(ROOT, 'strategy/range-trend/configs'))) fs.copyFileSync(path.join(ROOT, 'strategy/range-trend/configs', f), path.join(wt, 'strategy/range-trend/configs', f));
+      for (const f of ['scripts/rangetrend-run.mjs', 'tests/helpers.js']) if (fs.existsSync(path.join(ROOT, f))) fs.copyFileSync(path.join(ROOT, f), path.join(wt, f));
     }
     const tests = TESTS.filter((t) => fs.existsSync(path.join(wt, t)));
     log(`worktree ${wt} at ${ref}${workingTree ? ' (working-tree files copied)' : ''}; tests: ${tests.join(', ')}`);
