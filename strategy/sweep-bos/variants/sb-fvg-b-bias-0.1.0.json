@@ -1,0 +1,111 @@
+{
+  "name": "sb-fvg-b-bias",
+  "label": "round 1: zone fair_value_gap, stop B_second_swing, daily bias on",
+  "strategy": "sweep-bos",
+  "version": "0.1.0",
+  "round": 1,
+  "ruleSheet": "strategy/sweep-bos/PRE-REGISTRATION.md (version 1)",
+  "instruments": [
+    "QQQ",
+    "SPY"
+  ],
+  "standInFor": {
+    "QQQ": "NQ",
+    "SPY": "ES"
+  },
+  "session": {
+    "timezone": "America/New_York",
+    "calendar": "NYSE",
+    "open": "09:30",
+    "close": "16:00",
+    "barMinutes": 5,
+    "earlyCloseHandled": true,
+    "extendedHours": false
+  },
+  "sweepWindow": {
+    "firstBarIndex": 0,
+    "lastBarIndex": 5,
+    "note": "bars starting 09:30 to 09:55"
+  },
+  "entryCutoff": {
+    "lastFillBarIndex": 11,
+    "note": "a fill must occur on a bar starting at or before 10:25; nothing fills at or after 10:30"
+  },
+  "swing": {
+    "fractalBars": 3,
+    "confirmAfterLaterBars": 3,
+    "scope": "session_local"
+  },
+  "dailyBias": {
+    "fractalBars": 3,
+    "confirmAfterLaterBars": 3,
+    "rule": "last_two_swing_highs_and_lows_both_rising_or_both_falling"
+  },
+  "level": "prior_session_daily_high_low",
+  "bos": {
+    "rule": "first_close_beyond_most_recent_swing_confirmed_before_that_close"
+  },
+  "zones": {
+    "orderBlock": "last_opposite_colour_bar_at_or_before_leg_extreme",
+    "fairValueGap": "latest_three_bar_gap_in_displacement_leg",
+    "entryAt": "near_edge",
+    "requireEntryInsideBosClose": true,
+    "equilibrium": false
+  },
+  "stopA": {
+    "reference": "sweep_extreme",
+    "bufferMultiple": 1,
+    "bufferOf": "median_first_hour_5m_range",
+    "bufferSessions": 20,
+    "roundBufferToCent": true
+  },
+  "stopB": {
+    "reference": "second_most_recent_confirmed_swing_at_bos_close",
+    "beyondBy": 0.01
+  },
+  "target": {
+    "level": "opposite_prior_session_extreme",
+    "minRewardToRisk": 1
+  },
+  "fills": {
+    "limit": "later_bar_trades_strictly_through_at_limit",
+    "stop": "touch_then_min_with_open",
+    "target": "strictly_through",
+    "sameBar": "stop_first",
+    "fillBar": "stop_checked_target_not"
+  },
+  "timeStop": "open_of_last_session_bar",
+  "oneTradePerSessionPerInstrument": true,
+  "oneSetupPerSession": true,
+  "reentryAfterExit": false,
+  "partials": false,
+  "breakEven": false,
+  "costs": {
+    "halfSpread": 0.01,
+    "slippage": 0.01,
+    "commission": 0,
+    "perSide": 0.02,
+    "sensitivityMultiple": 2
+  },
+  "account": {
+    "startingCash": 15000,
+    "wholeShares": true,
+    "leverage": false,
+    "informationOnly": true
+  },
+  "windows": {
+    "warmupFrom": "2018-06-01",
+    "development": {
+      "start": "2019-01-02",
+      "end": "2022-12-30"
+    },
+    "evaluation": {
+      "start": "2023-01-03",
+      "end": "2024-12-31",
+      "status": "not authorized; never read in this task"
+    }
+  },
+  "zone": "fair_value_gap",
+  "stop": "B_second_swing",
+  "bias": "on"
+}
