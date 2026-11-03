@@ -238,6 +238,36 @@ export function createHxrSource({
       return out;
     },
 
+    // Intraday bars of one timeframe ('5Min', '15Min', ...) for completed
+    // sessions between two exchange-local dates, as Alpaca returns them
+    // (pre-market and after-hours bars included; the caller keeps the slots it
+    // wants): [{ ms, date, minutes, second, o, h, l, c, v, n, vw }] in time
+    // order, date and minutes in America/New_York. Bars on non-trading days,
+    // of incomplete sessions, with invalid OHLC or duplicate timestamps are
+    // dropped and counted in .dropped; .pages as dailyBars. Read-only, same
+    // host, same headers, no redirect followed. Used by server/sweepbos/data.js.
+    async intradayBars(symbol, timeframe, { from, to } = {}) {
+      const sym = checkSymbol(symbol);
+      if (!/^(1|5|15|30)Min$/.test(String(timeframe || ''))) throw fail('bad_response', `Alpaca: unsupported intraday timeframe ${clean(timeframe, 10)}`);
+      const { startMs, endMs } = range(from, to);
+      const r = await bars(sym, timeframe, startMs, endMs);
+      const dropped = { unreadable: r.unreadable, outOfRange: 0, nonTradingDay: 0, incomplete: 0, invalid: 0, duplicates: 0 };
+      const out = [], seen = new Set();
+      for (const b of r.list) {
+        const p = zonedParts(new Date(b.ms), NY);
+        if (p.date < from || p.date > to) { dropped.outOfRange++; continue; }
+        if (!isTradingDay(p.date, 'NYSE')) { dropped.nonTradingDay++; continue; }
+        if (!sessionComplete(p.date)) { dropped.incomplete++; continue; }
+        if (!validOhlc(b)) { dropped.invalid++; continue; }
+        if (seen.has(b.ms)) { dropped.duplicates++; continue; }
+        seen.add(b.ms);
+        out.push({ ms: b.ms, date: p.date, minutes: p.minutes, second: p.second, o: b.o, h: b.h, l: b.l, c: b.c, v: Number.isFinite(b.v) ? b.v : null, n: Number.isFinite(b.n) ? b.n : null, vw: Number.isFinite(b.vw) ? b.vw : null });
+      }
+      out.dropped = dropped;
+      out.pages = r.pages;
+      return out;
+    },
+
     // Every corporate action of these symbols from 2015-01-01 to a year after
     // today (Alpaca filters by process or payable date, not ex-date, so the
     // caller filters by ex-date), flattened to one row per action.
