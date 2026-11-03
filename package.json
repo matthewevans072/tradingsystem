@@ -17,7 +17,10 @@
     "lab:compare-tv": "node --disable-warning=ExperimentalWarning scripts/strategy-compare-tv.js",
     "rt:planted": "node --disable-warning=ExperimentalWarning scripts/rangetrend-planted.mjs",
     "rt:run": "node --disable-warning=ExperimentalWarning scripts/rangetrend-run.mjs",
-    "sb:download": "node --disable-warning=ExperimentalWarning scripts/sweepbos-download.mjs"
+    "sb:download": "node --disable-warning=ExperimentalWarning scripts/sweepbos-download.mjs",
+    "sb:planted": "node --disable-warning=ExperimentalWarning scripts/sweepbos-planted.mjs",
+    "sb:run": "node --disable-warning=ExperimentalWarning scripts/sweepbos-run.mjs",
+    "sb:report": "node --disable-warning=ExperimentalWarning scripts/sweepbos-report.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"
