@@ -18,8 +18,11 @@ export const DB_NAME = 'sweep-bos-sim.sqlite';
 
 // Stored with every data version and run. Bump it with any change that can alter results (rules.js, engine.js,
 // metrics.js, data.js's session filter, or the Alpaca client's intradayBars).
-// sb-code-2026-11-03-1: the build (Parts B and C of EXPERIMENT-LOG.md entry 1).
-export const CODE_REVISION = 'sb-code-2026-11-03-1';
+// sb-code-2026-11-03-1: the build (Parts B and C of EXPERIMENT-LOG.md entry 1); round 1 ran on it.
+// sb-code-2026-11-03-2: the round-2 switches (PRE-REGISTRATION-2.md; EXPERIMENT-LOG.md entries 17-19): the
+// cutoff index, the cross-session structure series and the no-invalidation setting, read from the variant with
+// round-1 behaviour as the default (tests/sweepbos-round2.test.js holds the round-1 behaviour snapshot).
+export const CODE_REVISION = 'sb-code-2026-11-03-2';
 export const ENGINE_VERSION = 'sb-engine-1';
 
 export const INSTRUMENTS = Object.freeze(['QQQ', 'SPY']);
@@ -54,7 +57,18 @@ export const ROUND1_VARIANTS = Object.freeze([
   'sb-ob-a-bias-0.1.0.json', 'sb-ob-a-nobias-0.1.0.json', 'sb-ob-b-bias-0.1.0.json', 'sb-ob-b-nobias-0.1.0.json',
   'sb-fvg-a-bias-0.1.0.json', 'sb-fvg-a-nobias-0.1.0.json', 'sb-fvg-b-bias-0.1.0.json', 'sb-fvg-b-nobias-0.1.0.json',
 ]);
+// Round 2 (PRE-REGISTRATION-2.md; EXPERIMENT-LOG.md entry 18): four files, each one change from
+// sb-ob-a-nobias-0.1.0.json (R2-1 the 10:55 cutoff, R2-2 structure across the session boundary, R2-3 no
+// invalidation, R2-4 the three together), pinned before any run; they run in round 2 only.
+export const ROUND2_VARIANTS = Object.freeze(['sb-ob-a-nobias-cutoff1055-0.2.0.json', 'sb-ob-a-nobias-xsession-0.2.0.json', 'sb-ob-a-nobias-noinval-0.2.0.json', 'sb-ob-a-nobias-combined-0.2.0.json']);
+export const ROUNDS = Object.freeze({ 1: ROUND1_VARIANTS, 2: ROUND2_VARIANTS });
+export const roundVariants = (round) => ROUNDS[round] || Object.freeze([]);
+export const frozenTitle = (round) => `Code frozen for round ${round}`;
 export const VARIANT_SHA256 = Object.freeze({
+  'sb-ob-a-nobias-cutoff1055-0.2.0.json': 'f316b42e288a7a2667e9b8104b73596023e1df7e13abd51a72c5f4948d478ecb',
+  'sb-ob-a-nobias-xsession-0.2.0.json': 'dfde939464e3d3d6d7aadbb717c73f057747bc5e1a4dfedc032426c4fbccddb7',
+  'sb-ob-a-nobias-noinval-0.2.0.json': '613d4940e6bca78977b753a861285b1d67ebfa29413d7b991ac1902cf4e71e02',
+  'sb-ob-a-nobias-combined-0.2.0.json': '617900de2ca9883a1a1e8ff3da3a54c1337bf54c121f8fa2d9a2f6d29cff63cb',
   'sb-fvg-a-bias-0.1.0.json': '78b482368965f6d971b173ff858dbcc4008c41412e0a00f0e2bb48084fab3c38',
   'sb-fvg-a-nobias-0.1.0.json': '507f2216f16291f53a6a290a7ddbaeaf42ab9a364cefed2fc55253e2d38489c6',
   'sb-fvg-b-bias-0.1.0.json': 'a985e68add153ce552c823e279666710746d55d0ea737eea18b279b48cbf0be8',
@@ -130,8 +144,29 @@ export function validateVariant(c) {
   const s = c.session || {};
   eq(s.timezone, 'America/New_York', 'session.timezone'); eq(s.calendar, 'NYSE', 'session.calendar'); eq(s.barMinutes, 5, 'session.barMinutes'); eq(s.extendedHours, false, 'session.extendedHours');
   eq(c.sweepWindow?.firstBarIndex, 0, 'sweepWindow.firstBarIndex'); eq(c.sweepWindow?.lastBarIndex, 5, 'sweepWindow.lastBarIndex');
-  eq(c.entryCutoff?.lastFillBarIndex, 11, 'entryCutoff.lastFillBarIndex');
-  eq(c.swing?.fractalBars, 3, 'swing.fractalBars'); eq(c.swing?.confirmAfterLaterBars, 3, 'swing.confirmAfterLaterBars'); eq(c.swing?.scope, 'session_local', 'swing.scope');
+  // The round-2 switches (PRE-REGISTRATION-2.md): a round-1 file keeps the round-1 values; a round-2 file is one
+  // of the declared changes from sb-ob-a-nobias-0.1.0.json and says so.
+  const r2 = c.round === 2;
+  const lastFill = c.entryCutoff?.lastFillBarIndex;
+  if (![11, 17].includes(lastFill)) e.push('entryCutoff.lastFillBarIndex must be 11 (round 1) or 17 (round 2, R2-1)');
+  if (!r2 && lastFill !== 11) e.push('a round-1 variant keeps entryCutoff.lastFillBarIndex 11');
+  if (c.bos?.lastBarIndex !== undefined && c.bos.lastBarIndex !== lastFill) e.push('bos.lastBarIndex must equal entryCutoff.lastFillBarIndex');
+  eq(c.swing?.fractalBars, 3, 'swing.fractalBars'); eq(c.swing?.confirmAfterLaterBars, 3, 'swing.confirmAfterLaterBars');
+  const scope = c.swing?.scope;
+  if (!['session_local', 'cross_session'].includes(scope)) e.push('swing.scope must be "session_local" or "cross_session" (round 2, R2-2)');
+  if (!r2 && scope !== 'session_local') e.push('a round-1 variant keeps swing.scope "session_local"');
+  if (scope === 'cross_session' && c.swing?.previousSessionBars !== 12) e.push('swing.previousSessionBars must be 12 with cross_session');
+  if (scope === 'cross_session' && c.zones?.orderBlockSearch !== 'cross_session') e.push('zones.orderBlockSearch must be "cross_session" with swing.scope cross_session');
+  if (scope !== 'cross_session' && c.zones?.orderBlockSearch !== undefined) e.push('zones.orderBlockSearch is declared only with swing.scope cross_session');
+  const inval = c.sweep?.invalidation;
+  if (inval !== undefined && !['close_beyond_level', 'none'].includes(inval)) e.push('sweep.invalidation must be "close_beyond_level" or "none" (round 2, R2-3)');
+  if (!r2 && inval === 'none') e.push('a round-1 variant keeps the invalidation rule');
+  if (r2) {
+    if (c.basedOn?.file !== 'sb-ob-a-nobias-0.1.0.json' || c.basedOn?.sha256 !== VARIANT_SHA256['sb-ob-a-nobias-0.1.0.json']) e.push('a round-2 variant must declare basedOn sb-ob-a-nobias-0.1.0.json with its pinned SHA-256');
+    if (c.zone !== 'order_block' || c.stop !== 'A_sweep_buffer' || c.bias !== 'off') e.push('a round-2 variant keeps zone order_block, stop A and bias off');
+    if (c.version !== '0.2.0') e.push('a round-2 variant is version 0.2.0');
+    if (lastFill === 11 && scope === 'session_local' && inval !== 'none') e.push('a round-2 variant must change at least one of the three switches');
+  }
   eq(c.dailyBias?.fractalBars, 3, 'dailyBias.fractalBars'); eq(c.dailyBias?.confirmAfterLaterBars, 3, 'dailyBias.confirmAfterLaterBars');
   eq(c.level, 'prior_session_daily_high_low', 'level');
   eq(c.bos?.rule, 'first_close_beyond_most_recent_swing_confirmed_before_that_close', 'bos.rule');
@@ -205,10 +240,12 @@ export function parseEntries(text) {
   return entries;
 }
 
-export function logStatus(file = LOG_PATH, { preregCommit = PREREG.commit, revision = CODE_REVISION } = {}) {
+export function logStatus(file = LOG_PATH, { preregCommit = PREREG.commit, revision = CODE_REVISION, round = 1 } = {}) {
   if (!fs.existsSync(file)) return { exists: false, frozen: null, frozenProblem: 'strategy/sweep-bos/EXPERIMENT-LOG.md does not exist', runs: [], malformed: [], nextNumber: 1, entries: [] };
   const entries = parseEntries(fs.readFileSync(file, 'utf8'));
   const nextNumber = Math.max(0, ...entries.map((e) => e.number)) + 1;
+  // The code-frozen entry is per round: round 2 needs its own, naming the code revision that runs it.
+  const FROZEN_TITLE = frozenTitle(round);
   const frozenEntries = entries.filter((e) => e.title.startsWith(`**${FROZEN_TITLE}**`));
   const text = (e) => `${e.title}\n${e.body}`;
   const hashIn = (t) => { const m = t.match(/data hash:\s*([0-9a-f]{64})(?![0-9a-f])/i); return m ? m[1].toLowerCase() : null; };

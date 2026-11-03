@@ -10,8 +10,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../config.js';
 import {
-  CODE_REVISION, ENGINE_VERSION, PREREG, PREREG_PATH, PLAN_PATH, LOG_PATH, VARIANT_DIR, DB_NAME, WINDOWS, MAX_BAR_DATE, INSTRUMENTS, ROUND1_VARIANTS,
-  fileSha256, loadVariant, logStatus, preregCommitStatus, uncommittedChanges, headCommit, sourceHash, FROZEN_TITLE,
+  CODE_REVISION, ENGINE_VERSION, PREREG, PREREG_PATH, PLAN_PATH, LOG_PATH, VARIANT_DIR, DB_NAME, WINDOWS, MAX_BAR_DATE, INSTRUMENTS,
+  fileSha256, loadVariant, logStatus, preregCommitStatus, uncommittedChanges, headCommit, sourceHash, frozenTitle, roundVariants as roundVariantsOf,
 } from './config.js';
 import * as store from './store.js';
 import { loadInputs } from './data.js';
@@ -38,7 +38,8 @@ export function createSweepBos({ dataDir = null, dbFile = null, logPath = LOG_PA
   const dir = dataDir || loadConfig().dataDir;
   const file = dbFile || path.join(dir, DB_NAME);
   const prereg = { commit: overrides.preregCommit || PREREG.commit, committedAt: overrides.committedAt || PREREG.committedAt, sha256: overrides.pins || PREREG.sha256 };
-  const roundVariants = overrides.roundVariants || ROUND1_VARIANTS;
+  // The round's pre-registered files (config.js ROUNDS); a test may replace the list.
+  const listFor = (round) => overrides.roundVariants || roundVariantsOf(round);
   const revision = overrides.revision || CODE_REVISION;
   const now = () => clock().toISOString();
 
@@ -97,9 +98,9 @@ export function createSweepBos({ dataDir = null, dbFile = null, logPath = LOG_PA
           add('data-version', !problems.length, problems.length ? problems.join('; ') : `data version ${version.id} (${version.label}), ${version.bars1d} daily and ${version.bars5m} 5-minute bars, hash ${version.dataHash}, downloaded ${version.downloadedAt}`);
         }
         add('bar-bound', after && after.bars5m === 0 && after.bars1d === 0 && (!maxDate || maxDate <= MAX_BAR_DATE), after ? `latest stored date ${maxDate ?? 'none'}; bars after ${MAX_BAR_DATE}: ${after.bars5m} five-minute, ${after.bars1d} daily` : 'unknown');
-        const ls = logStatus(logPath, { preregCommit: prereg.commit, revision });
+        const ls = logStatus(logPath, { preregCommit: prereg.commit, revision, round });
         const frozenOk = !!ls.frozen && !!version && ls.frozen.dataHash === version.dataHash;
-        add('code-frozen-entry', frozenOk, ls.frozen ? (version && ls.frozen.dataHash !== version.dataHash ? `the "**${FROZEN_TITLE}**" entry names data hash ${ls.frozen.dataHash}, not the data version's ${version.dataHash}` : `entry ${ls.frozen.number} (${ls.frozen.date}) names ${revision}, the pre-registration commit and the data hash`) : ls.frozenProblem);
+        add('code-frozen-entry', frozenOk, ls.frozen ? (version && ls.frozen.dataHash !== version.dataHash ? `the "**${frozenTitle(round)}**" entry names data hash ${ls.frozen.dataHash}, not the data version's ${version.dataHash}` : `entry ${ls.frozen.number} (${ls.frozen.date}) "${frozenTitle(round)}" names ${revision}, the pre-registration commit and the data hash`) : ls.frozenProblem);
         const logProblems = [];
         if (ls.malformed.length) logProblems.push(`malformed run entries: ${ls.malformed.map((m) => `#${m.number} ${m.title}`).join('; ')}`);
         const logged = new Map(ls.runs.map((r) => [r.runId, r]));
@@ -119,7 +120,8 @@ export function createSweepBos({ dataDir = null, dbFile = null, logPath = LOG_PA
       const name = path.basename(variantFile);
       let variant = null;
       const problems = [];
-      if (!roundVariants.includes(name)) problems.push(`${name} is not one of round ${round}'s ${roundVariants.length} pre-registered variants`);
+      const list = listFor(round);
+      if (!list.includes(name)) problems.push(`${name} is not one of round ${round}'s ${list.length} pre-registered variants`);
       try { variant = loadVariant(path.join(variantDir, name)); } catch (e) { problems.push(e.message); }
       if (variant && variant.round !== round) problems.push(`${name} declares round ${variant.round}, not ${round}`);
       add('variant', !problems.length, problems.length ? problems.join('; ') : `${name}: zone ${variant.zone}, stop ${variant.stop}, bias ${variant.bias}, hash ${variant.hash}`);
@@ -187,6 +189,30 @@ export function createSweepBos({ dataDir = null, dbFile = null, logPath = LOG_PA
     }
   }
 
+  // The count-only pass (the owner's round-2 condition 3, EXPERIMENT-LOG.md entry 20): under the same gate, the
+  // engine runs the variant on both instruments over the development window and only counts come back: sessions,
+  // sessions with a sweep, sessions with a confirmed break of structure, orders placed and fills. No run row, no
+  // ledger row, no trade, outcome or R figure is returned, stored or printed; the trade list is discarded here.
+  function countOnly({ variantFile, round = 2 } = {}) {
+    const gate = gateStatus({ variantFile, round });
+    if (!gate.ok) throw new GateError(gate.conditions);
+    const name = path.basename(variantFile);
+    const variant = loadVariant(path.join(variantDir, name));
+    const db = openDb(true);
+    try {
+      const version = latestVersion(db);
+      const counts = {};
+      for (const symbol of INSTRUMENTS) {
+        const inputs = loadInputs(db, version.id, symbol, { from: WINDOWS.warmupFrom, to: WINDOWS.development.end });
+        const r = runSymbol({ symbol, daily: inputs.daily, sessions: inputs.sessions, variant, window: WINDOWS.development, costPerSide: variant.costs.perSide, sensitivity: variant.costs.sensitivityMultiple, startingCash: variant.account.startingCash });
+        counts[symbol] = countsOf(r);
+      }
+      return { variant: name, variantHash: variant.hash, round, dataVersionId: version.id, dataHash: version.dataHash, window: WINDOWS.development, counts };
+    } finally {
+      db.close();
+    }
+  }
+
   // A run left "running" by a crash is marked failed with a reason; returns the log entry to append.
   function markFailed(runId, reason) {
     const db = openDb(false);
@@ -214,13 +240,24 @@ export function createSweepBos({ dataDir = null, dbFile = null, logPath = LOG_PA
   function pickReport({ round = 1 } = {}) {
     const runs = listRuns().filter((r) => r.round === round && r.status === 'done');
     const variants = runs.map((r) => ({ name: r.variant, candidate: !!r.metrics?.candidate, pooled: r.metrics?.pooled || null, runId: r.id }));
-    const expected = roundVariants.length;
+    const expected = listFor(round).length;
     const pick = pickRule(variants);
     const complete = runs.length === expected;
     return { round, expected, recorded: runs.length, complete, candidates: variants.filter((v) => v.candidate).map((v) => v.name), pick: complete ? pick.pick : null, reason: complete ? pick.reason : `not all ${expected} runs are recorded (${runs.length} of ${expected}); no pick is reported before the round is complete`, ranking: pick.ranking };
   }
 
-  return { file, gateStatus, run, markFailed, listRuns, pickReport, revision };
+  return { file, gateStatus, run, countOnly, markFailed, listRuns, pickReport, revision };
+}
+
+// Counts only, from a runSymbol result's stage counts (PRE-REGISTRATION.md section 7): sessions with a sweep,
+// sessions with a confirmed break of structure, orders placed, fills. Nothing about outcomes or R.
+export function countsOf(r) {
+  const s = r.stageCounts;
+  const tradeable = r.sessionsInWindow - s.incomplete_session - s.no_prior_session - s.no_bias;
+  const sweeps = tradeable - s.no_sweep;
+  const breaks = sweeps - s.sweep_invalidated - s.no_bos;
+  const orders = breaks - s.no_zone - s.entry_not_inside_close - s.no_second_swing - s.stop_not_beyond_entry - s.target_too_close;
+  return { sessions: r.sessionsInWindow, sweeps, breaks, orders, fills: s.filled };
 }
 
 function alive(pid) {

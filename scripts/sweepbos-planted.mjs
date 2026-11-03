@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RU = 'server/sweepbos/rules.js', EN = 'server/sweepbos/engine.js', MT = 'server/sweepbos/metrics.js', ST = 'server/sweepbos/store.js', DT = 'server/sweepbos/data.js', CF = 'server/sweepbos/config.js', SV = 'server/sweepbos/service.js', LN = 'scripts/sweepbos-run.mjs';
-export const TESTS = ['tests/sweepbos-rules.test.js', 'tests/sweepbos-engine.test.js', 'tests/sweepbos-metrics.test.js', 'tests/sweepbos-store.test.js', 'tests/sweepbos-data.test.js', 'tests/sweepbos-service.test.js', 'tests/sweepbos-launcher.test.js'];
+export const TESTS = ['tests/sweepbos-rules.test.js', 'tests/sweepbos-engine.test.js', 'tests/sweepbos-metrics.test.js', 'tests/sweepbos-store.test.js', 'tests/sweepbos-data.test.js', 'tests/sweepbos-service.test.js', 'tests/sweepbos-launcher.test.js', 'tests/sweepbos-round2.test.js'];
 export const MIN_FREE_BYTES = 1024 ** 3;
 export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -46,11 +46,11 @@ export const BUGS = [
   { name: 'stop needs a strict break instead of a touch', file: RU, find: '  const stopHit = (b) => (long ? b.l <= stop : b.h >= stop);', replace: '  const stopHit = (b) => (long ? b.l < stop : b.h > stop);' },
   { name: 'target filled on a touch instead of strictly through', file: RU, find: '  const targetHit = (b) => (long ? b.h > target : b.l < target);', replace: '  const targetHit = (b) => (long ? b.h >= target : b.l <= target);' },
   // engine.js
-  { name: 'trade after the cutoff: fills allowed after the 10:25 bar', file: EN, find: '    for (let q = order.k + 1; q <= Math.min(n - 1, LAST_FILL_INDEX); q++) {', replace: '    for (let q = order.k + 1; q <= n - 1; q++) {' },
+  { name: 'trade after the cutoff: fills allowed after the 10:25 bar', file: EN, find: '    for (let q = order.k + 1; q <= lastFill; q++) {', replace: '    for (let q = order.k + 1; q <= n - 1; q++) {' },
   { name: 'sweep window extended to the 10:00 bar', file: EN, find: '        if (k <= SWEEP_LAST_INDEX) {', replace: '        if (k <= SWEEP_LAST_INDEX + 1) {' },
   { name: 'bias ignored when it is on', file: EN, find: "          if (d && (variant.bias === 'off' || d === bias)) setup =", replace: '          if (d) setup =' },
   { name: 'limit filled on a touch', file: EN, find: "      if (order.dir === 'long' ? b.l < order.entry : b.h > order.entry) { m = q; break; }", replace: "      if (order.dir === 'long' ? b.l <= order.entry : b.h >= order.entry) { m = q; break; }" },
-  { name: 'a close back beyond the level no longer voids the setup', file: EN, find: '      if (long ? bar.c < pdl : bar.c > pdh) { setup = null; invalidated = true; continue; }\n', replace: '' },
+  { name: 'a close back beyond the level no longer voids the setup', file: EN, find: "      if (sw.invalidation === 'close_beyond_level' && (long ? bar.c < pdl : bar.c > pdh)) { setup = null; invalidated = true; continue; }\n", replace: '' },
   { name: 'the sweep extreme frozen at the sweep bar', file: EN, find: '      setup.extreme = long ? Math.min(setup.extreme, bar.l) : Math.max(setup.extreme, bar.h);\n', replace: '' },
   { name: 'incomplete sessions traded', file: EN, find: "    if (!s.complete) { end('incomplete_session', { bars: s.bars.length, full: s.full }); continue; }", replace: "    if (false) { end('incomplete_session', { bars: s.bars.length, full: s.full }); continue; }" },
   { name: 'the buffer counts incomplete sessions', file: EN, find: '      for (let i = si - 1; i >= 0 && prev.length < BUFFER_SESSIONS; i--) if (S[i].complete) prev.unshift(S[i]);', replace: '      for (let i = si - 1; i >= 0 && prev.length < BUFFER_SESSIONS; i--) prev.unshift(S[i]);' },
@@ -81,6 +81,17 @@ export const BUGS = [
   { name: 'gate: bars after the bound ignored', file: SV, find: "        add('bar-bound', after && after.bars5m === 0 && after.bars1d === 0 && (!maxDate || maxDate <= MAX_BAR_DATE),", replace: "        add('bar-bound', true," },
   { name: 'launcher: --run without --confirm-run runs', file: LN, find: "  if (!o.confirm) { io.log('--run without --confirm-run: refused by the launcher; nothing was run.'); out.refusedBy = 'launcher'; out.exitCode = 2; return out; }", replace: "  if (false) { io.log('--run without --confirm-run: refused by the launcher; nothing was run.'); out.refusedBy = 'launcher'; out.exitCode = 2; return out; }" },
   { name: 'launcher: a closed gate not refused by the launcher', file: LN, find: "  if (!gate.ok) { io.log('Refused by the launcher: the gate is closed; nothing was run.'); out.refusedBy = 'launcher'; out.exitCode = 2; return out; }", replace: "  if (false) { io.log('Refused by the launcher: the gate is closed; nothing was run.'); out.refusedBy = 'launcher'; out.exitCode = 2; return out; }" },
+  // Round 2 (PRE-REGISTRATION-2.md): the switches and the gate by round.
+  { name: 'R2-1: the cutoff switch ignored (always the 10:25 bar)', file: EN, find: '    const lastFill = Math.min(n - 1, sw.lastFill);', replace: '    const lastFill = Math.min(n - 1, LAST_FILL_INDEX);' },
+  { name: 'R2: round-1 files run with the round-2 cutoff by default', file: EN, find: '  const lastFill = variant.entryCutoff?.lastFillBarIndex ?? LAST_FILL_INDEX;', replace: '  const lastFill = variant.entryCutoff?.lastFillBarIndex ?? 17;' },
+  { name: "R2-2: the order block searched in today's bars only", file: EN, find: "      const zone = variant.zone === 'order_block' ? orderBlock(ext, lambda, setup.dir) : fairValueGap(ext, lambda, k + P, setup.dir);", replace: "      const zone = variant.zone === 'order_block' ? orderBlock(bars, lambda - P, setup.dir) : fairValueGap(ext, lambda, k + P, setup.dir);" },
+  { name: 'R2-2: swings not extended into the previous session', file: EN, find: '      const bos = bosAt(ext, k + P, setup.dir);', replace: '      const bos = bosAt(bars, k, setup.dir);' },
+  { name: 'R2-3: the invalidation switch ignored', file: EN, find: "      if (sw.invalidation === 'close_beyond_level' && (long ? bar.c < pdl : bar.c > pdh)) { setup = null; invalidated = true; continue; }", replace: '      if (long ? bar.c < pdl : bar.c > pdh) { setup = null; invalidated = true; continue; }' },
+  { name: 'validateVariant: a round-1 file may drop the invalidation rule', file: CF, find: "  if (!r2 && inval === 'none') e.push('a round-1 variant keeps the invalidation rule');\n", replace: '' },
+  { name: 'gate: a round-2 file accepted in round 1 and a round-1 file in round 2', file: SV, find: '      const list = listFor(round);', replace: '      const list = [...listFor(1), ...listFor(2)];' },
+  { name: 'logStatus: the round-1 code-frozen entry opens round 2', file: CF, find: '  const FROZEN_TITLE = frozenTitle(round);', replace: '  const FROZEN_TITLE = frozenTitle(1);' },
+  { name: 'count-only pass: expired orders counted as fills', file: SV, find: '  return { sessions: r.sessionsInWindow, sweeps, breaks, orders, fills: s.filled };', replace: '  return { sessions: r.sessionsInWindow, sweeps, breaks, orders, fills: s.filled + s.order_expired };' },
+  { name: 'count-only pass: the gate not checked', file: SV, find: '    const gate = gateStatus({ variantFile, round });\n    if (!gate.ok) throw new GateError(gate.conditions);\n    const name = path.basename(variantFile);\n    const variant = loadVariant(path.join(variantDir, name));\n    const db = openDb(true);', replace: '    const name = path.basename(variantFile);\n    const variant = loadVariant(path.join(variantDir, name));\n    const db = openDb(true);' },
 ];
 
 export function parseArgs(argv) {

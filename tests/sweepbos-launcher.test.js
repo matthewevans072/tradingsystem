@@ -12,10 +12,10 @@ const V = 'sb-fvg-a-nobias-0.1.0.json';
 const io = () => { const lines = [], errors = []; return { log: (l) => lines.push(String(l)), error: (l) => errors.push(String(l)), lines, errors }; };
 
 test('parseArgs: one variant, the modes, and refused combinations', () => {
-  assert.deepEqual(parseArgs(['--variant', V]), { variant: V, mode: 'check', confirm: false, runId: null, reason: null });
+  assert.deepEqual(parseArgs(['--variant', V]), { variant: V, mode: 'check', confirm: false, runId: null, reason: null, round: 1 });
   assert.deepEqual(parseArgs(['--variant', V, '--run', '--confirm-run']).mode, 'run');
   assert.equal(parseArgs(['--variant', V, '--run']).confirm, false);
-  assert.deepEqual(parseArgs(['--mark-failed', '3', '--reason', 'killed']), { variant: null, mode: 'mark-failed', confirm: false, runId: 3, reason: 'killed' });
+  assert.deepEqual(parseArgs(['--mark-failed', '3', '--reason', 'killed']), { variant: null, mode: 'mark-failed', confirm: false, runId: 3, reason: 'killed', round: 1 });
   assert.equal(parseArgs(['--pick']).mode, 'pick');
   assert.throws(() => parseArgs(['--run']), /--variant/);
   assert.throws(() => parseArgs(['--mark-failed', '3']), /--reason/);
@@ -43,7 +43,9 @@ test('check mode prints every condition and runs nothing; --run without --confir
   assert.equal(r3.refusedBy, 'launcher');
   assert.equal(r3.exitCode, 2);
   assert.ok(o3.lines.some((l) => l.startsWith('[--] code-frozen-entry')));
-  assert.ok(o3.lines.some((l) => l === 'Gate: CLOSED; nothing runs.'));
+  assert.ok(o3.lines.some((l) => l.startsWith('Gate: CLOSED for round 1; nothing runs.')));
+  assert.throws(() => parseArgs(['--variant', V, '--round', '3']), /--round must be 1 or 2/);
+  assert.equal(parseArgs(['--variant', V, '--round', '2']).round, 2);
   assert.equal(closed.service.listRuns().length, 0);
 });
 

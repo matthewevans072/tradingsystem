@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tempDir } from './helpers.js';
 import * as store from '../server/sweepbos/store.js';
-import { CODE_REVISION, VARIANT_DIR, textSha256, FROZEN_TITLE } from '../server/sweepbos/config.js';
+import { CODE_REVISION, VARIANT_DIR, textSha256, frozenTitle } from '../server/sweepbos/config.js';
 import { createSweepBos } from '../server/sweepbos/service.js';
 import { buildMarket } from './sweepbos-fake-alpaca.js';
 
@@ -14,7 +14,7 @@ export const COMMIT = 'abc123abc123abc123abc123abc123abc123abc1';
 export const COMMITTED_AT = '2026-11-03T17:00:00Z';
 export const CLOCK = () => new Date('2026-11-04T12:00:00Z');
 export const LOG_HEADER = '# sweep-bos: experiment log (append-only)\n\nEntries are headed `## <number> | <date> | <title>`.\n';
-export const frozenEntry = ({ revision = CODE_REVISION, commit = COMMIT, dataHash, number = 1 }) => `\n## ${number} | 2026-11-03 | **${FROZEN_TITLE}** (synthetic test log)\n\nCode revision ${revision}; pre-registration commit ${commit}; data version 1, data hash: ${dataHash}.\n`;
+export const frozenEntry = ({ revision = CODE_REVISION, commit = COMMIT, dataHash, number = 1, round = 1 }) => `\n## ${number} | 2026-11-03 | **${frozenTitle(round)}** (synthetic test log)\n\nCode revision ${revision}; pre-registration commit ${commit}; data version 1, data hash: ${dataHash}.\n`;
 
 export function serviceFixture({ frozen = true, revision = CODE_REVISION, frozenRevision = null, frozenHash = null, extraLog = '', downloadedAt = '2026-11-03T18:00:00Z', from = '2018-11-01', to = '2019-03-29', seed = 11, overrides = {} } = {}) {
   const dir = tempDir('sb-svc-');

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../server/config.js';
 import { openSbDb, listRuns, getDataVersion, maxStoredDate, countBarsAfterBound } from '../server/sweepbos/store.js';
 import { pickRule, MIN_TRADES, MAX_MONTH_SHARE, P_MAX, TIE_R } from '../server/sweepbos/metrics.js';
-import { ROOT, DB_NAME, REPORT_DIR, INSTRUMENTS, STAND_IN_FOR, WINDOWS, MAX_BAR_DATE, ROUND1_VARIANTS, PREREG } from '../server/sweepbos/config.js';
+import { ROOT, DB_NAME, REPORT_DIR, INSTRUMENTS, STAND_IN_FOR, WINDOWS, MAX_BAR_DATE, roundVariants, PREREG } from '../server/sweepbos/config.js';
 import { STAGES } from '../server/sweepbos/engine.js';
 
 const f4 = (x) => (x == null || Number.isNaN(x) ? 'n/a' : Number(x).toFixed(4));
@@ -46,8 +46,8 @@ export function buildReport({ round, runs, failedRuns = [], version, bound, gene
   L.push(`## 1. Runs recorded (measured)`, '');
   L.push('| Run | Variant | Rules | Status | Code revision | Engine | HEAD | Source hash | Started | Finished |', '|---|---|---|---|---|---|---|---|---|---|');
   for (const r of [...runs, ...failedRuns].sort((a, b) => a.id - b.id)) L.push(`| ${r.id} | ${r.variant} | ${r.details?.variant ? label(r.details.variant) : ''} | ${r.status}${r.error ? ` (${r.error})` : ''} | ${r.codeRevision} | ${r.engineVersion} | ${(r.headCommit || '').slice(0, 12)} | ${(r.sourceHash || '').slice(0, 12)} | ${r.createdAt} | ${r.finishedAt} |`);
-  const missing = ROUND1_VARIANTS.filter((v) => !runs.some((r) => r.variant === v));
-  L.push('', `${runs.length} of ${ROUND1_VARIANTS.length} pre-registered variants have a completed run${missing.length ? `; not yet run: ${missing.join(', ')}` : ''}.`, '');
+  const missing = roundVariants(round).filter((v) => !runs.some((r) => r.variant === v));
+  L.push('', `${runs.length} of ${roundVariants(round).length} pre-registered variants have a completed run${missing.length ? `; not yet run: ${missing.join(', ')}` : ''}.`, '');
 
   L.push('## 2. Figures per variant and instrument (PRE-REGISTRATION.md 6.5)', '');
   for (const r of runs) {
@@ -94,9 +94,9 @@ export function buildReport({ round, runs, failedRuns = [], version, bound, gene
   L.push('## 4. Outcome and the pick rule (report only)', '');
   const variants = runs.map((r) => ({ name: r.variant, candidate: !!r.metrics.candidate, pooled: r.metrics.pooled }));
   const pick = pickRule(variants);
-  const complete = runs.length === ROUND1_VARIANTS.length;
+  const complete = runs.length === roundVariants(round).length;
   L.push(`Candidates: ${variants.filter((v) => v.candidate).map((v) => v.name).join(', ') || 'none'}.`);
-  L.push(complete ? `Pick rule (pooled mean R, ties within ${TIE_R} R to the smaller pooled drawdown): **${pick.pick ?? 'NONE advances'}**. ${pick.reason}.` : `The round is not complete (${runs.length} of ${ROUND1_VARIANTS.length} runs): no pick is reported.`);
+  L.push(complete ? `Pick rule (pooled mean R, ties within ${TIE_R} R to the smaller pooled drawdown): **${pick.pick ?? 'NONE advances'}**. ${pick.reason}.` : `The round is not complete (${runs.length} of ${roundVariants(round).length} runs): no pick is reported.`);
   L.push('', '| Rank | Variant | Candidate | Pooled mean R | Pooled max drawdown (R) |', '|---|---|---|---|---|');
   pick.ranking.forEach((v, i) => L.push(`| ${i + 1} | ${v.name} | ${yn(v.candidate)} | ${f4(v.meanR)} | ${f2(v.maxDrawdownR)} |`));
   L.push('', 'The best ending value of the dollar account is never the pick. A pick here is a candidate for the owner\'s review and for the one-time evaluation run (Part F, separately authorized), nothing more.', '');

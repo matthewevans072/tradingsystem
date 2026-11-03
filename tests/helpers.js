@@ -1,13 +1,30 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { openDb } from '../server/db.js';
 
 process.env.SIGNAL_DESK_QUIET = '1';
 
+// Every database a test process opens is closed when the process exits, whoever opened it (the test itself,
+// a service or the app code under test): on Windows an open SQLite file cannot be deleted, which is what left
+// temp directories behind after a run. The hook records a database the first time it runs a statement, so no
+// test has to register anything; a database the test already closed is skipped.
+const openDbs = new Set();
+for (const method of ['exec', 'prepare']) {
+  const original = DatabaseSync.prototype[method];
+  DatabaseSync.prototype[method] = function tracked(...args) { openDbs.add(this); return original.apply(this, args); };
+}
+export function closeOpenDbs() {
+  let closed = 0;
+  for (const db of openDbs) { try { db.close(); closed++; } catch { /* already closed */ } }
+  openDbs.clear();
+  return closed;
+}
+
 // Every temp directory a test creates is removed when the test process exits (node --test runs each file in
-// its own process). A directory whose files are still open at exit (an unclosed database on Windows) is
-// retried a few times and otherwise left; the test that forgot to close it should close it.
+// its own process), after every open database has been closed. A directory that still cannot be removed is
+// retried a few times and otherwise reported (SIGNAL_DESK_TEMP_REPORT=1).
 const created = [];
 let hooked = false;
 export function removeTempDirs() {
@@ -23,7 +40,7 @@ export function tempDir(prefix = 'sd-test-') {
   created.push(dir);
   if (!hooked) {
     hooked = true;
-    process.on('exit', () => { const left = removeTempDirs(); if (left.length && process.env.SIGNAL_DESK_TEMP_REPORT) process.stderr.write(`temp directories left (files still open at exit): ${left.join(', ')}\n`); });
+    process.on('exit', () => { closeOpenDbs(); const left = removeTempDirs(); if (left.length && process.env.SIGNAL_DESK_TEMP_REPORT) process.stderr.write(`temp directories left (files still open at exit): ${left.join(', ')}\n`); });
   }
   return dir;
 }

@@ -24,16 +24,20 @@ test('basic figures by hand: win rate, mean, median, profit factor, maximum draw
 });
 
 test('mulberry32 is the documented generator and the bootstrap is deterministic with its seed', () => {
+  // The exact outputs of the generator defined in PRE-REGISTRATION.md section 6 (a = seed; a += 0x6D2B79F5; ...).
   const r = mulberry32(1);
-  const first = r();
-  assert.ok(first >= 0 && first < 1);
-  assert.equal(mulberry32(1)(), first);
-  assert.notEqual(mulberry32(2)(), first);
+  assert.deepEqual([r(), r(), r(), r(), r()], [0.6270739405881613, 0.002735721180215478, 0.5274470399599522, 0.9810509674716741, 0.9683778982143849]);
+  const s = mulberry32(SEEDS.bootstrap);
+  assert.deepEqual([s(), s(), s()], [0.24271581135690212, 0.5461220773868263, 0.7796479605603963]);
+  assert.notEqual(mulberry32(2)(), 0.6270739405881613);
   const one = bootstrapInterval([0.7]);
   assert.deepEqual([one.lower, one.upper, one.resamples, one.seed], [0.7, 0.7, 10000, SEEDS.bootstrap]);
   const vals = [1, -1, 2, -0.5, 0.5, 0.3, -0.2, 1.5, -1, 0.1];
   const a = bootstrapInterval(vals), b = bootstrapInterval(vals);
   assert.deepEqual(a, b);
+  // The exact interval the seeded generator gives for these ten values (the 250th and 9,750th resample means).
+  close(a.lower, -0.3, 'lower bound with seed 20261103');
+  close(a.upper, 0.87, 'upper bound with seed 20261103');
   const m = basicStats(vals).mean;
   assert.ok(a.lower <= m && m <= a.upper);
   assert.ok(a.lower < a.upper);
