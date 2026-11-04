@@ -1,0 +1,228 @@
+# Signal Desk development journal
+
+How to read a **Checked:** line: `tests` = the automated suite ran and passed on the owner's PC (count given); `live` = run against real market data or the running app on the owner's PC; `not verified` = written or reasoned only, never run.
+"Synthetic" means a test on made-up bars; a synthetic result is never performance evidence. Dates are absolute (YYYY-MM-DD); numbers carry units. Entries are appended at the bottom and never rewritten.
+
+## Start here
+
+**Open:** `C:\Users\matth\OneDrive\Desktop\trading system` in VS Code (Claude Code extension), git branch `hxr`. The repository is the private GitHub `matthewevans072/tradingsystem` (default branch `main`; all work since 2026-10-22 is on `hxr`). Git-ignored and never pushed: `node_modules/`, `.env`, `data/`, `*.sqlite*`, `*.log`, `*.zip`, `backups/`.
+
+**What to tell a new chat:** "Pick up where we left off." The assistant then follows the protocol in `CLAUDE.md` (reads this block, Where things stand, the open list, the last two entries and `PROJECT_SUMMARY.md`, runs `npm test`, replies in about 10 lines, waits). If the assistant's memory is gone entirely, paste the sentence in the last section of `PROJECT_HANDOVER.md`.
+
+**Environment check** (in the project folder, Git Bash):
+
+| Check | Command | Expected on 2026-11-03 |
+|---|---|---|
+| Node | `node --version` | v24 (22.13 or newer required) |
+| Branch and tree | `git status --short` | branch `hxr`; only the 24 phantom ` M strategy/hxr/*` lines (CRLF line endings; never add, revert or touch them) plus any work in progress |
+| Last commit | `git log -1 --oneline` | matches the latest journal entry's hash |
+| Secrets present | `test -f .env && echo ok` | `ok` (never print the file) |
+| Free disk | `df -h .` | 763 GB free on 2026-11-03; check before heavy steps |
+| Suite | `npm test` | 575 tests: 573 pass, 1 skipped, 1 known failure (`tests/agent-safety.test.js`, weekend fixture dates) |
+
+**Safety check before editing:** confirm the branch and the phantom-only status above; read the last two entries of the `EXPERIMENT-LOG.md` of any research programme you will touch; never open `data/signal-desk.sqlite` directly; never edit a pinned or pre-registered file (a change is a new version with a log entry); for sweep-bos, `npm run sb:run -- --check --round 2 --variant strategy/sweep-bos/variants/<file>` prints every gate condition, the bar bound included, and runs nothing; for range-trend, `npm run rt:run -- --check --config strategy/range-trend/configs/<file>` does the same.
+
+**Commands:**
+
+| Purpose | Command | Notes |
+|---|---|---|
+| Tests | `npm test` | all files; one file: `node --test tests/<name>.test.js` |
+| Run the app | `Start-Signal-Desk.bat` or `npm start` | http://127.0.0.1:4317; `npm run dev` restarts on change |
+| Briefing now | `npm run briefing -- premarket` | delivers only if delivery is configured (it is OFF) |
+| Backup | `npm run backup` | the owner's real workspace |
+| Strategy Lab backtest | `npm run lab:backtest` | refuses unless every symbol is READY; the holdout never |
+| Range-trend gate / run | `npm run rt:run -- --check --config <file>`; run only with `--run --confirm-run` | needs the owner's "Practice runs authorized" row; none exists |
+| Range-trend planted bugs | `npm run rt:planted` | 46 bugs; every one must be CAUGHT by a named test |
+| sweep-bos gate / count / run | `npm run sb:run -- --check\|--count\|--run --confirm-run --round N --variant <file>` | `--pick` prints the report-only pick; `--mark-failed --reason` for a broken run |
+| sweep-bos report / planted bugs | `npm run sb:report -- --round N`; `npm run sb:planted` | 59 bugs; every one must be CAUGHT |
+| sweep-bos download | `npm run sb:download` | bounded: refuses any end after 2022-12-30 |
+| Save | say "save" | refreshes `PROJECT_SUMMARY.md` and this journal |
+| Commit and push | `git add -A && git commit -F <message file>`; `git push origin hxr` | only when the owner asks or a work order says so; messages end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` |
+
+**Workflows (no custom key bindings):**
+1. A work order from the owner → pre-registration documents and pinned files committed → data downloaded (bounded) → runs through the code gate, one per variant → report with every figure labelled measured or derived → the owner's decision, quoted verbatim in the programme's `EXPERIMENT-LOG.md` under its real date before anything further runs.
+2. The planted-bug harness (`rt:planted`, `sb:planted`) on the committed code before reporting research code as done.
+3. Commit per part, with hashes, actual test counts and the harness result, when the work order says so; otherwise commit only when the owner asks.
+4. No review workflows or subagent fan-out for this project unless the owner asks (the subagent spend limit was hit on 2026-10-28; the owner's orders say "no broad review cycle").
+5. Autosave: after every two of the owner's messages or on "save", refresh `PROJECT_SUMMARY.md` and this journal.
+
+**Working agreements:**
+- The owner decides; the assistant reports. Nothing is enabled, scheduled, committed or run on market data without the owner's message, and the owner's authorization rows are never written by the code or the assistant.
+- Simulation only, everywhere; no broker, order, paper-trading or trading-permission code; monitoring, reminders, notifications and live order execution OFF; no paid service without approval.
+- Every figure measured or derived; every claim verified / tested / unverified; never "profitable" or "live-ready"; a negative, NONE or inconclusive result is a valid outcome.
+- Pre-registered files, pinned configs and earlier log entries are never edited; a change is a new version plus a log entry saying which data had been seen.
+- Secrets never printed or committed; bars never committed; temp folders cleaned; free disk checked before heavy steps.
+
+**Where each piece of code lives:**
+
+| Area | Files |
+|---|---|
+| App server | `server/index.js` (HTTP, security), `api.js` (routes), `db.js` (schema, migrations, audit), `portfolio.js` (ledger → positions, splits, FX), `importer.js` (CSV), `calendar.js` (NYSE/TSX), `freshness.js`, `marketdata.js` + `providers/` (Twelve Data, Finnhub, SEC, Bank of Canada, demo), `news.js`, `analytics.js`, `assessments.js`, `briefings.js`, `scheduler.js`, `alerts.js`, `delivery.js`, `analyst.js`, `backup.js`, `catalog.js` + `catalog/securities.json`, `config.js`, `context.js`, `log.js`, `time.js` |
+| Chat agent | `server/agent/` — `agent.js` (loop), `tools.js` (read-only tools), `proposals.js`, `guard.js`, `ledger.js`, `calc.js`, `prompt.js`, `backend.js`, `suggestions.js` |
+| Front end | `public/app.js`, `public/views/*.js` (overview, positions, watchlist, intelligence, reports, settings, lab, hxr), `public/lib/` (ui, charts, chat, api), `styles.css` |
+| Strategy Lab | `server/strategy/` (engine, boxes, indicators, costs, data, readiness, validation, lab, forward, webhook, api, store, report, …) + docs `strategy/*.md`, configs `strategy/configs/`, Pine `strategy/pine/` |
+| HXR | `server/hxr/` (config, store, source, data, engine, metrics, service, api) + `strategy/hxr/` (pre-registrations, configs, EXPERIMENT-LOG, ENGINE-NOTES, reports) |
+| Range-trend | `server/rangetrend/` (levels, engine, benchmark, metrics, pick, store, config, service) + `strategy/range-trend/` (PLAN-DRAFT, PROPOSED-RULES, EVALUATION-PROTOCOL, EVALUATION-THRESHOLDS, EXPERIMENT-LOG, configs) |
+| sweep-bos | `server/sweepbos/` (config, store, data, rules, engine, metrics, service) + `strategy/sweep-bos/` (PLAN, PRE-REGISTRATION, PRE-REGISTRATION-2, EXPERIMENT-LOG, variants, reports) |
+| Scripts | `scripts/` — `run-briefing.js`, `backup.js`, `agent-eval.js`, `strategy-backtest.js`, `strategy-compare-tv.js`, `strategy-pine-parity.mjs`, `rangetrend-run.mjs`, `rangetrend-planted.mjs`, `sweepbos-download.mjs`, `sweepbos-run.mjs`, `sweepbos-report.mjs`, `sweepbos-planted.mjs` |
+| Tests | `tests/*.test.js` (65 files incl. helpers and fixtures); `tests/helpers.js` closes every SQLite database at exit and removes temp directories |
+| Memory | `CLAUDE.md` (protocol, under 40 lines), `CLAUDE-INVARIANTS.md` (every invariant, imported by CLAUDE.md), `JOURNAL.md` (this), `PROJECT_SUMMARY.md` (derived), `PROJECT_HANDOVER.md` (long form), the assistant's memory directory |
+
+## Where things stand (updated 2026-11-04)
+
+- **What it does:** a local portfolio desk (holdings in USD and CAD, news, briefings, rule-based assessments, a read-only chat agent) that cannot trade, plus four strategy simulations with their own databases and no order path.
+- **Current design:** every research programme is pre-registered (rules and pinned files committed before data), gated in code, logged append-only, and ends in a report; pick rules are reports only; the owner decides every step.
+- **Verified live (on the owner's PC, real market data):** Strategy Lab runs 1 to 12 (2026-10-22); HXR data download and development pick, runs 1 to 22 (2026-10-23); sweep-bos data version 1, round-1 runs 1 to 8 and the round-2 count-only pass (2026-11-03).
+- **Tested on synthetic data only (never run on market data):** range-trend, all of it; the HXR corrections since 2026-10-26 (tech/AI tags, binding record); the sweep-bos round-2 switches beyond counting.
+- **What the real data says:** every result so far is negative or inconclusive. Strategy Lab cb-1.0.0 not eligible and cb-1.1.0 failed its screen; HXR development pick found no candidate; sweep-bos round 1 NONE and round 2 inconclusive (59 and 37 fills against 100). No candidate exists anywhere; no holdout has ever been run.
+- **Built but switched off:** the scheduler, briefings, alerts and delivery (OFF by the owner's rule); the TradingView webhook (off unless configured); the Strategy Lab forward test (not started; needs a paid real-time feed); the HXR prospective account (not started as far as the logs record); the range-trend practice-run launcher (gated; unauthorized); remote access to the app (off by default).
+- **Range-trend:** code revision rt-code-2026-11-02-1; the eight rt-*-0.2.0.json configs pinned; the pick rule and date rule adopted 2026-11-02; waiting on the owner's "Practice runs authorized" row, which only the owner writes.
+- **sweep-bos:** development phase closed 2026-11-03; no variant for the evaluation window; Part F unauthorized and moot; the bound holds (latest stored bar 2022-12-30, 0 bars after it).
+- **Data on disk (sizes measured 2026-11-03):** `data/signal-desk.sqlite` 4 KB + 1.05 MB WAL (the owner's real workspace); `strategy-lab.sqlite` 79.1 MB; `hxr-sim.sqlite` 125.5 MB + 119.5 MB WAL; `sweep-bos-sim.sqlite` 20.2 MB; `range-trend-sim.sqlite` 49 KB (schema only, no runs).
+- **Memory system (Build 7, 2026-11-03):** CLAUDE.md rewritten under 40 lines; the invariants moved verbatim to CLAUDE-INVARIANTS.md and imported; this journal, PROJECT_SUMMARY.md and PROJECT_HANDOVER.md created; committed 2026-11-04 on the owner's order (Build 8, third addendum).
+- **ICT Lab (Build 8, 2026-11-04):** Part A documents in `strategy/ict-lab/` (protocol, concepts H1 to H20, four spec files, log entries 1 to 4); QQQ long-only, four specs, $5,000; development window 2018-06-01 to 2022-12-30 as the bar bound; reviewed, corrected, approved and committed 2026-11-04 as the Part A pre-registration commit (hash in the third addendum and lab log entry 4); Parts B to E (code, download, runs, validation) not authorized; the 100-fill minimum flagged as at risk from the sweep-bos counts.
+- **ICT Lab collision (2026-11-04):** two sessions ran the same Part A order; the second overwrote the first session's two documents (lab log entry 2); the owner's review addressed the first design, which was restored, verified against entry 1's hashes and corrected (entry 3); the second session's copies were kept under `superseded/` and deleted on the owner's approval (their hashes stay in entries 2 and 3). Resolved.
+- **Next:** the owner's decisions: ICT Lab Part B by a separate message; authorize the range-trend practice runs or not; confirm in a fresh session that CLAUDE-INVARIANTS.md loads through the import line.
+- **Test count:** 575 tests, 573 pass, 1 skipped, 1 known unrelated failure (re-run 2026-11-04 after Build 8, which changed no code).
+
+## Still to verify (the open list)
+
+Numbered once, never renumbered; resolved items are struck through with the date.
+
+1. Range-trend practice runs: not authorized; waiting on the owner's `**Practice runs authorized**` row (only the owner writes it). Unverified on market data.
+2. Range-trend `EVALUATION-THRESHOLDS.md`: Tier 3 thresholds and the journal minimums are `[OWNER TO SET]`; must be set and the file frozen before any evaluation result is accessed (not needed before the practice runs).
+3. Strategy Lab forward test: not started; needs a paid real-time consolidated feed, which needs the owner's approval.
+4. Pine compile and fill check in the owner's TradingView account (`strategy/PINE-RECONCILIATION.md`, last section): listed as "still to do, by the owner" on 2026-10-22; status unknown to the assistant.
+5. `tests/agent-safety.test.js` "tool outputs ..." fails when today + 12 or today + 20 days falls on a weekend (fixture issue); unresolved.
+6. CLAUDE.md's `@CLAUDE-INVARIANTS.md` import: not verified in this session (the file was loaded directly before the move). Confirm in a fresh session that the invariants are in context.
+7. HXR manifest hash depends on line endings at checkout (`core.autocrlf=true`; `strategy/hxr/ENGINE-NOTES.md`); recorded, unresolved.
+8. The 24 phantom ` M strategy/hxr/*` lines in `git status` (line endings); cosmetic; never touched.
+9. sweep-bos data note: the daily bar's high or low differs from the 5-minute session's by more than 0.01 in 57 (QQQ) and 124 (SPY) sessions; reported, not corrected; the programme is closed.
+10. ~~Build 7's files (CLAUDE.md, CLAUDE-INVARIANTS.md, JOURNAL.md, PROJECT_SUMMARY.md, PROJECT_HANDOVER.md, .gitignore) are uncommitted; waiting on the owner's word.~~ Committed 2026-11-04 on the owner's order (Build 8, third addendum).
+11. HXR `data/hxr-sim.sqlite` carries a 119.5 MB write-ahead log; a checkpoint happens when the app closes the database cleanly; harmless, not verified.
+12. ICT Lab Part A (`strategy/ict-lab/PROTOCOL.md`, `CONCEPTS.md`, `specs/*.json`, `EXPERIMENT-LOG.md`): written 2026-11-04, corrected on the owner's review and approved with two changes the same day (H2 and the re-arm owner-confirmed; `superseded/` deleted; spec field renamed `rearmAfterRefusedConfirmation`); committed as the Part A pre-registration commit (Build 8, third addendum; lab log entry 4); the other proposed numbers remain "proposed" in the pinned text, and any later change is a new version plus a log entry; Parts B to E not authorized.
+13. ~~ICT Lab Part A: two designs were written for the same order and only the second survives on disk (collision, lab log entry 2); the owner has not yet said which stands, and the first session's versions exist only in that session's context.~~ Resolved 2026-11-04: the owner's review addressed the first session's design; it was restored (verified against entry 1's hashes), corrected, and is on disk; the second session's two files were preserved in `strategy/ict-lab/superseded/2026-11-04-parallel-session/` (Build 8, second addendum; lab log entry 3) and deleted on the owner's approval of 2026-11-04 (their hashes stay in lab log entries 2 and 3).
+
+## Entries
+
+Entries before Build 7 were reconstructed on 2026-11-03 from git history, the experiment logs and the reports; their test counts are what those sources record.
+
+### Build 1: Signal Desk app and the Ask Signal Desk agent (2026-10-21)
+- **What changed:** the app was imported into this repository (commit d081800 "Import Signal Desk"; it had lived on branch `signal-desk` of `matthewevans072/automated-reception-data-scraper`). The same day: the chat agent backend with read-only tools, the ledger of cited records, proposals (the only write path, confirmed by the owner), the trade-claim guard and intent check rebuilt against labelled corpora, the spend cap, streaming, the chat panel and the docs (commits 38fb9cc to 2e874c8); daily P/L fixes (3ce5b81).
+- **Why:** a grounded, non-trading research desk whose answers cite the owner's own records.
+- **Checked:** tests at the time not recorded in commit messages (count unverified); 261 tests passing on 2026-10-22 per `strategy/HANDOFF.md`. Live: the app runs on the owner's PC (used for briefings; exact dates not recorded here).
+- **Unverified:** the app's history before the import is not in this repository.
+
+### Build 2: Strategy Lab (2026-10-21 to 2026-10-22)
+- **What changed:** pre-registration (rules, engine spec, universe of 17 symbols, splits, acceptance criteria; f8258a4), the deterministic consolidation-breakout engine with validation and backtests (6bc9ddf), the Pine v6 version, TradingView guide and Questrade assessment (c37c776), the Lab backend, page and read-only chat tools (994d423, e63d4d7), data readiness and the Alpaca SIP history source (a37bf3e), tests that never read host credentials (f03707d), the project's own repository (9e89c07), the readiness report (74bf5fa: 7 of 17 READY, Alpaca Tape A gap on 4 sessions), its adversarial review (73117f8), splits-v2 exclusions and the readiness gate (136a76f), cb-1.1.0 (43ca50e).
+- **Why:** the owner's brief: "a verified real-data simulation over additional features"; rules frozen, no tuning.
+- **Checked:** tests 261 (2026-10-22, `strategy/HANDOFF.md`) then 283 (2026-10-22, `strategy/reports/2026-10-22-v1.1-screen.md`). Live: 551,592 bars downloaded for 17 symbols, 2021-07-01 to 2026-06-30, into `data/strategy-lab.sqlite`.
+
+### Session 1 (2026-10-22): Strategy Lab real-data runs
+- **Owner's notes:** the owner's limit, recorded in `strategy/PARAMETER-LOG.md` before any cb-1.1.0 result: one v1.1 version, swing only, one holdout run; failing the screen or the holdout (inconclusive included) closes cb-1.0.0 with no v1.2.
+- **What ran:** cb-1.0.0 runs 1 to 8 (development, validation, stress, walk-forward; both modes): NOT ELIGIBLE in both modes; development trades 2 (intraday) and 8 (swing), validation trades 0 and 1 against the 60 required; criterion B8 fails. cb-1.1.0 runs 9 to 12 (swing): FAILS the pre-holdout screen on S1 to S4 (58 closed validation trades, validation mean R -0.21, development mean R -0.02, 2 of 12 neighbours positive). The holdout was not run (`lab_holdout_runs` empty).
+- **Checked:** live (stored runs; reports `2026-10-22-development-validation.md`, `2026-10-22-v1.1-screen.md`). Outcome: cb-1.0.0 closed with no v1.2, under the owner's limit.
+
+### Build 3: HXR (2026-10-22 to 2026-10-23)
+- **What changed:** pre-registration before any test (f30c743), the capabilities report (78bcff3), the simulation module with data layer, engine, prospective account, API and page (e4ca703), the real-data readiness check (69be637), pre-registration 2 with exit rules X1 to X3 (27a1b26, 68e3710), pre-registration 3 with risk sizing and three periods (11b40db), amendment 3a: six candidates, one winner, a second benchmark (2b11188, ce7ce06), amendment 3b: the pick rule is ending_value (25b3af0), pre-run implementation corrections with results seen: no (cf209fa).
+- **Why:** the owner's hold / exit / re-enter question on a ten-stock basket, tested once per phase.
+- **Checked:** tests (counts not recorded in commit messages; unverified); synthetic engine tests for prefix invariance, future-change invariance, snapshots and determinism (`tests/hxr-rules-2.test.js`, `hxr-rules-3.test.js`).
+
+### Session 2 (2026-10-23): HXR download and development pick
+- **Owner's notes:** MU kept in the evaluation (EXPERIMENT-LOG entry 15, recorded before any run); amendment 3b, the pick rule ending_value (entry 13 context, commit 25b3af0).
+- **What ran:** the data download (entry 14: Alpaca SIP raw daily bars, first 15-minute bars, corporate actions and opening quotes for 13 symbols from each listing date, not before 2016-01-04, to 2026-10-22); the development pick, once (entry 16; ledger row 1, kind selection; runs 1 to 22; development period 2017-10-02 to 2021-12-31, warm-up from 2016-01-04): **stop, no candidate qualified** ("no candidate completed at least 10 round trips with a defined ending value"). Nothing frozen; validation and final periods unused. Post-run finding (entry 17): the tech/AI tags were dropped, so the US$10,500 tech/AI cap never applied; the stored result stands with the defect disclosed.
+- **Checked:** live (`strategy/hxr/reports/2026-10-23-development-pick.md`).
+
+### Build 4: HXR corrections and read-only diagnosis (2026-10-26 to 2026-10-27)
+- **What changed:** tags reach backtests; every run records codeRevision and symbolsHash (409c353); read-only diagnosis of the stored runs with a supplement and corrections (9a8fdfc, 975a4cf, 732d5fa); the binding-cap record (e495870, reporting only); the in-place ENGINE-SPEC edit disclosed and ENGINE-NOTES.md created for post-result notes (921b22a).
+- **Why:** disclose and fix the defects found after the results without re-running or changing the record.
+- **Checked:** tests (the suite stood at 458 tests, 457 pass, 1 skipped, at commit b6007e3 on 2026-10-26); the diagnosis opened `data/hxr-sim.sqlite` read-only (live, stored runs only). Nothing re-run.
+
+### Build 5: Range-trend (2026-10-26 to 2026-11-02)
+- **What changed:** plan drafts v0.1 to v0.4 (5e1998a, 71f27b3, 47968d9, 21f161b), the Tier 1 build on synthetic data (b6007e3), two fix passes (f82916c, f0b0e1a), tests aimed at the planted-bug list (62747f8; 20 of 20 caught, bc7200c), the owner's decisions D1 to D8 recorded (fed9090) and implemented with the eight rt-*-0.2.0 configs (f337617), protocol and gating (0f7cbc1), Tier 1 tests and 30 of 30 planted bugs (471a2ce), tempDir cleanup at exit (e46c9f1), the harness with a baseline (8ab682f), the second fix pass (f44f6f4), PROPOSED-RULES.md (b92caaa), the pick rule and date rule adopted (ea4e5ec), pick-rule inputs and the gated launcher (45fa356), 46 planted bugs (837cd79), decision records (f587e93).
+- **Why:** the owner's range and trend idea on HXR's ten stocks, with every decision the owner's and every run gated.
+- **Checked:** tests 458 → 479 → 482 → 504 → 509 (commit messages of 2026-10-26 and 2026-10-28; later commits did not record the count); planted bugs 46 of 46 caught on 2026-11-02 (EXPERIMENT-LOG entry 14). Nothing run on market data; `data/range-trend-sim.sqlite` holds the schema only.
+- **Unverified:** every rule on real bars.
+
+### Build 6: sweep-bos (2026-11-03)
+- **What changed:** Part A pre-registration (839ac73: PLAN.md, PRE-REGISTRATION.md v1, eight round-1 variants, pins); Part B data module with the 2022-12-30 bound at insert, load and download (86226f0); Part C engine, Tier 1 tests and the planted-bug harness (a6294f4); Part D gated launcher, service and report builder (cbd514d); round 1 run and reported (db29047); round 2 defined, pinned and code-frozen with the engine switches and a behaviour snapshot (cf577f5); the count-only pass and outcome (e3bd7dd). `tests/helpers.js` now closes every open SQLite database at exit (the temp-leak fix of the owner's condition 6).
+- **Why:** the owner's work order (EXPERIMENT-LOG entry 1), the correction on the download bound (entry 3), the round-2 instruction (entry 17) and decision (entry 20), all verbatim in `strategy/sweep-bos/EXPERIMENT-LOG.md`.
+- **Checked:** tests 565 (563 pass, 1 skipped, 1 known failure) after round 1 and 575 (573 pass, 1 skipped, 1 known failure) after round 2; planted bugs 49 of 49 (round-1 code), 59 of 59 on commit cf577f5 (baseline 53); temp leftovers re-measured 0.
+
+### Session 3 (2026-11-03): sweep-bos data, round 1 and the round-2 count-only pass
+- **Owner's notes:** verbatim in `strategy/sweep-bos/EXPERIMENT-LOG.md` entries 1 (the work order), 3 (the correction: "download QQQ and SPY 5-minute and daily bars ONLY for the warm-up and the DEVELOPMENT window (2018-06-01 to 2022-12-30)"), 17 ("Okay, use this data to create the new next steps.") and 20 (the round-2 decision with conditions 1 to 6, including "If even the most relaxed variant would give under 100 fills per instrument over 2019-01-02 to 2022-12-30, stop: report round 2 as inconclusive and run nothing further.").
+- **What ran:** data version 1 (hash e7a619d2…, QQQ and SPY 5-minute and daily bars 2018-06-01 to 2022-12-30; readiness counts only); round-1 runs 1 to 8, one per variant: 1 to 8 completed trades per instrument against 100 required; no candidate; NONE advanced (`reports/round-1.md`); the round-2 count-only pass: the combined variant gives 59 fills on QQQ and 37 on SPY, both under 100; round 2 inconclusive; nothing further ran (`reports/round-2.md`).
+- **Checked:** live. The bound verified after the pass: latest stored date 2022-12-30; 0 bars after it in both tables.
+
+### Build 7: the persistent memory system (2026-11-03)
+- **Owner's instruction (verbatim):** "Set up the project's persistent memory system so work survives context compression and new sessions. Nothing about the system is derivable from the code, so write it to files, not to chat. Build it now, before any other work, then use it for everything after." The required pieces: a CLAUDE.md under 40 lines (what the project is and is not; "Before any work, read [JOURNAL].md"; project rules; "Pick up where we left off"; "Autosave"; "After each task"; "Never claim something works unless it ran"); the journal with Start here, Where things stand, the open list, entries, the test-count table, decisions and the next-session checklist; PROJECT_SUMMARY.md refreshed by autosave; PROJECT_HANDOVER.md for a reader with no context, ending with the exact sentence to paste; memory notes, one file per fact; version control with a .gitignore excluding data, media and secrets, "commit only when I ask". Rules: "dates absolute, never relative; numbers with units; every claim marked verified / tested / unverified; keep others' text when editing (append, don't rewrite); the journal is the source of truth and the summary is derived from it. When context is compressed, the first thing you do afterwards is re-read CLAUDE.md and the journal's Start here and Where things stand before continuing."
+- **What changed:** the previous CLAUDE.md (37 lines, 29,551 bytes of invariants) was moved verbatim to `CLAUDE-INVARIANTS.md`; the new `CLAUDE.md` (26 lines) holds the owner's blocks and imports the invariants with `@CLAUDE-INVARIANTS.md`; `JOURNAL.md`, `PROJECT_SUMMARY.md` and `PROJECT_HANDOVER.md` created; `.gitignore` gained `*.zip` and `backups/` (the two root archives were only excluded locally before); six memory notes written in the assistant's memory directory and indexed in its MEMORY.md.
+- **Why:** the owner's instruction above. The invariants were moved rather than cut because losing them from the auto-loaded context would risk the rules the owner said never to break; the import keeps CLAUDE.md under 40 lines.
+- **Checked:** `wc -l CLAUDE.md` = 26 lines; `git check-ignore` confirms `.env`, `data/`, `*.zip` and `backups/` are ignored; `npm test` not re-run (no code changed; the count above is from commit e3bd7dd earlier the same day).
+- **Unverified:** that Claude Code loads `CLAUDE-INVARIANTS.md` through the import line (open item 6). Nothing committed (open item 10).
+
+### Build 8: ICT Lab, Part A documents (2026-11-04)
+- **Owner's instruction:** "Build the ICT Lab, Part A only (documents, no code that reads data)": a separate, simulation-only sandbox for mechanical ICT-inspired hypotheses on QQQ 5-minute bars (QQQ a labelled stand-in for NQ), long-only, $5,000 whole-share account, four round-1 specs (sweep → BOS → FVG midpoint; sweep → BOS → order-block midpoint; inversion FVG retest; breaker retest), 2R targets, setups and fills 09:30 to 11:00, flat by 15:55. Quoted verbatim in `strategy/ict-lab/EXPERIMENT-LOG.md` entry 1. Explicitly NOT authorized: any code that reads market data, any download, any run, any read of the validation or reserved windows, any commit or push.
+- **What changed:** `strategy/ict-lab/PROTOCOL.md` (windows: DEVELOPMENT 2018-06-01 to 2022-12-30 as the bar bound, VALIDATION 2023-01-03 to 2024-12-31 refused by code until the owner's row, RESERVED 2025-01-01 to 2026-06-30 never read; provenance referencing sweep-bos data version 1, hash e7a619d2…, with a per-bar comparison in Part B and no hash match required; the spec JSON format; the four specs; sizing; C1 to C6 with the fixed denominator 24 so C4 needs p < 0.05/24; the random-entry null keeping the long drift; validation once per candidate; gate rules; report contents with the funnel and a flaw section; the feasibility check; the sweep-bos H1 to H15 disposition; decisions (a) to (f), one default each with origin), `strategy/ict-lab/CONCEPTS.md` (H1 to H20, this lab's numbering: swing with left 1 / right 1 / confirmation i + 3, sweep, extreme, BOS, CHoCH, displacement, FVG, IFVG, order block, bearish order block, breaker, stop, entry, exits, target, zone validity, sizing, costs) and `strategy/ict-lab/EXPERIMENT-LOG.md` entry 1 with the LF-normalised SHA-256 of both files (PROTOCOL.md 790d2b72…; CONCEPTS.md fcf02a0e…). A memory note for the lab.
+- **Why:** the owner's work order; the owner's standing method (pre-register, pin, gate, log). Sweep-bos H7 (invalidation) dropped with the stated reason: it is the author's rule, not the source's (sweep-bos log entry 20), and it voided 56% of sweeps (round-1.md section 8, measured).
+- **Checked:** `npm test` after the change: 575 tests, 573 pass, 1 skipped, 1 fail (the pre-existing `tests/agent-safety.test.js` weekend-fixture failure, open item 5); no code changed. Feasibility: all four specs simulable as written; two risks recorded (the cash term sizes most trades; the 100-fill minimum is at risk given sweep-bos's measured 59 fills in both directions under its most relaxed variant). Not verified on market data: nothing was run; no bar read.
+- **Unverified:** every number in the documents is proposed, for the owner to confirm. Uncommitted (open item 12).
+
+### Build 8, addendum (2026-11-04): parallel-session collision on the ICT Lab documents
+- **What happened:** the owner's Part A order ran in two sessions at once. The first session wrote strategy/ict-lab/PROTOCOL.md, CONCEPTS.md and EXPERIMENT-LOG.md (entry 1, hashes 790d2b72… and fcf02a0e…), the Build 8 entry above, the summary and a memory note by 21:09 local. The second session, which had checked the folder before it existed (21:05) but not again, wrote CONCEPTS.md at 21:10 and PROTOCOL.md at 21:13, overwriting the first session's two documents; the Write tool reported "updated", which was the only sign. The first session's versions were uncommitted and are not recoverable from git.
+- **What is on disk now:** the second session's PROTOCOL.md (6515748b…; 12 sections: purpose, windows with calendar session counts 1,155 and 502, provenance, common settings and sizing, spec format and the four specs with their JSON, budget and the fixed denominator 24, statistics and C1 to C6 with the random-entry null, gate rules, report contents, feasibility, a 36-row assumptions table, parts) and CONCEPTS.md (259d81ca…; H1 to H22, each with definition, bars it may use, never uses, entry edge, origin and sweep-bos status; the SB-H1 to SB-H15 disposition table). Known design differences from the first session's (from its log entry and the Build 8 entry): no re-arm after a filled trade (one setup per session) against the first session's "one filled trade with re-arm"; sweep-bos H5 treated as changed rather than dropped; 22 concepts rather than 20. The lab log entry 2 records the collision and the current hashes; entry 1 is untouched.
+- **Checked:** npm test re-run by the second session after the documents (no code changed); the count is in the test-count table. Nothing run on market data; no bar read.
+- **Unverified:** which design the owner wants; every proposed number. Uncommitted (open items 12 and 13).
+- **Lesson (saved to memory):** before writing into a shared folder, check ListAgents for another live session on the project and re-list the target folder immediately before each write; never rely on an earlier listing.
+
+### Build 8, second addendum (2026-11-04): the owner's Part A review applied; the collision resolved in favour of the first session's design
+- **Owner's instruction (verbatim, also in the lab log entry 1):** "Part A review. Make these four corrections, recompute both hashes, replace them in EXPERIMENT-LOG.md entry 1 (as a correction note inside entry 1, since nothing is committed yet), and show me the diff: 1. PROTOCOL.md section 10 rule 8: "the sweep-bos code" → "the ict-lab code (server/ictlab/, strategy/ict-lab/)". 2. CONCEPTS.md H13 and PROTOCOL.md spec 4: the upward BOS bar k_bos must also satisfy k_bos > s. 3. Write the four spec files … and list their LF-normalised SHA-256 in entry 1. 4. Add "tradingsystem contex vault/" to .gitignore. Decisions: keep session-local structure (H2) for round 1; keep the re-arm (H15). Record both as owner-confirmed in entry 1. Still no commit, no download, no run."
+- **Which design:** the review names the first session's structure (section 10 rule 8, H13, the re-arm in H15, which the second session's design does not have), so the first session (trading-system-a8, which held its text in context) restored its two documents and applied the corrections. The second session's PROTOCOL.md and CONCEPTS.md were copied unchanged to `strategy/ict-lab/superseded/2026-11-04-parallel-session/` (hashes 6515748b… and 259d81ca…) before the overwrite; nothing of either design is lost now. The second session (trading-system-16, idle) was messaged not to write into the folder again.
+- **What changed:** `strategy/ict-lab/PROTOCOL.md` (rule 8 wording; spec 4 and decision (c) require k_bos > s; section 4 and the Parts table say the spec files exist; owner confirmations noted), `CONCEPTS.md` (H13 requires s < k_bos ≤ 17; H2 and H15 marked owner-confirmed), four new spec files in `strategy/ict-lab/specs/` (JSON, parsed), `.gitignore` (+ `tradingsystem contex vault/`), the lab log (correction note inside entry 1 with the owner's message and the six hashes; entry 3 with the resolution). New hashes: PROTOCOL 7feebbc6…, CONCEPTS 710e3f7a…, specs 999c2d29… / ded5a86f… / 3f6320ec… / 819ce89f….
+- **Checked:** the restored originals were verified against entry 1's hashes before correction (both matched); the four JSON files parse; `git check-ignore` confirms the vault folder is ignored; the unified diff was shown to the owner. `npm test` not re-run (no code changed; last count 575 earlier today).
+- **Unverified:** every proposed number remains for the owner to confirm. Uncommitted (open item 12). Nothing run on market data.
+
+### Build 8, third addendum (2026-11-04): Part A approved with two changes; Build 7 and Part A committed and pushed
+- **Owner's instruction (verbatim, also in the lab log entry 1's approval note):** "Approved with two changes before the commit. Delete strategy/ict-lab/superseded/ (its hashes are in entry 3). Rename the spec field rearmAfterUnfilledOrder to rearmAfterRefusedConfirmation in all four spec files and in PROTOCOL.md section 4, recompute the six hashes and update the correction note in entry 1. Then commit in two steps: first Build 7's files (CLAUDE.md, CLAUDE-INVARIANTS.md, JOURNAL.md, PROJECT_SUMMARY.md, PROJECT_HANDOVER.md, README.md, .gitignore) as one commit; then strategy/ict-lab/ alone as the Part A pre-registration commit, and record that commit's hash as EXPERIMENT-LOG.md entry 4. Push both. No download, no run, no code that reads data."
+- **What changed:** `strategy/ict-lab/superseded/` deleted (its two files' hashes stay in lab log entries 2 and 3); `rearmAfterUnfilledOrder` renamed `rearmAfterRefusedConfirmation` in PROTOCOL.md section 4 and the four spec files (the rule is unchanged; CONCEPTS.md untouched); the six hashes recomputed and listed in an approval note inside lab log entry 1 (PROTOCOL 28901369…, CONCEPTS 710e3f7a… unchanged, specs 98de4a03… / 53956d89… / 1f64160c… / 1f4d40b0…); this journal's Where things stand, open items 10, 12 and 13, the checklist and PROJECT_SUMMARY.md updated.
+- **Commits (branch `hxr`, pushed to origin):** the hashes are appended below after the push. Lab log entry 4 records the Part A commit and is itself uncommitted (it cannot be inside the commit it records; the owner ordered two commits).
+- **Checked:** the four JSON files parse after the rename; the renamed field occurs in exactly five files and nowhere else in the repository; `npm test` not re-run (no code changed; last count 575 earlier today). Nothing run on market data; nothing downloaded; no code that reads data.
+- **Unverified:** nothing new; the proposed numbers remain proposed in the pinned text.
+
+## Test count over time
+
+| Build | Date | Tests | Source |
+|---|---|---|---|
+| 1 | 2026-10-21 | not recorded (unverified) | commit messages carry no count |
+| 2 | 2026-10-22 | 261 pass → 283 pass | `strategy/HANDOFF.md`; `strategy/reports/2026-10-22-v1.1-screen.md` |
+| 3 | 2026-10-23 | not recorded | — |
+| 4 | 2026-10-26 | 458 (457 pass, 1 skipped) | commit b6007e3 message |
+| 5 | 2026-10-28 to 2026-11-02 | 479 → 482 → 504 → 509 (1 skipped); planted bugs 46 of 46 | commits f337617, 0f7cbc1, 471a2ce, f44f6f4; range-trend log entry 14 |
+| 6 | 2026-11-03 | 565 (563 pass, 1 skipped, 1 known failure) → 575 (573 pass, 1 skipped, 1 known failure); planted bugs 59 of 59 | sweep-bos log entries 16 and 22 |
+| 7 | 2026-11-03 | 575 (not re-run; no code change) | this journal |
+| 8 | 2026-11-04 | 575 (573 pass, 1 skipped, 1 known failure); re-run, no code change | this journal |
+
+## Decisions and why
+
+| Date | Decision | Why | Who |
+|---|---|---|---|
+| 2026-10-21 | No trading code of any kind; simulation only | the owner's rule; no path from research to real orders | owner |
+| 2026-10-21 | Pre-registration: rules and pinned files committed before data; append-only logs; one run per variant | profit found by retesting the same data is not evidence | owner, implemented by the assistant |
+| 2026-10-22 | cb-1.1.0 limit: one v1.1 version, swing only, one holdout; failure closes cb-1.0.0 | set before any cb-1.1.0 result | owner |
+| 2026-10-23 | HXR pick rule ending_value; MU kept | amendment 3b; the owner's MU decision | owner |
+| 2026-10-27 | Range-trend D1 to D8 (never retire, re-entry limit, recovery entry, 61st close, benchmark (a), whole shares, eight runs plus one reserve, no H6) | the owner's readings of the plan's open points | owner |
+| 2026-11-02 | Range-trend pick rule and date rule adopted (30 trades, 40% gross-gain limit, best-5% stress, 0.5-point tie, NONE otherwise); evaluation window 2022-01-03 to 2023-12-29; MU kept; practice runs authorized separately | experimental settings, fixed before any run | owner |
+| 2026-11-03 | sweep-bos on QQQ and SPY as stand-ins; bars only to 2022-12-30; a hard bound in the data layer | no futures data; the evaluation window must stay unseen | owner (correction, entry 3) |
+| 2026-11-03 | Round 2: count-only pass first; under 100 fills per instrument stops everything | avoid reading outcomes of a sample too small to judge | owner |
+| 2026-11-03 | Memory system: invariants moved verbatim to CLAUDE-INVARIANTS.md and imported from a 26-line CLAUDE.md | keeps CLAUDE.md under 40 lines without losing the rules; for the owner to confirm | assistant |
+| 2026-11-03 | Memory files committed only when the owner asks | the owner's instruction | owner |
+| 2026-11-04 | ICT Lab: QQQ only, long-only, four specs, $5,000 whole shares, 2R, 09:30 to 11:00, fixed denominator 24 for C4, 100 fills minimum; sweep-bos H7 not inherited | the owner's work order; H7 dropped with the stated reason | owner (the order), assistant (the H7 reason and every proposed default) |
+
+## Next session checklist
+
+1. Say "Pick up where we left off"; the assistant runs the protocol in CLAUDE.md and waits.
+2. Check that the new session has the invariants in context (ask, for example, what CLAUDE-INVARIANTS.md says about SPCX); if yes, strike open item 6.
+3. Decide whether to commit Build 7's files (open item 10).
+4. Decide on the range-trend practice runs: write the authorization row yourself, or leave the gate closed (open item 1).
+5. ICT Lab Part A (`strategy/ict-lab/`): approved and committed on 2026-11-04 (Build 8, third addendum; lab log entry 4). Part B onward needs a separate message; nothing reads data until then.
+6. Keep monitoring, delivery and all scheduled jobs OFF; nothing is pending that runs on its own.

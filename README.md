@@ -2,7 +2,7 @@
 
 Personal portfolio tracking and investment research desk: holdings in USD and CAD, news and filings, an AI-infrastructure watchlist, rule-based position assessments, three daily market briefings, and **Ask Signal Desk**, a read-only chat agent grounded in your own records. Runs locally on Windows (or macOS/Linux), binds to `127.0.0.1`, and has **no trading capability**.
 
-**New here? Read [START-HERE.md](START-HERE.md).** Development notes are in [CLAUDE.md](CLAUDE.md).
+**New here? Read [START-HERE.md](START-HERE.md).** Development notes are in [CLAUDE.md](CLAUDE.md) (the assistant protocol), [CLAUDE-INVARIANTS.md](CLAUDE-INVARIANTS.md) (what every change must preserve) and [JOURNAL.md](JOURNAL.md) (the development journal; PROJECT_SUMMARY.md and PROJECT_HANDOVER.md are derived from it).
 
 - Start: double-click `Start-Signal-Desk.bat` (or `npm start`)
 - Test: `npm test`

@@ -5,3 +5,6 @@ data/
 *.sqlite-wal
 *.sqlite-shm
 *.log
+*.zip
+backups/
+tradingsystem contex vault/
