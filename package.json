@@ -20,7 +20,11 @@
     "sb:download": "node --disable-warning=ExperimentalWarning scripts/sweepbos-download.mjs",
     "sb:planted": "node --disable-warning=ExperimentalWarning scripts/sweepbos-planted.mjs",
     "sb:run": "node --disable-warning=ExperimentalWarning scripts/sweepbos-run.mjs",
-    "sb:report": "node --disable-warning=ExperimentalWarning scripts/sweepbos-report.mjs"
+    "sb:report": "node --disable-warning=ExperimentalWarning scripts/sweepbos-report.mjs",
+    "il:download": "node --disable-warning=ExperimentalWarning scripts/ictlab-download.mjs",
+    "il:run": "node --disable-warning=ExperimentalWarning scripts/ictlab-run.mjs",
+    "il:report": "node --disable-warning=ExperimentalWarning scripts/ictlab-report.mjs",
+    "il:planted": "node --disable-warning=ExperimentalWarning scripts/ictlab-planted.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"
