@@ -31,8 +31,9 @@ test('the authorization row is read outside code fences and HTML comments, exact
   // The authorization row is not a practice-run record although its title mentions practice runs.
   fs.writeFileSync(f, LOG);
   assert.deepEqual([logStatus(f).malformed, logStatus(f).practiceRuns], [[], []]);
-  // The repository's own log has no authorization row: practice runs are not authorized.
-  assert.equal(logStatus().practiceAuthorized, false);
+  // The repository's own log holds the owner's authorization row 17 (2026-11-04, typed by the assistant on the
+  // owner's reaffirmed instruction) exactly once, so the real log reads as authorized.
+  assert.equal(logStatus().practiceAuthorized, true);
 });
 
 test('arguments: one config per invocation, --run needs --confirm-run, unknown flags (the reserve included) are refused, nothing is run', async () => {
@@ -73,13 +74,14 @@ test('check mode prints every condition and runs nothing; without the authorizat
   db.close();
 });
 
-test('on the real repository files the launcher says practice runs are NOT authorized and runs nothing', async () => {
+test('on the real repository files (authorized since 2026-11-04; eight runs logged) the launcher against an empty data directory refuses because the logged runs are not in that database, and runs nothing', async () => {
   const dir = tempDir('rt-launch-real-');
   const { lines, io } = capture();
   const out = await launch({ argv: ['--config', PLANNED_CONFIGS[0]], io, overrides: { dataDir: dir, protocolPath: PROTOCOL_PATH, logPath: LOG_PATH } });
   assert.deepEqual([out.ran, out.exitCode], [false, 0]);
-  assert.equal(out.conditions.find((c) => c.name.includes('practice-runs-authorized')).ok, false);
-  assert.ok(lines.at(-1).includes('NOT authorized: nothing was run'));
+  assert.equal(out.conditions.find((c) => c.name.includes('practice-runs-authorized')).ok, true);
+  assert.equal(out.conditions.find((c) => c.name.includes('every practice run it lists is in this database')).ok, false);
+  assert.ok(lines.at(-1).includes('authorized but not runnable yet: nothing was run'));
   assert.match(out.conditions.find((c) => c.name.startsWith('HXR data')).detail, /not checked/);
 });
 

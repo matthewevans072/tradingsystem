@@ -24,7 +24,8 @@
     "il:download": "node --disable-warning=ExperimentalWarning scripts/ictlab-download.mjs",
     "il:run": "node --disable-warning=ExperimentalWarning scripts/ictlab-run.mjs",
     "il:report": "node --disable-warning=ExperimentalWarning scripts/ictlab-report.mjs",
-    "il:planted": "node --disable-warning=ExperimentalWarning scripts/ictlab-planted.mjs"
+    "il:planted": "node --disable-warning=ExperimentalWarning scripts/ictlab-planted.mjs",
+    "rr:worker": "node --disable-warning=ExperimentalWarning scripts/research-worker.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

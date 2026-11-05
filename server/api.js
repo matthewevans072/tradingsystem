@@ -534,3 +534,7 @@ registerLabRoutes(r, HttpError);
 
 import { registerHxrRoutes } from './hxr/api.js';
 registerHxrRoutes(r, HttpError);
+
+// ---------- Research runner (simulation only, real workspace only; server/research/api.js) ----------
+import { registerResearchRoutes } from './research/api.js';
+registerResearchRoutes(r, HttpError);

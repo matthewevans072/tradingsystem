@@ -10,6 +10,7 @@ import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
 import { renderLab } from './views/lab.js';
 import { renderHxr } from './views/hxr.js';
+import { renderResearch } from './views/research.js';
 
 const VIEWS = {
   overview: { title: 'Overview', render: renderOverview },
@@ -19,6 +20,7 @@ const VIEWS = {
   reports: { title: 'Reports', render: renderReports },
   lab: { title: 'Strategy Lab', render: renderLab },
   hxr: { title: 'HXR (simulated)', render: renderHxr },
+  research: { title: 'Research runner (simulated)', render: renderResearch },
   settings: { title: 'Settings', render: renderSettings },
 };
 
