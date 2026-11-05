@@ -6,7 +6,8 @@
 // starting cash, dividends and benchmark of the base, so runs stay comparable, and every change touches exactly
 // one field of levels, exits or portfolio (or the re-entry limit).
 import { loadConfig, PLANNED_CONFIGS } from '../rangetrend/config.js';
-import { BASE_FILES, BASELINE_FILE, STAGES, LIMITS, CRITERIA, experimentHash, assertDevelopmentPeriod } from './config.js';
+import { BASE_FILES, BASELINE_FILE, STAGES, LIMITS, CRITERIA, experimentHash, assertDevelopmentPeriod, sharedBlock } from './config.js';
+import { MECHANISMS } from './mechanisms.js';
 
 // Stage 1: fields and values, each applied alone to the baseline B (trend, immediate entry, no re-entry limit).
 export const STAGE1_CHANGES = Object.freeze([
@@ -131,4 +132,59 @@ export function combinationStage(experiments, { budgetLeft = LIMITS.maxConfigs, 
   const seen = new Set(), out = [];
   for (const it of items) { if (seen.has(it.configHash)) continue; seen.add(it.configHash); assertDevelopmentPeriod(it.config); out.push(it); }
   return out.slice(0, Math.max(0, budgetLeft));
+}
+
+// ---------- Campaign 3 (CAMPAIGN-3.md section 5): 24 planned configurations ----------
+// Stage 0: campaign 2's baseline re-run (the reproduction check and the fixed positive baseline). Stage 1: the
+// family baselines B0 and M0. Stage 2: the 21 mechanism variants, each with its family baseline as parent. The
+// shared block (portfolio limits, costs, dividends, execution, benchmark, period) is the baseline's, unchanged.
+export const CAMPAIGN3_MATRIX = Object.freeze([
+  ['B0', { entry: 20, exit: 20 }, false, '20-session channel: the plainest breakout (family baseline)'],
+  ['B1', { entry: 40, exit: 20 }, false, 'asymmetric Donchian channel: a longer entry channel filters noise, the short exit channel keeps losses small'],
+  ['B1', { entry: 55, exit: 20 }, false, 'asymmetric Donchian channel: a longer entry channel filters noise, the short exit channel keeps losses small'],
+  ['B1', { entry: 100, exit: 20 }, false, 'asymmetric Donchian channel: a longer entry channel filters noise, the short exit channel keeps losses small'],
+  ['B2', { entry: 20, ratio: 0.7, lookback: 120, giveback: 3 }, false, 'breakout after volatility compression: breakouts from a quiet stock carry further'],
+  ['B2', { entry: 20, ratio: 0.8, lookback: 120, giveback: 3 }, false, 'breakout after volatility compression: breakouts from a quiet stock carry further'],
+  ['B2', { entry: 20, ratio: 0.9, lookback: 120, giveback: 3 }, false, 'breakout after volatility compression: breakouts from a quiet stock carry further'],
+  ['B3', { entry: 250, sma: 50 }, false, 'long-horizon new high with a moving-average exit: a one-year high is momentum worth holding until the trend bends'],
+  ['B3', { entry: 120, sma: 50 }, false, 'long-horizon new high with a moving-average exit: a one-year high is momentum worth holding until the trend bends'],
+  ['B3', { entry: 250, sma: 100 }, false, 'long-horizon new high with a moving-average exit: a one-year high is momentum worth holding until the trend bends'],
+  ['M0', { down: 2, timeExit: 10, stopM: 2 }, false, 'two down closes, out on the first up close: the plainest reversion (family baseline)'],
+  ['M1', { down: 3, exitSma: 5, timeExit: 10, stopM: 2, filterSma: 200 }, true, 'consecutive down closes in a long-term uptrend: short pullbacks in uptrends revert'],
+  ['M1', { down: 4, exitSma: 5, timeExit: 10, stopM: 2, filterSma: 200 }, true, 'consecutive down closes in a long-term uptrend: short pullbacks in uptrends revert'],
+  ['M1', { down: 5, exitSma: 5, timeExit: 10, stopM: 2, filterSma: 200 }, true, 'consecutive down closes in a long-term uptrend: short pullbacks in uptrends revert'],
+  ['M1', { down: 4, exitSma: 5, timeExit: 10, stopM: 2, filterSma: 200 }, false, 'consecutive down closes without the uptrend filter: the filter\'s own effect (paired with n = 4)'],
+  ['M2', { sma: 20, k: 1.5, timeExit: 15, stopM: 2, filterSma: 200 }, true, 'band reversion: a close k deviations under its 20-day mean reverts to the mean'],
+  ['M2', { sma: 20, k: 2, timeExit: 15, stopM: 2, filterSma: 200 }, true, 'band reversion: a close k deviations under its 20-day mean reverts to the mean'],
+  ['M2', { sma: 20, k: 2.5, timeExit: 15, stopM: 2, filterSma: 200 }, true, 'band reversion: a close k deviations under its 20-day mean reverts to the mean'],
+  ['M2', { sma: 20, k: 2, timeExit: 15, stopM: 2, filterSma: 200 }, false, 'band reversion without the uptrend filter: the filter\'s own effect (paired with k = 2)'],
+  ['M3', { gap: 1, timeExit: 7, stopM: 2, filterSma: 200 }, true, 'gap-down reversion: a gap down that closes at or above its open in an uptrend is bought back'],
+  ['M3', { gap: 1.5, timeExit: 7, stopM: 2, filterSma: 200 }, true, 'gap-down reversion: a gap down that closes at or above its open in an uptrend is bought back'],
+  ['M3', { gap: 2, timeExit: 7, stopM: 2, filterSma: 200 }, true, 'gap-down reversion: a gap down that closes at or above its open in an uptrend is bought back'],
+  ['M3', { gap: 1.5, timeExit: 7, stopM: 2, filterSma: 200 }, false, 'gap-down reversion without the uptrend filter: the filter\'s own effect (paired with g = 1.5)'],
+]);
+
+export function mechanismName(mech, params, filter) {
+  const spec = MECHANISMS[mech];
+  const varying = Object.entries(params).filter(([k, v]) => spec.params[k].length > 1).map(([k, v]) => `${k}=${v}`);
+  return `${mech}${varying.length ? ' ' + varying.join(' ') : ''}${spec.family === 'reversion' && mech !== 'M0' && !filter ? ' nofilter' : ''}`;
+}
+
+export function campaign3Experiments() {
+  const shared = sharedBlock();
+  const baseline = loadConfig(BASELINE_FILE);
+  const items = [{ stage: STAGES.reference, name: BASELINE_FILE.replace(/\.json$/, ''), baseFile: BASELINE_FILE, parentKey: null, familyBase: null, change: null, config: baseline, configHash: experimentHash(baseline),
+    hypothesis: 'Campaign 2\'s baseline re-run: the reproduction check (+1757.90 expected) and the fixed positive baseline for the 10% target.' }];
+  for (const [mech, params, filter, hypothesis] of CAMPAIGN3_MATRIX) {
+    const name = mechanismName(mech, params, filter);
+    const family = MECHANISMS[mech].family;
+    const familyBase = family === 'breakout' ? 'B0' : 'M0';
+    const isBase = mech === 'B0' || mech === 'M0';
+    const config = { strategy: 'mechanism', version: `rr3-${name.replace(/[^A-Za-z0-9.=-]+/g, '-')}`, label: `Campaign 3 experiment ${name} (exploratory; generated by the research runner)`, status: 'research-runner experiment (CAMPAIGN-3.md); experimental settings, not the owner\'s trading', mechanism: mech, params: { ...params }, filter, ...shared };
+    items.push({ stage: isBase ? 1 : 2, name, baseFile: isBase ? null : familyBase, parentKey: isBase ? null : familyBase, familyBase: isBase ? null : familyBase, change: [{ field: 'mechanism', from: familyBase, to: name, meaning: hypothesis }], config, configHash: experimentHash(config), hypothesis: `${hypothesis}. Shared block as campaign 2; family baseline ${familyBase}.` });
+  }
+  const seen = new Set(), out = [];
+  for (const it of items) { if (seen.has(it.configHash)) throw new Error(`campaign 3: duplicate configuration ${it.name}`); seen.add(it.configHash); assertDevelopmentPeriod(it.config); out.push(it); }
+  if (out.length !== 24) throw new Error(`campaign 3 must have 24 planned configurations, got ${out.length}`);
+  return out;
 }

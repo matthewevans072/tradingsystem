@@ -10,7 +10,8 @@
 import { h, mount, fmt, tone, notice, empty, badge, drawer, field, toast, errorState, section, kv } from '../lib/ui.js';
 import { line } from '../lib/charts.js';
 
-const STAGE = { 0: 'reference', 1: 'single change (baseline)', 2: 'single change (other bases)', 3: 'combination' };
+const STAGE_DEFAULT = { 0: 'reference', 1: 'single change (baseline)', 2: 'single change (other bases)', 3: 'combination' };
+let STAGE = STAGE_DEFAULT;
 const STATUS_KIND = { running: 'info', paused: 'warn', planned: 'muted', cancelled: 'danger', stopped: 'danger', done: 'ok', queued: 'muted', failed: 'danger' };
 const CRIT_LABEL = { improvement: '10% above the baseline', drawdown: 'drawdown limit', trades: 'minimum trades', accounting: 'accounting reconciles', dataQuality: 'data quality', stress: 'best-5% stress', nullTest: 'random-timing null', concentration: 'profit concentration', decisionGain: 'gain beyond exposure' };
 const S = { q: '', stage: '', status: '', label: '', lastNotified: 0 };
@@ -33,6 +34,7 @@ export async function renderResearch(view, ctx) {
     [exps, notes] = await Promise.all([ctx.api('GET', `/api/research/campaigns/${c.id}/experiments?${qs}`), ctx.api('GET', '/api/research/notifications?limit=50')]);
     if (!live(ep)) return;
   }
+  STAGE = c?.stageNames ? Object.fromEntries(Object.entries(c.stageNames).map(([k, v]) => [k, v.replace(/ \(.*$/, '')])) : STAGE_DEFAULT;
   const P = { api: ctx.api, o, c, exps, notes, reload };
   mount(view, h('div', { class: 'stack lab hxr' }, banner(), statusSection(P), controlsSection(P), c ? leaderSection(P) : null, notificationsSection(P), c ? resultsSection(P) : null, rulesSection(P)));
   browserNotify(notes);
@@ -52,7 +54,10 @@ function statusSection(P) {
     ['Worker', c.worker ? `alive (pid ${c.worker.pid}, heartbeat ${fmt.ago(c.worker.heartbeatAt)})` : 'none running'],
     ['Queue', `${k.queued} queued`], ['Active', c.active.length ? c.active.map((a) => `${a.name} (#${a.id})`).join(', ') : 'none'],
     ['Progress', `${Math.round(c.progress * 100)}% (${k.done} done, ${k.failed} failed, ${k.cancelled} cancelled of ${k.total})`],
-    ['Clear the target / shortlisted', `${c.cleared} / ${c.shortlisted}`],
+    ['Plan / document', `${c.plan} (${c.planDoc})`],
+    ['Clear the target / unadjusted shortlist / Holm-significant', `${c.cleared} / ${c.shortlisted} / ${c.holmSignificant ?? 0}`],
+    ['Holm (within-campaign)', c.holm ? `family ${c.holm.m}; ${c.holm.withP} with a p; ${c.holm.rawPasses} raw passes vs ${c.holm.expectedChancePasses} expected by chance; ${c.holm.holmSignificant} Holm-significant` : 'applied when the campaign completes'],
+    ['Defect replacements', `${c.replacements?.used ?? 0} of ${c.replacements?.max ?? 0}`],
     ['Time used', `${(c.elapsedMs / 60000).toFixed(1)} min of ${c.limits.maxHours} h; ${k.done + k.failed} of ${c.limits.maxConfigs} configurations`],
     ['Code / data', `${c.codeRevision}; engine ${c.engineVersion || '—'}; data ${c.hashes.data ? c.hashes.data.slice(0, 12) : 'not yet read'}; document ${c.hashes.doc ? c.hashes.doc.slice(0, 12) : '—'}`],
   ];
@@ -65,7 +70,8 @@ function controlsSection(P) {
   const btn = (label, fn, kind = '') => h('button', { class: `btn ${kind}`, onclick: fn }, label);
   const doc = o.campaignDoc;
   const items = [];
-  if (!c || ['done', 'stopped', 'cancelled'].includes(c.status)) items.push(btn('Create campaign 1 (queues up to 100 development experiments; nothing runs yet)', () => act('/api/research/campaigns', { name: 'Campaign 1' }, 'Campaign created; nothing ran')), doc.ok ? badge('document ready', 'ok') : badge(`document not ready: ${doc.problem}`, 'danger'));
+  if (!c || ['done', 'stopped', 'cancelled'].includes(c.status)) for (const pl of o.plans || []) items.push(btn(`Create ${pl.name} from ${pl.doc} (${pl.plannedCount} planned experiments; nothing runs yet)`, () => act('/api/research/campaigns', { plan: pl.key }, `${pl.name} created; nothing ran`)), pl.status.ok ? badge(`${pl.doc} ready`, 'ok') : badge(`${pl.doc} not ready: ${pl.status.problem}`, 'danger'));
+  void doc;
   if (c) {
     if (c.status === 'planned') items.push(btn('Start (launches the background worker)', () => act(`/api/research/campaigns/${c.id}/start`, {}, 'Worker launched'), 'primary'));
     if (c.status === 'running') items.push(btn('Pause (after the experiment in progress)', () => act(`/api/research/campaigns/${c.id}/pause`, {}, 'Pausing')));
@@ -105,12 +111,12 @@ function resultsSection(P) {
     sel('status', [['', 'all statuses'], ['done', 'done'], ['queued', 'queued'], ['running', 'running'], ['failed', 'failed'], ['cancelled', 'cancelled']], S.status),
     sel('label', [['', 'all labels'], ['development result', 'development result'], ['shortlisted candidate', 'shortlisted candidate'], ['independently evaluated', 'independently evaluated']], S.label),
     h('button', { class: 'btn', type: 'submit' }, 'Search'));
-  const head = ['#', 'Stage', 'Experiment', 'Status', 'Net profit', 'Return', 'Max DD', 'Exposure', 'Turnover', 'Costs', 'Trades', 'Top stock', 'vs baseline', 'Null p', 'Labels'];
+  const head = ['#', 'Stage', 'Experiment', 'Status', 'Net profit', 'Return', 'Max DD', 'Exposure', 'Turnover', 'Costs', 'Trades', 'Top stock', 'vs baseline', 'vs family base', 'Null p (raw)', 'Holm p', 'Labels'];
   const rows = exps.items.map((e) => { const s = e.summary, cmp = s?.comparison; return h('tr', { class: cmp?.clearsTarget ? 'hxr-hit' : '', onclick: () => openExperiment(P, e.id) },
     h('td', {}, String(e.id)), h('td', {}, STAGE[e.stage]), h('td', {}, h('strong', {}, e.name), h('div', { class: 'cell-sub' }, e.hypothesis.slice(0, 120))), h('td', {}, badge(e.status, STATUS_KIND[e.status] || ''), e.error ? h('div', { class: 'cell-sub' }, e.error.slice(0, 80)) : null),
     h('td', { class: tone(s?.net) }, s ? fmt.signedMoney(s.net) : '—'), h('td', {}, s ? fmt.pct(s.totalReturnPct) : '—'), h('td', {}, s ? fmt.plainPct(s.maxDrawdownPct, 2) : '—'), h('td', {}, s ? fmt.plainPct(s.avgInvestedPct, 1) : '—'), h('td', {}, s ? fmt.num(s.turnoverPerYear) : '—'), h('td', {}, s ? money(s.costs) : '—'), h('td', {}, s ? `${s.completedTrades}${s.openAtEnd ? ` +${s.openAtEnd} open` : ''}` : '—'),
-    h('td', {}, s?.topStock ? `${s.topStock.symbol} ${fmt.plainPct(s.topStock.share * 100, 0)}` : '—'), h('td', { class: tone(cmp?.diffUsd) }, cmp ? `${fmt.signedMoney(cmp.diffUsd)}${cmp.improvementApplicable ? ` (${fmt.pct(cmp.improvementPct, 1)})` : ''}` : '—'), h('td', {}, s?.nullP == null ? '—' : fmt.num(s.nullP, 3)),
-    h('td', {}, (s?.labels || []).map((l) => badge(l, l === 'shortlisted candidate' ? 'ok' : 'muted')))); });
+    h('td', {}, s?.topStock ? `${s.topStock.symbol} ${fmt.plainPct(s.topStock.share * 100, 0)}` : '—'), h('td', { class: tone(cmp?.diffUsd) }, cmp ? `${fmt.signedMoney(cmp.diffUsd)}${cmp.improvementApplicable ? ` (${fmt.pct(cmp.improvementPct, 1)})` : ''}` : '—'), h('td', { class: tone(cmp?.vsFamilyBaseline?.diffUsd) }, cmp?.vsFamilyBaseline ? `${fmt.signedMoney(cmp.vsFamilyBaseline.diffUsd)} vs ${cmp.vsFamilyBaseline.name}` : '—'), h('td', {}, s?.nullP == null ? '—' : fmt.num(s.nullP, 3)), h('td', {}, s?.holm?.adjustedP == null ? '—' : fmt.num(s.holm.adjustedP, 3)),
+    h('td', {}, (s?.labels || []).map((l) => badge(l, l === 'shortlisted candidate' ? 'ok' : l.startsWith('Holm') ? 'info' : 'muted')))); });
   return section(`Experiments (${exps.total} shown of the campaign; click a row for details, the equity curve and the config)`, form, h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, head.map((t) => h('th', {}, t)))), h('tbody', {}, rows.length ? rows : h('tr', {}, h('td', { colspan: head.length }, 'nothing matches'))))));
 }
 
@@ -127,7 +133,8 @@ async function openExperiment(P, id) {
     h('h4', { class: 'lab-h4' }, 'What changed'), changes,
     h('h4', { class: 'lab-h4' }, 'Result (measured; benchmarks derived)'),
     s.net != null ? kv([['Starting / ending equity', `${money(s.startValue)} / ${money(s.endValue)}`], ['Net profit after costs', fmt.signedMoney(s.net)], ['Return / annualised', `${fmt.pct(s.totalReturnPct)} / ${fmt.pct(s.annualisedReturnPct)}`], ['Max drawdown', `${fmt.plainPct(s.maxDrawdownPct, 2)} (${money(s.maxDrawdownUsd)})`], ['Exposure (avg invested) / time in cash', `${fmt.plainPct(s.avgInvestedPct, 1)} / ${fmt.plainPct(s.timeInCashPct, 1)}`], ['Turnover a year / costs', `${fmt.num(s.turnoverPerYear)} / ${money(s.costs)}`], ['Trades / open at end / skips', `${s.completedTrades} / ${s.openAtEnd} / ${s.skips}`], ['Profit concentration', s.topStock ? `${s.topStock.symbol} ${fmt.plainPct(s.topStock.share * 100, 1)} of gross gain ${money(s.grossGain)}` : '—'], ['Exposure-matched hold', s.exposureMatched ? `${money(s.exposureMatched.endValue)} (${fmt.pct(s.exposureMatched.annualisedReturnPct)} a year, DD ${fmt.plainPct(s.exposureMatched.maxDrawdownPct, 2)})` : '—'], ['Equal-weight index', s.index ? `${money(s.index.endValue)} (${fmt.pct(s.index.annualisedReturnPct)} a year, DD ${fmt.plainPct(s.index.maxDrawdownPct, 2)})` : '—'], ['Best-5% stress', s.bestFive ? `${s.bestFive.K} of ${s.bestFive.n} removed (${money(s.bestFive.removedPL)}): net ${fmt.signedMoney(s.bestFive.adjustedNet)}` : '—'], ['Random-timing null', s.nullTest?.p != null ? `p = ${fmt.num(s.nullTest.p, 3)} (${s.nullTest.atOrAbove} of ${s.nullTest.resamples} at or above; timing P/L ${money(s.nullTest.actualTimingPnl)}; p50 ${money(s.nullTest.percentiles.p50)}, p95 ${money(s.nullTest.percentiles.p95)})` : '—'], ['Accounting', s.accounting ? (s.accounting.ok ? `reconciles (difference ${money(s.accounting.reconciliation.difference)})` : s.accounting.problems.join('; ')) : '—']]) : h('p', {}, 'no result'),
-    cmp ? h('div', {}, h('h4', { class: 'lab-h4' }, 'Against the baseline and the criteria'), kv([['Baseline', `#${cmp.baselineExperimentId ?? '—'}: ${money(cmp.baselineNet)}`], ['Difference', `${fmt.signedMoney(cmp.diffUsd)} (${cmp.improvementApplicable ? fmt.pct(cmp.improvementPct) : 'ratio not applicable'})`], ['From exposure / from decisions', `${fmt.signedMoney(cmp.exposureGainUsd)} / ${fmt.signedMoney(cmp.decisionGainUsd)}`], ['vs leader at the time', cmp.vsLeader ? `#${cmp.vsLeader.leaderId} ${cmp.vsLeader.leaderName}: ${fmt.signedMoney(cmp.vsLeader.diffUsd)}` : '—'], ['Clears the target / shortlisted', `${cmp.clearsTarget ? 'yes' : 'no'} / ${cmp.shortlisted ? 'yes' : 'no'}`], ['Why', cmp.why.join('; ') || '—']]), crit) : null,
+    cmp ? h('div', {}, h('h4', { class: 'lab-h4' }, 'Against the baseline and the criteria'), kv([['Baseline', `#${cmp.baselineExperimentId ?? '—'}: ${money(cmp.baselineNet)}`], ['Difference', `${fmt.signedMoney(cmp.diffUsd)} (${cmp.improvementApplicable ? fmt.pct(cmp.improvementPct) : 'ratio not applicable'})`], ['From exposure / from decisions', `${fmt.signedMoney(cmp.exposureGainUsd)} / ${fmt.signedMoney(cmp.decisionGainUsd)}`], ['vs family baseline', cmp.vsFamilyBaseline ? `#${cmp.vsFamilyBaseline.id} ${cmp.vsFamilyBaseline.name}: ${fmt.signedMoney(cmp.vsFamilyBaseline.diffUsd)} (exposure ${fmt.signedMoney(cmp.vsFamilyBaseline.exposureGainUsd)}, decisions ${fmt.signedMoney(cmp.vsFamilyBaseline.decisionGainUsd)})` : '—'], ['vs leader at the time', cmp.vsLeader ? `#${cmp.vsLeader.leaderId} ${cmp.vsLeader.leaderName}: ${fmt.signedMoney(cmp.vsLeader.diffUsd)}` : '—'], ['Clears the target / unadjusted shortlist pass', `${cmp.clearsTarget ? 'yes' : 'no'} / ${cmp.shortlisted ? 'yes' : 'no'}`], ['Null p raw / Holm-adjusted (within-campaign)', `${s.nullTest?.p == null ? '—' : fmt.num(s.nullTest.p, 4)} / ${s.holm?.adjustedP == null ? 'applied when the campaign completes' : `${fmt.num(s.holm.adjustedP, 4)} (family ${s.holm.m}; ${s.holm.significant ? 'Holm-significant' : 'not Holm-significant'})`}`], ['Why', cmp.why.join('; ') || '—']]), crit) : null,
+    e.replacementOf ? notice('warn', h('strong', {}, `Defect replacement of experiment #${e.replacementOf}. `), e.defect ? `Defect: ${e.defect.defect} Verification: ${e.defect.verification} Correction: ${e.defect.correction}` : '') : null,
     chart,
     h('h4', { class: 'lab-h4' }, 'Configuration (executable; the research notes are separate)'), h('pre', { class: 'hxr-json' }, JSON.stringify(e.config, null, 2)));
   drawer(`Experiment #${e.id}: ${e.name}`, body, { wide: true });
@@ -138,6 +145,7 @@ function rulesSection(P) {
   return section('Fixed rules of the campaign (CAMPAIGN-1.md; nothing is lowered later)', kv([
     ['Data', `${o.period.start} to ${o.period.end} (warm-up ${o.period.warmupFrom}), basket ${o.period.basket}; the only window with a code path here`],
     ['Baseline', `${o.baselineFile}, re-run as experiment 1 and required to reproduce the practice run`],
+    ['Plans', (o.plans || []).map((p) => `${p.name}: ${p.doc}, ${p.plannedCount} planned, ${p.replacements} defect-replacement slots, ${p.limits.maxConfigs} configs or ${p.limits.maxHours} h, null ${p.criteria.nullResamples} resamples seed ${p.criteria.nullSeed}`).join('; ')],
     ['Target', `net profit at least ${cr.improvement * 100}% above the baseline; max drawdown at most ${cr.maxDrawdownPct}%; at least ${cr.minCompletedTrades} completed trades; accounting reconciles within $${cr.reconcileToleranceUsd}; data quality checked at start`],
     ['Shortlist', `also: best-${cr.bestFiveFraction * 100}% stress keeps net at least the baseline's; random-timing null p at most ${cr.nullMaxP} (${cr.nullResamples} resamples, seed ${cr.nullSeed}); top stock at most ${cr.maxTopStockShare * 100}% of gross gain; gain not explained by exposure alone`],
     ['Budget', `${lim.maxConfigs} unique configurations or ${lim.maxHours} hours, whichever first; one worker by default (concurrency ${lim.concurrency}); stop on resource limits (${(lim.minFreeBytes / 1024 ** 3).toFixed(0)} GB free, ${(lim.maxHeapBytes / 1024 ** 2).toFixed(0)} MB heap), invalid data or an accounting error`],

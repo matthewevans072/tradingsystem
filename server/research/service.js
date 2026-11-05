@@ -16,7 +16,7 @@ const WORKER_SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
 export function createResearch(ctx, { spawnImpl = spawn, runnerOpts = {} } = {}) {
   if (ctx.mode === 'demo') {
     const refuse = () => { throw new ResearchError(409, 'The research runner runs on real market data in the real workspace only; the demo workspace has no campaigns.'); };
-    return { overview: () => ({ simulated: true, demo: true, campaigns: [], active: null, unseenNotifications: 0, note: 'Demo workspace: the research runner is not available here.' }), createCampaign: refuse, start: refuse, pause: refuse, resume: refuse, cancel: refuse, experiments: refuse, experiment: refuse, notifications: () => [], markSeen: () => 0, events: () => [], close: () => {} };
+    return { overview: () => ({ simulated: true, demo: true, campaigns: [], plans: [], active: null, unseenNotifications: 0, note: 'Demo workspace: the research runner is not available here.' }), createCampaign: refuse, start: refuse, pause: refuse, resume: refuse, cancel: refuse, experiments: refuse, experiment: refuse, replaceDefective: refuse, notifications: () => [], markSeen: () => 0, events: () => [], close: () => {} };
   }
   const runner = createRunner({ dataDir: ctx.cfg.dataDir, ...runnerOpts, testOverrides: Object.keys(runnerOpts).length > 0 });
 
@@ -44,6 +44,7 @@ export function createResearch(ctx, { spawnImpl = spawn, runnerOpts = {} } = {})
     pause: (id) => ({ campaign: (runner.pause(id), runner.campaignStatus(id)), note: 'the worker stops after the experiment in progress' }),
     cancel: (id) => ({ campaign: (runner.cancel(id), runner.campaignStatus(id)), note: 'queued experiments cancelled; the one in progress finishes and is kept' }),
     campaignStatus: (id) => runner.campaignStatus(id),
+    replaceDefective: (experimentId, fields) => { const e = runner.experiment(experimentId); return runner.replaceDefective(e.campaignId, experimentId, fields); },
     experiments: (id, opts) => runner.experiments(id, opts),
     experiment: (id) => runner.experiment(id),
     notifications: (opts) => runner.notifications(opts),

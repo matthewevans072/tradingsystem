@@ -4,7 +4,7 @@
 // broker. Campaign control (start, pause, resume, cancel) changes rows in the runner's own database and, for
 // start and resume, launches the detached worker process.
 import { ResearchError } from './service.js';
-import { LABELS, STAGES } from './config.js';
+import { LABELS, STAGES, PLANS } from './config.js';
 
 const ID = /^\d{1,12}$/;
 
@@ -17,7 +17,8 @@ export function registerResearchRoutes(r, HttpError) {
   const num = (v, name, { min = 0, max = 10000, dflt = null } = {}) => { if (v == null || v === '') return dflt; const n = Number(v); if (!Number.isInteger(n) || n < min || n > max) throw new HttpError(400, `${name} must be a whole number from ${min} to ${max}`); return n; };
 
   route('GET', '/api/research/overview', (svc) => svc.overview());
-  route('POST', '/api/research/campaigns', (svc, { body }) => { const b = obj(body); if (b.confirm !== true) throw new HttpError(400, 'confirm must be true: creating a campaign queues up to 100 development experiments'); return svc.createCampaign({ name: typeof b.name === 'string' && b.name.trim() ? b.name.trim().slice(0, 80) : 'Campaign 1' }); });
+  route('POST', '/api/research/campaigns', (svc, { body }) => { const b = obj(body); if (b.confirm !== true) throw new HttpError(400, 'confirm must be true: creating a campaign queues the plan\'s development experiments'); const plan = typeof b.plan === 'string' ? b.plan : 'campaign-1'; if (!PLANS[plan]) throw new HttpError(400, `unknown plan; known: ${Object.keys(PLANS).join(', ')}`); return svc.createCampaign({ plan, name: typeof b.name === 'string' && b.name.trim() ? b.name.trim().slice(0, 80) : null }); });
+  route('POST', '/api/research/experiments/:id/replace', (svc, { params, body }) => { const b = obj(body); if (b.confirm !== true) throw new HttpError(400, 'confirm must be true to queue a defect replacement'); const t = (v, name) => { if (typeof v !== 'string' || !v.trim()) throw new HttpError(400, `${name} must be non-empty text`); return v.slice(0, 4000); }; return svc.replaceDefective(id(params.id), { defect: t(b.defect, 'defect'), verification: t(b.verification, 'verification'), correction: t(b.correction, 'correction') }); });
   route('GET', '/api/research/campaigns/:id', (svc, { params }) => svc.campaignStatus(id(params.id)));
   for (const action of ['start', 'pause', 'resume', 'cancel']) {
     route('POST', `/api/research/campaigns/:id/${action}`, (svc, { params, body }) => { const b = obj(body); if (b.confirm !== true) throw new HttpError(400, `confirm must be true to ${action} the campaign`); return svc[action](id(params.id)); });

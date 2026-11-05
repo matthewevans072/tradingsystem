@@ -65,6 +65,11 @@ const SCHEMA = `
 function migrate(db) {
   const has = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rr_schema_version'").get();
   if (!has) db.exec(SCHEMA);
+  // Migration 2 (2026-11-05): defect replacements (CAMPAIGN-3.md section 8), additive.
+  const v = db.prepare('SELECT MAX(version) AS v FROM rr_schema_version').get().v;
+  if (v < 2) {
+    db.exec('ALTER TABLE rr_experiments ADD COLUMN replacement_of INTEGER; ALTER TABLE rr_experiments ADD COLUMN defect_json TEXT; INSERT INTO rr_schema_version (version) VALUES (2);');
+  }
 }
 
 export function openRrDb(file) {
@@ -147,14 +152,14 @@ export function workerAlive(db, campaignId, { at, staleMs }) {
 // ---------- experiments (the job queue) ----------
 export function enqueue(db, campaignId, items, at) {
   // Duplicates by config hash are skipped, never re-queued: a configuration runs once per campaign.
-  const ins = db.prepare(`INSERT OR IGNORE INTO rr_experiments (campaign_id, stage, ordinal, name, hypothesis, parent_id, base_file, change_json, config_hash, config_json, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)`);
+  const ins = db.prepare(`INSERT OR IGNORE INTO rr_experiments (campaign_id, stage, ordinal, name, hypothesis, parent_id, base_file, change_json, config_hash, config_json, status, created_at, replacement_of, defect_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)`);
   const nextOrd = db.prepare('SELECT COALESCE(MAX(ordinal), 0) + 1 AS n FROM rr_experiments WHERE campaign_id = ?');
   return tx(db, () => {
     const added = [], skipped = [];
     for (const it of items) {
       const ord = nextOrd.get(campaignId).n;
-      const r = ins.run(campaignId, it.stage, ord, it.name, it.hypothesis, it.parentId ?? null, it.baseFile ?? null, j(it.change ?? null), it.configHash, JSON.stringify(it.config), at);
+      const r = ins.run(campaignId, it.stage, ord, it.name, it.hypothesis, it.parentId ?? null, it.baseFile ?? null, j(it.change ?? null), it.configHash, JSON.stringify(it.config), at, it.replacementOf ?? null, j(it.defect ?? null));
       if (Number(r.changes) === 1) added.push({ id: Number(r.lastInsertRowid), name: it.name }); else skipped.push(it.name);
     }
     return { added, skipped };
@@ -173,6 +178,8 @@ export function claimNext(db, campaignId, workerId, at) {
   });
 }
 export function experimentHeartbeat(db, id, at) { db.prepare('UPDATE rr_experiments SET heartbeat_at = ? WHERE id = ?').run(at, id); }
+export function setParent(db, id, parentId) { db.prepare('UPDATE rr_experiments SET parent_id = ? WHERE id = ?').run(parentId, id); }
+export const countReplacements = (db, campaignId) => db.prepare('SELECT COUNT(*) AS n FROM rr_experiments WHERE campaign_id = ? AND replacement_of IS NOT NULL').get(campaignId).n;
 
 export function finishExperiment(db, id, { status, metrics = null, summary = null, error = null, at, durationMs = null, provenance = {} }) {
   if (!EXPERIMENT_STATUSES.includes(status)) throw new Error(`unknown experiment status ${status}`);
@@ -204,14 +211,14 @@ export function getExperiment(db, id) {
   return r ? experimentRow(r) : null;
 }
 function experimentRow(r) {
-  return { ...r, config: pj(r.config_json), change: pj(r.change_json), metrics: pj(r.metrics_json), summary: pj(r.summary_json) };
+  return { ...r, config: pj(r.config_json), change: pj(r.change_json), metrics: pj(r.metrics_json), summary: pj(r.summary_json), defect: pj(r.defect_json) };
 }
 export function listExperiments(db, campaignId, { status = null, stage = null, limit = 500, offset = 0, withMetrics = false } = {}) {
-  const cols = withMetrics ? '*' : 'id, campaign_id, stage, ordinal, name, hypothesis, parent_id, base_file, change_json, config_hash, status, attempts, started_at, finished_at, duration_ms, code_revision, engine_version, data_hash, summary_json, error, created_at';
+  const cols = withMetrics ? '*' : 'id, campaign_id, stage, ordinal, name, hypothesis, parent_id, base_file, change_json, config_hash, status, attempts, started_at, finished_at, duration_ms, code_revision, engine_version, data_hash, summary_json, error, created_at, replacement_of, defect_json';
   const where = ['campaign_id = ?'], args = [campaignId];
   if (status) { where.push('status = ?'); args.push(status); }
   if (stage != null) { where.push('stage = ?'); args.push(stage); }
-  return db.prepare(`SELECT ${cols} FROM rr_experiments WHERE ${where.join(' AND ')} ORDER BY stage, ordinal, id LIMIT ? OFFSET ?`).all(...args, limit, offset).map((r) => ({ ...r, change: pj(r.change_json), summary: pj(r.summary_json), ...(withMetrics ? { config: pj(r.config_json), metrics: pj(r.metrics_json) } : {}) }));
+  return db.prepare(`SELECT ${cols} FROM rr_experiments WHERE ${where.join(' AND ')} ORDER BY stage, ordinal, id LIMIT ? OFFSET ?`).all(...args, limit, offset).map((r) => ({ ...r, change: pj(r.change_json), summary: pj(r.summary_json), defect: pj(r.defect_json), ...(withMetrics ? { config: pj(r.config_json), metrics: pj(r.metrics_json) } : {}) }));
 }
 export function countExperiments(db, campaignId) {
   const rows = db.prepare('SELECT status, COUNT(*) AS n FROM rr_experiments WHERE campaign_id = ? GROUP BY status').all(campaignId);

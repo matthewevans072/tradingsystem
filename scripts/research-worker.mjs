@@ -13,12 +13,13 @@ import { createRunner, ResearchError } from '../server/research/runner.js';
 import { LIMITS } from '../server/research/config.js';
 
 function parseArgs(argv) {
-  const o = { campaign: null, maxMinutes: null, create: false, status: false };
+  const o = { campaign: null, maxMinutes: null, create: false, status: false, plan: 'campaign-1' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--campaign') o.campaign = Number(argv[++i]);
     else if (a === '--max-minutes') o.maxMinutes = Number(argv[++i]);
     else if (a === '--create') o.create = true;
+    else if (a === '--plan') o.plan = String(argv[++i]);
     else if (a === '--status') o.status = true;
     else throw new Error(`unknown argument ${a}`);
   }
@@ -30,12 +31,13 @@ export async function main(argv = process.argv.slice(2), { runner = null, log = 
   try { o = parseArgs(argv); } catch (e) { log(`error: ${e.message}`); return { exitCode: 1, error: e.message }; }
   const rr = runner ?? createRunner();
   try {
-    if (o.create) { const c = rr.createCampaign({}); log(`campaign ${c.id} created: ${c.queued} experiments queued, document ${c.docSha256.slice(0, 12)}; nothing ran`); return { exitCode: 0, campaignId: c.id }; }
+    if (o.create) { const c = rr.createCampaign({ plan: o.plan }); log(`campaign ${c.id} created from plan ${c.plan}: ${c.queued} experiments queued, document ${c.docSha256}; nothing ran`); return { exitCode: 0, campaignId: c.id }; }
     if (!Number.isInteger(o.campaign) || o.campaign < 1) throw new Error('--campaign <id> is required');
     if (o.status) { log(JSON.stringify(rr.campaignStatus(o.campaign), null, 1)); return { exitCode: 0 }; }
     const started = Date.now();
     const until = () => (o.maxMinutes != null && Date.now() - started > o.maxMinutes * 60_000);
-    log(`worker pid ${process.pid} on campaign ${o.campaign}: limits ${LIMITS.maxConfigs} configs / ${LIMITS.maxHours} h; simulation only`);
+    const lim = rr.campaignStatus(o.campaign).limits ?? LIMITS;
+    log(`worker pid ${process.pid} on campaign ${o.campaign}: limits ${lim.maxConfigs} configs / ${lim.maxHours} h (plan ${lim.plan ?? 'campaign-1'}); simulation only`);
     const out = rr.runWorker(o.campaign, { until, onExperiment: (e) => log(`${new Date().toISOString()} experiment ${e.id} ${e.name}: ${e.stop ? `STOP ${e.stop}` : e.failed ? 'failed' : `done net ${e.summary?.net} dd ${e.summary?.maxDrawdownPct}% trades ${e.summary?.completedTrades}${e.summary?.comparison?.clearsTarget ? ' CLEARS TARGET' : ''}`}`) });
     const st = rr.campaignStatus(o.campaign);
     log(`worker stopped: ${out.reason}; campaign ${st.status}${st.stopReason ? ` (${st.stopReason})` : ''}; ${st.counts.done} done, ${st.counts.failed} failed, ${st.counts.queued} queued, ${st.counts.cancelled} cancelled; ${st.cleared} clear the target, ${st.shortlisted} shortlisted`);
