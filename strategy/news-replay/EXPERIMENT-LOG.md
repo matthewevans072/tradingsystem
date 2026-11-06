@@ -97,3 +97,74 @@ Entries are headed `## <number> | <date> | <title>` and run until the next headi
 As the order requires, recorded before the first run: historical results appear on the Research page as each experiment finishes (Phase A: D-A and P-A first, then Phase B1), with the four plain-English answers, plan fates, missed and funding-rejected signals, and per-stock and per-category results. Performance is visible, and no rule frozen in `CAMPAIGN-1.md`, `matrix-v1.json`, `headline-words-v1.json` or `ai-planner-v1.json` may be tuned on it: a change prompted by a result is a new, recorded experiment (a new campaign document), never an edit. The AI configurations stay "not run: no API spending authorised".
 
 Found and corrected before any run, while building the page (code not yet committed or frozen): the simulator wrote a signal record only when a fill was attempted, so a bullish activation whose entry had no setup, expired or was disarmed left no record, and the plan-fate table would have shown it as "no record". Every such signal is now recorded at the time its fate becomes known (no setup and disarmed at the activation bar, an expired pullback at the end of its setup window, a fill after the replay at the last close); a synthetic test checks each case and two planted bugs check the test. It changes records, not trades or P/L.
+
+## 4 | 2026-11-06 | **Event counts** (before any run; signals counted, no outcome computed)
+
+Replay 2020-01-02 to 2021-12-31 (504 sessions). Totals: 3090 entry plans and 5526 follow-up checks from 13982 news items (at most three symbols) and 341 filings; 204 news items possibly revised; 274 price-only control sessions; 21 FOMC statements (context for the AI planner only).
+
+| Stock | First 1-min session | 1-min sessions | News (≤3 symbols) | News (>3, not used) | Possibly revised | Filings | Outside hours | Entry plans | Follow-ups | Bullish | Bearish | No activation | Negative-headline plans | Item-free sessions | Control sessions |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| MU | 2019-12-02 | 525 | 463 | 399 | 2 | 39 | 242 | 189 | 127 | 30 | 32 | 127 | 12 | 315 | 34 |
+| AMZN | 2019-12-02 | 525 | 2643 | 2128 | 27 | 29 | 1237 | 492 | 1204 | 113 | 89 | 290 | 66 | 12 | 0 |
+| META | 2019-12-02 | 525 | 1907 | 1512 | 24 | 24 | 820 | 450 | 873 | 105 | 72 | 273 | 61 | 54 | 0 |
+| TSLA | 2019-12-02 | 525 | 5554 | 2853 | 124 | 47 | 3153 | 501 | 2182 | 107 | 104 | 290 | 167 | 3 | 0 |
+| VST | 2019-12-02 | 525 | 62 | 41 | 0 | 33 | 68 | 64 | 5 | 16 | 14 | 34 | 7 | 440 | 192 |
+| GOOG | 2019-12-02 | 525 | 1095 | 1421 | 9 | 32 | 570 | 397 | 394 | 82 | 68 | 247 | 48 | 107 | 0 |
+| INTC | 2019-12-02 | 525 | 710 | 612 | 9 | 43 | 359 | 290 | 232 | 47 | 45 | 198 | 18 | 214 | 2 |
+| CSCO | 2019-12-02 | 525 | 286 | 300 | 0 | 39 | 165 | 172 | 64 | 29 | 19 | 124 | 14 | 332 | 32 |
+| PYPL | 2019-12-02 | 525 | 590 | 553 | 4 | 29 | 297 | 262 | 194 | 40 | 47 | 175 | 13 | 242 | 7 |
+| SNAP | 2019-12-02 | 525 | 672 | 489 | 5 | 26 | 268 | 273 | 251 | 59 | 51 | 163 | 15 | 231 | 7 |
+
+| Comparison | Events | Status |
+|---|---|---|
+| C1 | 274 | tested |
+| C2 | 421 | tested |
+| C3 | — | pending (AI arms not run) |
+| C4 | — | pending (AI arms not run) |
+| C5 | 628 | tested |
+| C6 | 628 | tested |
+
+## 5 | 2026-11-06 | **Frozen for campaign 1**
+
+code revision: `nr-code-2026-11-06-1`; engine `nr-engine-1`; campaign commit: `fafd8a0dd5d4f598fed0afd6b4b2973c8e31b76b`; HEAD `535924eee314be11ce2a622797af0baf451c4355`; data manifest hash: `062021bcd0cf7c8daac8d56faf6032e78086fe3417f3f7becde1aa780b293907`; daily inputs hash `9b15a6341f19696d889df764b9c4e37e98788ee37a3338e9a53466e63ddc0671`; calibration hash `9d13892685912d5c1eecc7afef0afcebd844cc7b73a8d38ea79a7b363d777fdc` (samples on or before 2021-12-31). Configurations and settings: matrix-v1.json, headline-words-v1.json, ai-planner-v1.json and CAMPAIGN-1.md as pinned. Implementation ends here.
+
+## 6 | 2026-11-06 | **Run** run id: 1, config: D-A, config hash: 322451db6ed9573d81d592e7b8f31242c3e1f1bafcc1a8a3d197e7a0467bd06a, status: done; variant: base
+
+net 3472.16 US$; T -10257.78; completed trades 401; exploratory (a heavily used development period).
+
+## 7 | 2026-11-06 | **Run** run id: 2, config: D-A, config hash: 2b7fecca926aabda928d62ea6574bd7f69b2d99d88931f5e2c268b233c8c186d, status: done; variant: costs_x2
+
+net 2173.44 US$; T -11262.99; completed trades 391; exploratory (a heavily used development period).
+
+## 8 | 2026-11-06 | **Run** run id: 3, config: D-A, config hash: 8c55aef6ee2aad752f0c9f74f84c8fdeb397aaf080ff2f78c17722d8c1b1ae46, status: done; variant: delay_bar
+
+net 3708.74 US$; T -9560.12; completed trades 406; exploratory (a heavily used development period).
+
+## 9 | 2026-11-06 | **Run** run id: 4, config: D-A, config hash: e105caecb012a42935323afc16ed4d16f2976e0ee7760ead99baeef488491e84, status: done; variant: delay_session
+
+net 1717.84 US$; T -8498.53; completed trades 299; exploratory (a heavily used development period).
+
+## 10 | 2026-11-06 | **Run** run id: 5, config: P-A, config hash: b929a335ff34ee4e5711366aaec244c6526f31a03e25294d19471a6479c11e00, status: done; variant: base
+
+net -191.97 US$; T -1931.05; completed trades 41; exploratory (a heavily used development period).
+
+## 11 | 2026-11-06 | **Run** run id: 6, config: P-A, config hash: 726c5ab544ed5315b78f6a4e8c339466606c0ff738f67da24fe5bf2d0cb0ca8d, status: done; variant: costs_x2
+
+net -504.93 US$; T -2239.26; completed trades 41; exploratory (a heavily used development period).
+
+## 12 | 2026-11-06 | **Run** run id: 7, config: P-A, config hash: 595d849088c5591786dbf73dd81d550f0d00c445e1dd20f89d63efcc2571e489, status: done; variant: delay_bar
+
+net 311.93 US$; T -1550.41; completed trades 41; exploratory (a heavily used development period).
+
+## 13 | 2026-11-06 | **Run** run id: 8, config: P-A, config hash: cddaf72ea08b0f403adf8836ed2bf8b44618c57a5b3a8363310fe4aca3e5478a, status: done; variant: delay_session
+
+net -46.29 US$; T -1209.52; completed trades 34; exploratory (a heavily used development period).
+
+## 14 | 2026-11-06 | **Phase A complete (D-A and P-A); CAMPAIGN-2.md committed before any outcome existed** (master work order version 3, Phases A and B2)
+
+**Chronology (measured from git and the database):** `CAMPAIGN-2.md` and `matrix-2.json` (the AMT exits, Phase B2) were committed as 983b5e8c020505df38f42a03b458930c65f67bcc at 2026-11-06T21:32:16Z. The plans were saved before any run: planner D 8,616 rows (21:30:38Z to 21:31:17Z), DC 8,616 (21:31:22Z to 21:34:26Z), P 274 (21:34:32Z), each hash-chained with its packet hash. Run 1 (D-A base) started at 21:34:32.631Z, 2 minutes 16 seconds after the campaign 2 commit; runs 1 to 8 finished by 21:34:44.431Z (entries 6 to 13). So campaign 2's rules were fixed before any news-replay outcome existed, and no run of entry C (campaign 2's X1) exists yet.
+
+**Phase A results (simulated development results on a heavily used period, not validated; every figure measured from the simulation except the two benchmarks, which are derived):**
+- **D-A** (news plans, immediate entry): net +US$3,472.16 after US$1,530.08 of modelled costs; 401 completed trades and 3 open at the end; T = −US$10,257.78 (its exposure-matched hold made +US$13,729.94); the equal-weight hold of basket A made +US$26,358.92; maximum drawdown 17.77%; on average 49.28% invested; TSLA 44.5% of the gross gain; accounting reconciles. Sensitivities: T −US$11,262.99 (costs doubled), −US$9,560.12 (one bar later), −US$8,498.53 (one session later). Plan fates of the 3,090 entry plans: neither activated 1,921; bearish activated 541; bullish activated then a gain 173, a loss at exit 147, invalidated 81, open at the end 3; already held 192; funding or caps rejected 32. By category: news 2,826 plans, 354 trades, +US$3,826.10; earnings 8-Ks 91 plans, 22 trades, −US$166.84; other filings 173 plans, 28 trades, −US$187.11.
+- **P-A** (the price-only control, sessions without items): net −US$191.97 after US$304.60 of costs; 41 completed trades and 1 open; T = −US$1,931.05; maximum drawdown 12.96%; on average 8.45% invested; MU 91.4% of the gross gain; accounting reconciles.
+- **Plain reading:** D-A made money; it did not beat its exposure-matched hold, the equal-weight hold or (on T) its price-only control, and it does not qualify (drawdown above 15%, TSLA above 40%, T below zero in every variant; the placebo has not run). The placebo runs after Phase B1. Results are visible on the Research page; no frozen rule is tuned on them (entry 3).
