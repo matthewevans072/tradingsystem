@@ -1,0 +1,232 @@
+{
+  "journal": "prospective-1",
+  "record": "activation",
+  "codeRevision": "pj-code-2026-11-06-1",
+  "engine": "rr-mech-2",
+  "sourceCommit": "3248474c6c3c90e2da8a1bf028e25fee5540ec0a",
+  "preparedAt": "2026-11-06T04:44:32.148Z",
+  "spec": {
+    "file": "strategy/research-runner/PROSPECTIVE-1.md",
+    "sha256": "27efc884841a9a032089fa57459925623e14b5aa9e8285ad24f66175c54d4b32"
+  },
+  "period": {
+    "rule": "the start is the first NYSE session dated after the activation commit's America/New_York date; the warm-up starts 200 sessions before it",
+    "expectedStart": "2026-11-06",
+    "warmupFrom": "2026-01-22",
+    "warmupSessions": 200,
+    "end": "2027-11-05"
+  },
+  "rules": [
+    {
+      "name": "M1",
+      "role": "named rule",
+      "experiment": 191,
+      "file": "strategy/research-runner/prospective-1/rules/m1.json",
+      "version": "rr3-M1-down=3",
+      "storedConfigHash": "a0c21dc7e99b694f3ca2319d3edede44b4021af7a2c47e027624adb05c64d80e",
+      "ruleHash": "9cfafe1e994e441cc13786790e3ac2fed4d4b90e046895f97cf8d1611ce15442",
+      "configHash": "81ad7988f3afaa3dda477839fa4c438fd4cfcfe1f148daa03fcc95e50e26c1e2"
+    },
+    {
+      "name": "B0",
+      "role": "control",
+      "experiment": 180,
+      "file": "strategy/research-runner/prospective-1/rules/b0.json",
+      "version": "rr3-B0",
+      "storedConfigHash": "8602d82b6f8f00cf949150cc9ac9f7358f6e24b8bc3566cc230779b7ca9b420b",
+      "ruleHash": "7503f921d1013f2c71c0497c6013a2c23dd2dd9d9e5c28058b3b36177ddca3e9",
+      "configHash": "7106467e42e4f9f7e8488ccc80b355f9f67124a34eadcd3478400d52e823529c"
+    },
+    {
+      "name": "M0",
+      "role": "control",
+      "experiment": 190,
+      "file": "strategy/research-runner/prospective-1/rules/m0.json",
+      "version": "rr3-M0",
+      "storedConfigHash": "2a14be86d5e9fc6a092211ab7850e61539d36e7d43bb3c0ee1d65aa96b41a632",
+      "ruleHash": "dffa891fd4b4a812fbbe73043f7bc47760e89cca81bcb5aa5022c7c0c197a7fb",
+      "configHash": "3b50a8a9bb2aac36c578420c3ccd60d27e49cf59732dcffb27828be5dafd8721"
+    }
+  ],
+  "calibration": {
+    "sha256": "e80c8ea1423b9d1f013b513d8ba37ed8943a501e74c813c0d665f57dbc93f371",
+    "note": "the frozen campaign-3 calibration (hxr-spread-2, floor 2 bps); forward fills use each stock's last step, the 2026 running median of opening-quote samples dated 2026-01-02 to 2026-09-01, inside HXR's final period (decision D2 (i)); historical modelled costs, not verified execution costs"
+  },
+  "data": {
+    "forwardFrom": "2026-10-23",
+    "copiedFromHxr": {
+      "from": "2026-01-22",
+      "to": "2026-10-22",
+      "note": "read once, read-only, from data/hxr-sim.sqlite for indicators only (decision D1 A); never used for a decision, a fill or a result"
+    },
+    "closedWindows": [
+      {
+        "key": "final",
+        "name": "HXR's final period / the range-trend reserve",
+        "from": "2024-01-02",
+        "to": "2026-10-21",
+        "symbols": null
+      },
+      {
+        "key": "labMU",
+        "name": "the Strategy Lab MU holdout",
+        "from": "2025-01-01",
+        "to": "2026-06-30",
+        "symbols": [
+          "MU"
+        ]
+      }
+    ]
+  },
+  "review": {
+    "date": "2027-11-05",
+    "minCompletedOnTimeM1": 30,
+    "null": {
+      "resamples": 20000,
+      "seed": 20271105
+    },
+    "insufficient": "figures shown as descriptive results labelled \"insufficient sample\"; never a qualification"
+  },
+  "files": [
+    {
+      "path": "server/research/mechanisms-2.js",
+      "role": "engine rr-mech-2: signals, exits, sizing, fills, splits, dividends, the veto and held exits",
+      "sha256": "9fb86c5871a9cf09c6b97c5f9ff56b51a093999ee294229f65a70aaac81c1355"
+    },
+    {
+      "path": "server/research/mechanisms.js",
+      "role": "rr-mech-1, unchanged: config validation, config hash and indicators imported by rr-mech-2",
+      "sha256": "8cf33cb9cc458b829c32b4d6714a8b6ea255146bf280fa55e2d7a964313f77ad"
+    },
+    {
+      "path": "server/rangetrend/engine.js",
+      "role": "sizeEntry (sizing at the decision close)",
+      "sha256": "5682261c9bf07c08aac2be29a4eef713683974ca737194f0300fe97c8f24a5cc"
+    },
+    {
+      "path": "server/rangetrend/levels.js",
+      "role": "EPS used by sizeEntry",
+      "sha256": "58a93840a3d254f2c830724671944212b93530ecc14907ce72cd0132de6aa865"
+    },
+    {
+      "path": "server/rangetrend/config.js",
+      "role": "loaded by server/rangetrend/engine.js",
+      "sha256": "3d73ac5ff333708671c2598327ede9a749d06ca37a2d7e9f1a1b02ab1acf86be"
+    },
+    {
+      "path": "server/hxr/engine.js",
+      "role": "sellFees (SEC and TAF fees)",
+      "sha256": "c4f716393631a36c75c092b8eafca326505edf209fe1f82735ead407a0f78e16"
+    },
+    {
+      "path": "server/strategy/config.js",
+      "role": "canonicalJson (config hashes)",
+      "sha256": "4e612d852f06eb39d185b71af97fab63c2a19955fd7fa35be3406dc2f1914c50"
+    },
+    {
+      "path": "server/calendar.js",
+      "role": "the NYSE calendar and session bounds (opens, closes)",
+      "sha256": "d8fd60782a7ac3a8a097d25c9d5f29d8ee780264dead255a091be5803c974145"
+    },
+    {
+      "path": "server/time.js",
+      "role": "time-zone arithmetic",
+      "sha256": "be58439b8151cb42de3cf22ba97853bb9c168f1d3f6f4d9695aa4925dcc09992"
+    },
+    {
+      "path": "server/strategy/sessions.js",
+      "role": "tradingDays (session lists)",
+      "sha256": "76cfbfb25748d076a933b7920ff11c0976b835b7cd4d3443fe486a40e879ec52"
+    },
+    {
+      "path": "server/hxr/data.js",
+      "role": "buildSpreadTable and halfSpreadFn (the frozen half-spread at each fill)",
+      "sha256": "6b00c8db604cb917eec1ea35a297808eca793d0509b324efff93ae740304847f"
+    },
+    {
+      "path": "server/hxr/config.js",
+      "role": "halfSpreadFor, basketSymbols, excludedDates",
+      "sha256": "229acca5d423172885e7565e4f12a3aeefbba396b94e03ea30a9e502df2af5fc"
+    },
+    {
+      "path": "server/hxr/store.js",
+      "role": "read-only reads of hxr-sim.sqlite at activation",
+      "sha256": "17513a481535339ba895b9179c9aff3e1533f2c7b24170e7e7abd65283657782"
+    },
+    {
+      "path": "server/hxr/source.js",
+      "role": "the Alpaca client (data.alpaca.markets only, redirects refused), BAR_FINAL_AFTER_CLOSE_MIN",
+      "sha256": "78dc5a7194a2120e55d293073573865202904bade36fe0ab687e5634a2c35a4e"
+    },
+    {
+      "path": "server/providers/http.js",
+      "role": "HTTP helper used by the Alpaca client",
+      "sha256": "c08f0badf3877c2d8b9956a986f0cfb67ea501217dcb1e2f24f60584fb631a96"
+    },
+    {
+      "path": "server/config.js",
+      "role": "redact and the .env reader used by the Alpaca client",
+      "sha256": "1e6d6de690f011c3355edd1b191286434268953eb29886f3abc832cc86403554"
+    },
+    {
+      "path": "strategy/hxr/universe-hxr-v3.json",
+      "role": "basket A, listings",
+      "sha256": "50ab970196fe0921122698074d84f795b4e74a5dc1e32ad0c5d73ace5a4371b5"
+    },
+    {
+      "path": "strategy/hxr/periods-hxr-v3.json",
+      "role": "excluded sessions",
+      "sha256": "51736ead44b9f48e700390838bab34c681b0d118aa47d3750f2dce4660abb2ac"
+    },
+    {
+      "path": "server/research/journal.js",
+      "role": "the journal: activation, timeliness, the two accounts, release of held exits, replay, review",
+      "sha256": "a30cf07e524662c486d2aee266b97cc8040f785d194806a7d863bb594686851d"
+    },
+    {
+      "path": "server/research/journal-store.js",
+      "role": "the journal database: append-only tables, session order, start refusal",
+      "sha256": "03af9bb6c6e3ec5c6e0e7c087fe23b512089c1e410c519d403a6649d012c2c8c"
+    },
+    {
+      "path": "server/research/journal-download.js",
+      "role": "the bounded downloader (basket A, from 2026-10-23)",
+      "sha256": "eb3d43b2e52a2b8fe6c5546749b6c162f71a5b704100424ecb8cf477b57eac99"
+    },
+    {
+      "path": "scripts/journal.mjs",
+      "role": "the command line the owner runs",
+      "sha256": "c13344ec46fd66bcacad96c76a65752dee7175fceb187dec6a45b59741093642"
+    },
+    {
+      "path": "strategy/research-runner/prospective-1/rules/m1.json",
+      "role": "rule M1 n=3 (experiment 191, period removed)",
+      "sha256": "708476c541709e166f7e99b39b56c7f56e06fa087bf2064fedd7ee9b1b774586"
+    },
+    {
+      "path": "strategy/research-runner/prospective-1/rules/b0.json",
+      "role": "control B0 (experiment 180, period removed)",
+      "sha256": "dd3764ee4fffa30eea1e6640b9e5a586acc2f9290057deef8ac5887e88092f7a"
+    },
+    {
+      "path": "strategy/research-runner/prospective-1/rules/m0.json",
+      "role": "control M0 (experiment 190, period removed)",
+      "sha256": "cb0d7b5c6476bc508a0ac71f110e70e16867e2cf2b0d55a208c0372fa47c6c3b"
+    },
+    {
+      "path": "server/research/runner.js",
+      "role": "review only: nullTest",
+      "sha256": "29a2ae5b15b6b72a2dd065ee232c0e92c6248fd6194e796e562e78d27b4fc805"
+    },
+    {
+      "path": "server/rangetrend/metrics.js",
+      "role": "review only: metrics and the exposure-matched hold",
+      "sha256": "1855b78d2e7cfb9b63707c140ead7700650e5446621abe0246be61b47e52cdfb"
+    },
+    {
+      "path": "server/rangetrend/benchmark.js",
+      "role": "review only: the equal-weight index",
+      "sha256": "448a8666f059d96a852f764c64f6347c8676251866de38e3f15feab305ad0769"
+    }
+  ]
+}
