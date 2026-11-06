@@ -25,7 +25,16 @@
     "il:run": "node --disable-warning=ExperimentalWarning scripts/ictlab-run.mjs",
     "il:report": "node --disable-warning=ExperimentalWarning scripts/ictlab-report.mjs",
     "il:planted": "node --disable-warning=ExperimentalWarning scripts/ictlab-planted.mjs",
-    "rr:worker": "node --disable-warning=ExperimentalWarning scripts/research-worker.mjs"
+    "rr:worker": "node --disable-warning=ExperimentalWarning scripts/research-worker.mjs",
+    "pj:record": "node --disable-warning=ExperimentalWarning scripts/journal.mjs record",
+    "pj:check": "node --disable-warning=ExperimentalWarning scripts/journal.mjs check",
+    "pj:activate": "node --disable-warning=ExperimentalWarning scripts/journal.mjs activate",
+    "pj:update": "node --disable-warning=ExperimentalWarning scripts/journal.mjs update",
+    "pj:status": "node --disable-warning=ExperimentalWarning scripts/journal.mjs status",
+    "pj:verify": "node --disable-warning=ExperimentalWarning scripts/journal.mjs verify",
+    "pj:resume": "node --disable-warning=ExperimentalWarning scripts/journal.mjs resume",
+    "pj:review": "node --disable-warning=ExperimentalWarning scripts/journal.mjs review",
+    "pj:repro": "node --disable-warning=ExperimentalWarning scripts/journal-repro.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"
