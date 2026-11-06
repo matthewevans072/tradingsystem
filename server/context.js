@@ -12,6 +12,7 @@ import { attachLab } from './strategy/lab.js';
 import { attachHxr } from './hxr/service.js';
 import { attachResearch } from './research/service.js';
 import { attachEventSwing } from './eventswing/service.js';
+import { attachNewsReplay } from './newsreplay/service.js';
 
 export function dbFileFor(cfg, mode) {
   return path.join(cfg.dataDir, mode === 'demo' ? 'demo.sqlite' : 'signal-desk.sqlite');
@@ -32,6 +33,8 @@ export function createContext(cfg, mode = 'real', { fetchImpl, file } = {}) {
   attachResearch(ctx);
   // event-swing (simulation only): its own database, opened on first use; the demo gets a stub.
   attachEventSwing(ctx);
+  // news-replay (simulation only): its own database, opened on first use; read-only here; the demo gets a stub.
+  attachNewsReplay(ctx);
   if (mode === 'demo') {
     seedDemo(db);
     ctx.ready = primeDemo(ctx);

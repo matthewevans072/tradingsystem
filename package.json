@@ -43,7 +43,16 @@
     "es:worker": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs worker",
     "es:status": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs status",
     "es:report": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs report",
-    "es:repro": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs repro"
+    "es:repro": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs repro",
+    "nr:download": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs download",
+    "nr:check": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs check",
+    "nr:inventory": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs inventory",
+    "nr:freeze": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs freeze",
+    "nr:run": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs run",
+    "nr:status": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs status",
+    "nr:report": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs report",
+    "nr:ai-estimate": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs ai-estimate",
+    "nr:planted": "node --disable-warning=ExperimentalWarning scripts/newsreplay-planted.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

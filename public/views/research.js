@@ -9,6 +9,7 @@
 // open; there is no closed-browser delivery.
 import { h, mount, fmt, tone, notice, empty, badge, drawer, field, toast, errorState, section, kv } from '../lib/ui.js';
 import { line } from '../lib/charts.js';
+import { newsReplaySection } from './newsreplay.js';
 
 const STAGE_DEFAULT = { 0: 'reference', 1: 'single change (baseline)', 2: 'single change (other bases)', 3: 'combination' };
 let STAGE = STAGE_DEFAULT;
@@ -36,12 +37,13 @@ export async function renderResearch(view, ctx) {
   }
   STAGE = c?.stageNames ? Object.fromEntries(Object.entries(c.stageNames).map(([k, v]) => [k, v.replace(/ \(.*$/, '')])) : STAGE_DEFAULT;
   const P = { api: ctx.api, o, c, exps, notes, reload };
-  let esOv = null;
+  let esOv = null, nrOv = null;
   try { esOv = await ctx.api('GET', '/api/eventswing/overview'); } catch { esOv = null; }
+  try { nrOv = await ctx.api('GET', '/api/newsreplay/overview'); } catch { nrOv = null; }
   if (!live(ep)) return;
-  mount(view, h('div', { class: 'stack lab hxr' }, banner(), statusSection(P), controlsSection(P), c ? leaderSection(P) : null, notificationsSection(P), c ? resultsSection(P) : null, rulesSection(P), eventSwingSection(esOv)));
+  mount(view, h('div', { class: 'stack lab hxr' }, banner(), newsReplaySection(nrOv, ctx.api), statusSection(P), controlsSection(P), c ? leaderSection(P) : null, notificationsSection(P), c ? resultsSection(P) : null, rulesSection(P), eventSwingSection(esOv)));
   browserNotify(notes);
-  if ((c && (c.status === 'running' || c.worker)) || esOv?.campaign?.status === 'running') timer = setTimeout(() => { if (live(ep)) reload(); }, 3000);
+  if ((c && (c.status === 'running' || c.worker)) || esOv?.campaign?.status === 'running' || nrOv?.runs?.some((r) => r.status === 'running')) timer = setTimeout(() => { if (live(ep)) reload(); }, 3000);
 }
 
 // event-swing (strategy/event-swing/CAMPAIGN-1.md): read-only progress, failures and results of its campaign. The

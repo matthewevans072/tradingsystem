@@ -213,3 +213,22 @@ A separate research programme (`strategy/event-swing/`): does knowing when a com
 6. The report is written to `strategy/event-swing/reports/campaign-1.md`.
 
 `npm run es:repro` re-checks, read-only, that the engine reproduces campaign 3's M1 n=3 result to the cent. Notifications appear only on the Research page, titled "development improvement—not validated". A result here is a development result on prices earlier programmes have already examined; it is never a validated strategy.
+
+Status on 2026-11-06: campaign 1 ran (48 runs, none failed) and its outcome is **NONE** (no development candidate). The placebo test could not be drawn for families B to D (TSLA's 48 events leave no placement under the 30-session rule), so their p-values of 1.0000 are the conservative fallback, not a measurement; NONE also follows from conditions that do not use the placebo. Details: `strategy/event-swing/reports/campaign-1.md` and log entry 55.
+
+## 17. news-replay: replaying 2020–2021 news in order (simulation only)
+
+A separate research programme (`strategy/news-replay/`): does reacting to news, company filings and earnings releases, in the order they appeared, make money on the ten basket stocks after costs, compared with the same rules on quiet days and with simply holding the stocks? For every stock and session that has a newly published item, the replay makes a plan using only what was published by then: a bullish level, a bearish level and a no-trade condition, all measured from prices. The plan is saved before the market can trigger it; a simulated trade follows only if a 5-minute close crosses a level within 30 minutes; outcomes are worked out afterwards in a separate pass. Three entry styles are compared: buy at once (A), wait for a pullback to the previous close (B), or wait for a pullback to the previous session's value-area high from the volume profile (C). The price-only control (P) uses the same rules on sessions with no news. 2020-01-02 to 2021-12-31 only; the AI planner is built but **not run** (no API spending authorised).
+
+Where to look: the Research page, section "news-replay". It shows each configuration's result against the benchmarks, four plain-English answers (did it make money after costs; did it beat its control and holding; how much risk; how strong is the evidence), what happened to every plan, and a plan inspector: pick a plan to see the time it was made, the headlines it could see, its levels, what activated, the recorded action and the next simulated fill, with the outcome in a separate panel. Every figure there is a simulated development result on a period other programmes have already examined, never a validated strategy.
+
+Commands (in the project folder; nothing runs on its own):
+1. `npm run nr:check`: every gate condition; all must say OK before a run.
+2. `npm run nr:run -- --confirm --phase A`: runs D-A and P-A with their three sensitivities; `--phase B1` runs the rest; without `--phase`, everything, then the placebo test (about half an hour).
+3. `npm run nr:status` and `npm run nr:report` (writes `strategy/news-replay/reports/campaign-1.md`).
+
+## 18. What keeps running, and what does not
+
+Nothing in Signal Desk's research runs by itself today: every campaign above was started from the command line and stops when it is done, and prospective journal 1 waits for you to run `npm run pj:update` after the close. Markdown files and a closed chat session keep nothing running.
+
+Master work order version 3 (`AUTONOMY.md`) authorises a persistent worker and Windows Task Scheduler entries for a forward simulated account (Phase C). They are **not built yet**. When they are: the worker runs replays, campaign configurations, the forward accounts and their condition checks; it does not write code (that needs a Claude Code session) and does not read CNBC (that needs the scheduled Claude session, which also waits for your confirmation that CNBC's terms allow automated reading for personal use). For any of it to work, your PC must be on and not asleep, the worker started, and, for the CNBC reading, Chrome open with the Claude extension and CNBC logged in by you. A session missed because any of these was not true is recorded as missed and never filled in later.
