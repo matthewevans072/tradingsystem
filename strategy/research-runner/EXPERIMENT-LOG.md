@@ -147,3 +147,61 @@ orders, the campaign documents' hashes, and each campaign's outcome.
 **The Research page:** no browser automation is installed (no Playwright, no browser tool in this session); the owner is asked to open http://127.0.0.1:4317/#/research and describe the page; no view change was made, so the code revision stays rr-code-2026-11-05-1 and no suite re-run was required by that rule (the suite was re-run anyway for the test count in `JOURNAL.md`).
 
 **Not done:** no market-data run, no evaluation access, no review cycle, no stored result changed.
+
+## 9 | 2026-11-05 | **PROSPECTIVE-1.md drafted (Part 1 only): a prospective, signal-only journal of M1 n=3 with controls B0 and M0; the warm-up coverage checked read-only; five decisions open for the owner** (not committed; no code; nothing downloaded or run)
+
+**The owner's order of 2026-11-05 (verbatim):**
+
+> Part 1 only: draft the protocol for a prospective, signal-only journal and stop. Do not commit it, download anything or write code until I approve.
+>
+> This is a new observational exercise with M1 and two controls. It does not overturn Campaign 3's "no candidate" result. No capital, no broker, no orders, no notifications, no scheduled jobs: the owner runs each update by hand after the close.
+>
+> Write strategy/research-runner/PROSPECTIVE-1.md with:
+>
+> 1. The frozen implementation, not only a revision label: the source commit the journal will run from; the SHA-256 of server/research/mechanisms.js and of every other file that affects a decision or a fill; engine rr-mech-1; code revision rr-code-2026-11-05-1; the config hashes of experiment 191 (M1 down=3: uptrend filter, exit above SMA(5) or after 10 sessions, sizing reference C - 2m) and of the controls B0 (experiment 180) and M0 (experiment 190). M1 is the only named rule; B0 and M0 are controls. The shared block of campaign 3 unchanged: the basket A ten stocks, $15,000 simulated per rule, the same costs. If the journal wrapper needs new code, it must reproduce the frozen engine's decisions and fills exactly on synthetic data before the start; any strategy-affecting correction later is a separately documented version, never an edit.
+>
+> 2. Execution conventions, stated exactly: decisions at the close on completed daily bars; simulated next-open fills with modelled costs (calibrated half-spread with its floor, slippage, SEC and TAF fees). Say plainly that daily bars cannot verify actual fills: the journal cannot establish executable prices or real trading costs.
+>
+> 3. Timeliness and the two ledgers. Each decision is recorded with recorded_at stamped before writing; on_time means recorded before the next session's open. The primary prospective account contains only trades whose entry decision was recorded on time. A decision recorded after the next open is kept, marked late, and its hypothetical trade is excluded from the primary account; it goes to a separately labelled reconstructed ledger. Processing several missed sessions at once never adds trades to the primary account. Define and justify how a late exit decision on a primary-account position is handled (for example: it fills at the first open after it is recorded, marked late). Never backfill a late record as on time.
+>
+> 4. Start and warm-up coverage. The start is the first session after the document's commit; no decision is recorded for an earlier session. The uptrend filter needs 200 prior closes for each stock, with consistent split handling. Check, read-only and counts and dates only, which stored bars that warm-up would use, and which closed windows they fall in: HXR's final period and the range-trend reserve (2024-01-02 to 2026-10-21) and the Strategy Lab MU holdout (2025-01-01 to 2026-06-30). Report the coverage and the conflict. Do not use, download or fill from a closed period. List the options (for example: read those bars for indicators only, recorded as an exposure; or delay the M1 filter until 200 forward closes exist) for me to decide.
+>
+> 5. Reading rule, finite. The first performance review is on 2027-11-05. If fewer than 30 eligible M1 trades in the primary account have completed by then, report "insufficient sample". Do not extend the date or loosen the threshold. Thirty trades alone would not establish profitability. At the review: net P/L after modelled costs, drawdown, exposure, each rule's exposure-matched hold, M1 against B0 and M0, and the random-timing null on the forward primary-account trades only (the trade-level diagnostic of NULL-DIAGNOSTIC-NOTES.md, 20,000 resamples, a new seed fixed in this document). A non-pass means the diagnostic did not distinguish timing from random, not that there is no edge. The reconstructed ledger is reported separately and never counted toward the sample.
+>
+> 6. Visibility before the review. Operational information stays visible throughout: data received and missing, late updates, signals and exits, simulated positions, rejections and errors. Aggregate performance (net P/L, returns, drawdown, comparisons with controls or benchmarks) stays hidden until 2027-11-05.
+>
+> 7. The disclosure, verbatim: "The journal tests timely signal production and forward simulated performance, including net profitability under the frozen execution and cost assumptions. It does not verify actual fills, establish future profitability or authorize real-money trading."
+>
+> Show me the document and the warm-up coverage report, then stop. No new campaign, no evaluation window, no broad review cycle.
+
+**Done:** `PROSPECTIVE-1.md` drafted with the seven requested sections plus the Part 2 plan and the open decisions. Frozen implementation: the files on the decision, fill, data and review paths byte-identical at e005b46 and 12b9c0d (no `server/` change between them), each with its git blob id and LF-normalised SHA-256; the stored config hashes of experiments 191, 180 and 190 recomputed and matching, with their rule hashes (period removed). Read-only checks of `data/hxr-sim.sqlite` (counts and dates only): last stored bar 2026-10-22 for every basket A stock; for a 2026-11-09 start, M1's 200-close warm-up spans 2026-01-23 to 2026-11-06, of which 188 closes per stock lie in HXR's final period / the range-trend reserve and, for MU, 109 in the Strategy Lab MU holdout, and 11 sessions are not stored; the typical move's 21 closes need 9 closed-window closes per stock; no split for basket A since 2025-01-01. Found and recorded: the frozen cost calibration would price forward fills from 2026 quote samples dated inside the closed window; HXR's "Download / refresh data" re-downloads from 2016 and must not be used for the journal. Options listed for the owner: D1 the warm-up (A: read the closed-window closes for indicators only, recorded as an exposure; B: forward-only, M1 eligible from 2027-08-11, about 62 sessions before the review), D2 the cost calibration, D3 the primary-account construction, D4 the sequencing (code committed before the document), D5 the presentation at an insufficient sample. The interpretation and the reading rule are fixed in the draft before any forward data exists.
+
+**Not done:** no commit, no code, no download, no run, no evaluation window, no review cycle. The owner was not asked to pick between subagent fan-out and a solo draft: the owner's standing rule forbids review workflows and subagent fan-out, so the draft was written in this session alone.
+
+## 10 | 2026-11-06 | **Prospective journal 1 approved by the owner (decisions D1 to D5 and the implementation requirements); PROSPECTIVE-1.md revised and committed as the specification** (no code committed yet; nothing downloaded or run on market data)
+
+**The owner's message of 2026-11-06 (verbatim):**
+
+> Approve these five choices and implementation requirements. Build and test the journal, then activate it as specified. Manual updates only; no live trading.
+>
+> Choices:
+> - D1: A. Read the closed-window closes for indicators only, documented as an exposure. Append an entry to the HXR, range-trend and Strategy Lab experiment logs recording which bars were read (dates, symbols, MU's holdout overlap) and why; those windows are no longer described as untouched.
+> - D2: (i). Keep the frozen calibration. Document that it uses 2026 quote samples from the closed windows (recorded in the same log entries), and that these are historical, modelled costs, not verified future execution costs.
+> - D3: a stateful engine with state restore and an entry veto, a new engine version rr-mech-2. No filtered ledger.
+> - D4: revise PROSPECTIVE-1.md with these choices and commit it as the specification; then build and test; then commit a separate activation record that pins the source commit and the SHA-256 of every decision- and fill-affecting file of rr-mech-2 and the journal, and the config and rule hashes.
+> - D5: at the review, show the figures as descriptive results labelled "insufficient sample" if fewer than 30 completed on-time M1 primary trades; never treat that as qualification.
+>
+> Implementation requirements:
+> - Missed entries are skipped in the primary account; later signals and sizes come from that account's actual simulated state. Retrospective reconstruction is a separate, labelled ledger, never counted toward the sample.
+> - A late exit keeps the position until its delayed fill, with its cash constraints and corporate actions; test a case where the held position blocks another entry.
+> - The start is derived from the activation commit and the exchange calendar, not hard-coded. An on-time decision is durably recorded after its session closes and before the next session opens, using only information available when recorded. The review date stays 2027-11-05.
+> - rr-mech-2 with no veto must reproduce rr-mech-1 exactly: on synthetic data, and on the stored development data for experiments 180, 190 and 191 to the cent, read-only, with no new campaign run recorded. Then synthetic tests show correct divergence when an entry or exit is late, append-only records, refusal to rewrite or backfill, refusal of pre-start sessions, and determinism.
+> - Data: a bounded journal downloader for basket A daily bars, splits and dividends from 2026-10-23 forward only, through HXR's source. Never use HXR's full download. No other symbol, no evaluation-window access.
+> - Operational information is visible throughout (data received and missing, late updates, signals, exits, simulated positions, rejections, errors); aggregate performance stays hidden until 2027-11-05.
+> - Replace "B almost certainly ends with insufficient sample" with: "the 19-trade figure is an illustrative projection at the development trade rate, not a probability forecast."
+>
+> This is a new observational exercise with M1 and two controls; it does not overturn Campaign 3's "no candidate" result. No broker, order or account code, no notifications or scheduled jobs, no broad review cycle. Commit and push code, documents and records, excluding market data, databases and secrets. Report test counts, the reproduction check, the activation record and the first manual update.
+
+The owner also asked, during the work, to update the Obsidian vault ("update obsidian"); done at the end of this work (the vault is outside git).
+
+**Done in this entry:** `PROSPECTIVE-1.md` revised as the specification with D1 to D5: rr-mech-2 (state restore, entry veto, held exits; rr-mech-1 unchanged) and its equivalence requirement; the stateful primary account (late entries skipped, late exits held until the record is stamped and then filled at the first open after `recorded_at`; no filtered ledger) and the reconstructed account; the start derived from the activation commit's New York date and the calendar; D1 A and D2 (i) with the exposure and cost notes; the replaced sentence on the 19-trade figure; D5; the D4 sequence. This entry and the specification are committed before the code. Nothing has been downloaded or run on market data in this step.
