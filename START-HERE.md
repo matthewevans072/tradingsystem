@@ -199,3 +199,17 @@ A forward journal of one rule from campaign 3, M1 n=3 (three down closes in an u
 - **If the journal pauses** (a split it had not seen, an unusual corporate action, or a price move that looks like an unrecorded split), check what happened and run `npm run pj:resume -- --reason "what you checked"`.
 - The journal keeps its own records (`data/prospective-1.sqlite`), which cannot be rewritten; it checks its own code and records at every update and stops if anything changed.
 
+## 16. event-swing: earnings events (simulation only)
+
+A separate research programme (`strategy/event-swing/`): does knowing when a company reports earnings, and what its release says about guidance, improve swing trades on the ten basket stocks? Four families: selling before an estimated announcement and buying back after it (A), buying a recovery after a negative reaction (B), buying a positive reaction (C) and pausing an entry rule after bad news (D), each against its baseline, a price-only control and a placebo that moves the events to random dates. Prices 2016-01-04 to 2021-12-31 only (later years belong to other programmes' closed windows). Everything is simulated; there is no order, broker or account anywhere.
+
+**It needs one setting from you before it can run.** The event dates come from SEC EDGAR, which refuses automated requests that do not declare a contact address. Add a line `SEC_CONTACT_EMAIL=you@example.com` to `.env` (your own address; Signal Desk never prints it and sends it only to sec.gov, in the request header SEC asks for). Then, in the project folder:
+
+1. `npm run es:download`: fetches the ten companies' 8-K filings with item 2.02 and their press releases, 2015 to 2021 only (a few hundred requests, a few minutes).
+2. `npm run es:inventory`: shows the event counts per stock and category; `npm run es:inventory -- --record` writes them to the log (before anything runs).
+3. `npm run es:freeze -- --record`: records that the code is frozen (the code must be committed).
+4. `npm run es:check`: every gate condition; all must say OK.
+5. `npm run es:campaign -- --create --start --confirm`: queues the 48 runs and starts the background worker; progress shows on the Research page and in `data/event-swing-logs/`. It stops by itself after at most two hours of computing.
+6. The report is written to `strategy/event-swing/reports/campaign-1.md`.
+
+`npm run es:repro` re-checks, read-only, that the engine reproduces campaign 3's M1 n=3 result to the cent. Notifications appear only on the Research page, titled "development improvement—not validated". A result here is a development result on prices earlier programmes have already examined; it is never a validated strategy.

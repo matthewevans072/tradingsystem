@@ -34,7 +34,16 @@
     "pj:verify": "node --disable-warning=ExperimentalWarning scripts/journal.mjs verify",
     "pj:resume": "node --disable-warning=ExperimentalWarning scripts/journal.mjs resume",
     "pj:review": "node --disable-warning=ExperimentalWarning scripts/journal.mjs review",
-    "pj:repro": "node --disable-warning=ExperimentalWarning scripts/journal-repro.mjs"
+    "pj:repro": "node --disable-warning=ExperimentalWarning scripts/journal-repro.mjs",
+    "es:check": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs check",
+    "es:download": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs download",
+    "es:inventory": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs inventory",
+    "es:freeze": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs freeze",
+    "es:campaign": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs campaign",
+    "es:worker": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs worker",
+    "es:status": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs status",
+    "es:report": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs report",
+    "es:repro": "node --disable-warning=ExperimentalWarning scripts/eventswing.mjs repro"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

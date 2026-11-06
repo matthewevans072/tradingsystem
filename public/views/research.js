@@ -36,9 +36,38 @@ export async function renderResearch(view, ctx) {
   }
   STAGE = c?.stageNames ? Object.fromEntries(Object.entries(c.stageNames).map(([k, v]) => [k, v.replace(/ \(.*$/, '')])) : STAGE_DEFAULT;
   const P = { api: ctx.api, o, c, exps, notes, reload };
-  mount(view, h('div', { class: 'stack lab hxr' }, banner(), statusSection(P), controlsSection(P), c ? leaderSection(P) : null, notificationsSection(P), c ? resultsSection(P) : null, rulesSection(P)));
+  let esOv = null;
+  try { esOv = await ctx.api('GET', '/api/eventswing/overview'); } catch { esOv = null; }
+  if (!live(ep)) return;
+  mount(view, h('div', { class: 'stack lab hxr' }, banner(), statusSection(P), controlsSection(P), c ? leaderSection(P) : null, notificationsSection(P), c ? resultsSection(P) : null, rulesSection(P), eventSwingSection(esOv)));
   browserNotify(notes);
-  if (c && (c.status === 'running' || c.worker)) timer = setTimeout(() => { if (live(ep)) reload(); }, 3000);
+  if ((c && (c.status === 'running' || c.worker)) || esOv?.campaign?.status === 'running') timer = setTimeout(() => { if (live(ep)) reload(); }, 3000);
+}
+
+// event-swing (strategy/event-swing/CAMPAIGN-1.md): read-only progress, failures and results of its campaign. The
+// campaign is created and started from the command line; this section never starts or changes anything.
+function eventSwingSection(o) {
+  if (!o) return section('event-swing (earnings events)', empty('Not available', 'The event-swing overview could not be loaded.'));
+  if (o.demo) return section('event-swing (earnings events)', notice('info', o.note));
+  const c = o.campaign;
+  const parts = [h('div', { class: 'hxr-banner', role: 'note' }, h('strong', {}, 'Simulated earnings-event campaign. '), 'Prices 2016-01-04 to 2021-12-31, already examined by earlier programmes; every result is a development result, never a validated strategy. Notifications are titled "', o.title, '".')];
+  if (o.blocker) parts.push(notice('warn', h('strong', {}, 'Data: '), o.blocker));
+  const done = o.runs.filter((r) => r.status === 'done').length, failed = o.runs.filter((r) => r.status === 'failed').length, queued = o.runs.filter((r) => r.status === 'queued').length;
+  parts.push(kv([
+    ['Event data', `${o.data.downloads} download(s); last ${o.data.last?.status ?? 'none'}${o.data.last?.finishedAt ? ` (${o.data.last.finishedAt})` : ''}; ${o.manifest.filings} filings, ${o.manifest.documents} exhibits stored`],
+    ['Campaign', c ? `${c.id}: ${c.status}${c.stopReason ? ` (${c.stopReason})` : ''}; execution ${(c.elapsedMs / 60000).toFixed(1)} of 120 min` : 'not created yet (the command line creates it once the gate opens)'],
+    ['Progress', c ? `${done} done, ${failed} failed, ${queued} queued of ${o.runs.length}; placebo for ${o.placebo.filter((p) => p.resamples > 0).length} configurations` : '—'],
+  ]));
+  if (c && o.runs.length) {
+    const rows = o.runs.map((r) => h('tr', {}, h('td', {}, r.configId), h('td', {}, r.variant), h('td', {}, badge(r.status, STATUS_KIND[r.status] || '')), h('td', { class: 'num' }, r.net == null ? '—' : money(r.net)), h('td', { class: 'num' }, r.T == null ? '—' : money(r.T)), h('td', { class: 'num' }, r.trades ?? '—'), h('td', {}, r.error || '')));
+    parts.push(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...['Config', 'Variant', 'Status', 'Net', 'T (net minus exposure-matched hold)', 'Trades', 'Error'].map((t) => h('th', {}, t)))), h('tbody', {}, ...rows))));
+  }
+  if (o.holm) {
+    const rows = Object.entries(o.holm).map(([id, e]) => h('tr', {}, h('td', {}, id), h('td', {}, e.label), h('td', { class: 'num' }, e.criteria.placebo.value.raw == null ? (e.criteria.placebo.value.skipped || '—') : e.criteria.placebo.value.raw.toFixed(4)), h('td', { class: 'num' }, e.criteria.placebo.value.holm == null ? '—' : e.criteria.placebo.value.holm.toFixed(4)), h('td', {}, e.candidate ? badge('development candidate', 'ok') : badge('no', 'muted')), h('td', {}, e.failed.join(', '))));
+    parts.push(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...['Config', 'Label', 'Placebo p', 'Holm p', 'Candidate', 'Fails'].map((t) => h('th', {}, t)))), h('tbody', {}, ...rows))));
+  }
+  if (o.notifications?.length) parts.push(h('ul', {}, ...o.notifications.map((n) => h('li', {}, h('strong', {}, n.title, ': '), n.body))));
+  return section('event-swing (earnings events): campaign 1', h('div', { class: 'stack' }, ...parts));
 }
 
 function banner() {

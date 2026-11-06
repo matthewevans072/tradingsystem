@@ -9,5 +9,6 @@ Personal portfolio tracking and investment research desk: holdings in USD and CA
 - Briefing now: `npm run briefing -- premarket`
 - Backup now: `npm run backup`
 - Prospective journal 1 (a simulation, updated by hand after the close): `npm run pj:update`, then `npm run pj:status` (START-HERE.md section 15)
+- event-swing (a simulation; needs `SEC_CONTACT_EMAIL` in `.env`): `npm run es:check` (START-HERE.md section 16)
 
 Stack: Node.js 22+ (built-in `node:sqlite`, `node:http`), vanilla JS front end, no build step. One runtime dependency: `@anthropic-ai/sdk`, used by Ask Signal Desk and the optional briefing analyst. Both need your own `ANTHROPIC_API_KEY` (billed per token; see START-HERE.md).

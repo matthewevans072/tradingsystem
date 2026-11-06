@@ -538,3 +538,7 @@ registerHxrRoutes(r, HttpError);
 // ---------- Research runner (simulation only, real workspace only; server/research/api.js) ----------
 import { registerResearchRoutes } from './research/api.js';
 registerResearchRoutes(r, HttpError);
+
+// ---------- event-swing (simulation only, real workspace only; server/eventswing/api.js) ----------
+import { registerEventSwingRoutes } from './eventswing/api.js';
+registerEventSwingRoutes(r, HttpError);
