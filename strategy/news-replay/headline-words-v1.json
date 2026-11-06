@@ -1,0 +1,20 @@
+{
+  "name": "nr-headline-words-v1",
+  "frozenAt": "2026-11-06",
+  "frozenBefore": "any news headline was read or printed (the downloads print counts only)",
+  "base": "event-swing's pre-registered guidance lists (strategy/event-swing/classifier-v1.json, commit 3a0589f), applied to the headline as one sentence",
+  "guidanceNouns": ["guidance", "outlook", "forecast", "forecasts"],
+  "raiseWords": ["raise", "raises", "raised", "raising", "boost", "boosts", "boosted", "boosting", "lift", "lifts", "lifted", "lifting", "increases", "increased", "increasing"],
+  "lowerWords": ["lower", "lowers", "lowered", "lowering", "reduce", "reduces", "reduced", "reducing", "cut", "cuts", "cutting", "decreases", "decreased", "decreasing", "withdraw", "withdraws", "withdrew", "withdrawn", "withdrawing", "suspend", "suspends", "suspended", "suspending"],
+  "extension": "headline words added on 2026-11-06 before any headline was read; matched as whole lower-case words",
+  "negativeWords": ["downgrade", "downgrades", "downgraded", "miss", "misses", "missed", "plunge", "plunges", "plunged", "tumble", "tumbles", "tumbled", "sink", "sinks", "sank", "slump", "slumps", "slumped", "fall", "falls", "fell", "drop", "drops", "dropped", "decline", "declines", "declined", "warn", "warns", "warned", "warning", "recall", "recalls", "probe", "investigation", "investigates", "lawsuit", "sues", "sued", "fined", "halt", "halts", "halted", "delay", "delays", "delayed", "layoffs", "loss", "losses", "weak", "weaker", "disappoints", "disappointing", "bearish", "underperform", "underweight"],
+  "positiveWords": ["upgrade", "upgrades", "upgraded", "beat", "beats", "surge", "surges", "surged", "jump", "jumps", "jumped", "soar", "soars", "soared", "rally", "rallies", "rallied", "gain", "gains", "gained", "record", "approval", "approves", "approved", "win", "wins", "won", "strong", "stronger", "outperform", "overweight", "bullish", "buyback"],
+  "rule": {
+    "negative": "the headline holds a guidance noun and a lower word, or any negative word",
+    "positive": "not negative, and the headline holds a guidance noun and a raise word, or any positive word",
+    "neutral": "otherwise",
+    "precedence": "negative wins over positive (the conservative reading)",
+    "use": "configuration DC only: an item classified negative disarms the bullish scenario of its plan; nothing else changes"
+  },
+  "never": "a person or a language model reads or classifies a headline for this rule"
+}

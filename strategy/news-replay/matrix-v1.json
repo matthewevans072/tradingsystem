@@ -1,0 +1,41 @@
+{
+  "name": "nr-matrix-v1",
+  "campaign": "CAMPAIGN-1.md",
+  "frozenAt": "2026-11-06",
+  "label": "experimental assumptions (author-selected), not the owner's trading preferences",
+  "replay": { "from": "2020-01-02", "to": "2021-12-31", "dataFrom": "2019-12-02" },
+  "portfolio": { "startingCash": 15000, "positionCapPct": 20, "riskPerTradePct": 1, "totalEntryRiskPct": 5 },
+  "costs": { "commissionPerOrder": 0, "commissionPerShare": 0, "secFeeRate": 0.0000206, "tafPerShare": 0.000166, "tafMaxPerTrade": 8.3, "halfSpreadFloorBps": 2, "slippageBps": 2, "withholdingPct": 15 },
+  "configurations": [
+    { "id": "D-A", "planner": "D", "entry": "A" },
+    { "id": "D-B", "planner": "D", "entry": "B" },
+    { "id": "D-C", "planner": "D", "entry": "C" },
+    { "id": "DC-A", "planner": "DC", "entry": "A" },
+    { "id": "AI-A", "planner": "AI", "entry": "A", "status": "not run: no API spending authorised" },
+    { "id": "AI-B", "planner": "AI", "entry": "B", "status": "not run: no API spending authorised" },
+    { "id": "AI-C", "planner": "AI", "entry": "C", "status": "not run: no API spending authorised" },
+    { "id": "AIM-A", "planner": "AIM", "entry": "A", "status": "not run: no API spending authorised" },
+    { "id": "P-A", "planner": "P", "entry": "A" },
+    { "id": "P-B", "planner": "P", "entry": "B" },
+    { "id": "P-C", "planner": "P", "entry": "C" }
+  ],
+  "comparisons": [
+    { "id": "C1", "name": "event versus price-only", "pairs": [["D-A", "P-A"], ["D-B", "P-B"], ["D-C", "P-C"]], "events": "event plans and control sessions (the smaller count)" },
+    { "id": "C2", "name": "content versus content-blind", "pairs": [["DC-A", "D-A"]], "events": "plans with an item classed negative (where DC differs from D)" },
+    { "id": "C3", "name": "AI versus deterministic", "pairs": [["AI-A", "D-A"], ["AI-B", "D-B"], ["AI-C", "D-C"]], "events": "AI plans" },
+    { "id": "C4", "name": "masked versus unmasked AI", "pairs": [["AIM-A", "AI-A"]], "events": "AI plans" },
+    { "id": "C5", "name": "immediate versus pullback", "pairs": [["D-A", "D-B"], ["AI-A", "AI-B"]], "events": "bullish activations" },
+    { "id": "C6", "name": "volume profile versus price-only pullback", "pairs": [["D-C", "D-B"], ["AI-C", "AI-B"]], "events": "bullish activations" }
+  ],
+  "statistic": "S = the sum over the comparison's pairs whose runs exist of T(first) - T(second), where T = net profit minus the run's exposure-matched hold's net profit; pairs with an AI arm count only when the AI arms ran",
+  "inference": { "method": "event-time placebo, date-clustered", "resamples": 10000, "seed": 20261107, "alpha": 0.05, "holmFamily": ["C1", "C2", "C3", "C4", "C5", "C6"], "descriptiveBelowEvents": 30 },
+  "sensitivities": [
+    { "id": "costs_x2", "costMultiplier": 2 },
+    { "id": "delay_bar", "delay": "bar" },
+    { "id": "delay_session", "delay": "session" }
+  ],
+  "selection": { "minCompletedTrades": 30, "maxDrawdownPct": 15, "maxTopStockShare": 0.40, "rule": "a development candidate is the first arm of a comparison that is not descriptive only, whose statistic is positive and Holm-significant, and whose arm has T > 0 at the base case and under every sensitivity, at least 30 completed trades, a drawdown of at most 15% and no stock above 40% of the gross gain; never called proven profitable" },
+  "budget": { "maxConfigurations": 12, "replacementRuns": 3, "deterministicAndPriceOnlyHours": 2, "aiArms": "not run: no API spending authorised (master work order version 3, 2026-11-06)" },
+  "phases": { "A": ["D-A", "P-A"], "B1": ["D-B", "P-B", "D-C", "P-C", "DC-A"] },
+  "eventCategories": ["earnings_8k", "other_filing", "news"]
+}
