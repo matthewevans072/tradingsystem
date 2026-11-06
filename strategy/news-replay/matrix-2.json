@@ -1,0 +1,34 @@
+{
+  "name": "nr-matrix-2",
+  "campaign": "CAMPAIGN-2.md",
+  "frozenAt": "2026-11-06",
+  "label": "experimental assumptions (author-selected), not the owner's trading preferences",
+  "basedOn": { "campaign": "CAMPAIGN-1.md", "configuration": "D-C", "planner": "D", "entry": "C", "dataManifest": "062021bcd0cf7c8daac8d56faf6032e78086fe3417f3f7becde1aa780b293907" },
+  "replay": { "from": "2020-01-02", "to": "2021-12-31" },
+  "configurations": [
+    { "id": "X1", "exit": "existing" },
+    { "id": "X2", "exit": "acceptance" },
+    { "id": "X3", "exit": "target" },
+    { "id": "X4", "exit": "price_only" }
+  ],
+  "thirtyMinuteBars": { "minutes": 30, "from": "09:30", "source": "stored 5-minute regular-session bars", "countedFrom": "windows starting at or after the fill" },
+  "acceptance": { "profile": "prior completed session", "condition": "VAL <= close < POC", "fill": "next printed 5-minute bar open" },
+  "target": { "primary": "VAH + (VAH - VAL) of the prior completed session at the fill", "ifEnteredAtOrAbove": "lower edge of the highest-volume bin above the fill in the composite profile of the five completed sessions before the fill session; none if no bin lies above", "binShare": 0.001, "touchExcessUsd": 0.01, "gapFillsAtOpen": true, "activeFrom": "the 5-minute bar after the fill bar" },
+  "priceOnly": { "level": "low of the activation 5-minute bar", "condition": "close < level", "fill": "next printed 5-minute bar open" },
+  "exitPrecedence": ["invalidation", "bearish_activation", "acceptance_or_price_only", "target", "time_stop"],
+  "comparisons": [
+    { "id": "E1", "name": "AMT acceptance exit versus existing exits", "pair": ["X2", "X1"] },
+    { "id": "E2", "name": "AMT target exit versus existing exits", "pair": ["X3", "X1"] },
+    { "id": "E3", "name": "AMT acceptance exit versus price-only matched exit", "pair": ["X2", "X4"] }
+  ],
+  "statistic": "S = T(first) - T(second), where T = net profit minus the run's exposure-matched hold's net profit",
+  "inference": { "method": "event-time placebo, date-clustered (CAMPAIGN-1.md section 9)", "resamples": 10000, "seed": 20261108, "alpha": 0.05, "holmFamily": ["E1", "E2", "E3"], "descriptiveBelowFilledEntries": 30 },
+  "sensitivities": [
+    { "id": "costs_x2", "costMultiplier": 2 },
+    { "id": "delay_bar", "delay": "bar" },
+    { "id": "delay_session", "delay": "session" }
+  ],
+  "selection": { "minCompletedTrades": 30, "maxDrawdownPct": 15, "maxTopStockShare": 0.40, "rule": "a development candidate is the first arm of a tested comparison whose S is positive and Holm-significant, with T > 0 at the base case and under every sensitivity, at least 30 completed trades, a drawdown of at most 15% and no stock above 40% of the gross gain; never called validated or proven profitable" },
+  "reproduction": "X1 must reproduce campaign 1's D-C base run to the cent before X2 to X4 run",
+  "budget": { "maxConfigurations": 4, "replacementRuns": 2, "executionHours": 1 }
+}
