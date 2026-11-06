@@ -1,0 +1,50 @@
+{
+  "name": "es-matrix-v1",
+  "campaign": "CAMPAIGN-1.md",
+  "frozenAt": "2026-11-06",
+  "frozenBefore": "any event row, release text or strategy outcome existed",
+  "shared": {
+    "window": { "from": "2016-01-04", "to": "2021-12-31", "eventsFrom": "2015-01-01" },
+    "portfolio": { "startingCash": 15000, "positionCapPct": 20, "riskPerTradePct": 1, "totalEntryRiskPct": 5, "sleeves": 10 },
+    "costs": { "commissionPerOrder": 0, "commissionPerShare": 0, "secFeeRate": 0.0000206, "tafPerShare": 0.000166, "tafMaxPerTrade": 8.3, "halfSpread": "calibrated", "halfSpreadFloorBps": 2, "slippageBps": 2 },
+    "dividends": { "withholdingPct": 15 },
+    "execution": { "decision": "after_close", "fill": "next_open", "delaySessions": 1 },
+    "events": { "reactionThreshold": 0.05, "groupDays": 3, "interimDays": 45, "availability": "first_close_after_acceptance", "unknownTime": "end_of_filing_date" },
+    "benchmark": { "buyAndHold": "equal_weight_fractional_never_rebalanced" }
+  },
+  "configurations": [
+    { "id": "A0", "family": "A", "role": "family_baseline", "label": "hold", "kind": "sleeves", "rule": { "exitBefore": null } },
+    { "id": "A1", "family": "A", "role": "candidate", "label": "event-calendar", "kind": "sleeves", "rule": { "exitBefore": 1, "estimateOffsetDays": 364, "estimateMinGapDays": 45, "cancelWithinDays": 30, "matchDays": 30, "maxOutSessions": 15 } },
+    { "id": "A2", "family": "A", "role": "candidate", "label": "event-calendar", "kind": "sleeves", "rule": { "exitBefore": 3, "estimateOffsetDays": 364, "estimateMinGapDays": 45, "cancelWithinDays": 30, "matchDays": 30, "maxOutSessions": 15 } },
+    { "id": "B0", "family": "B", "role": "family_baseline", "label": "event-calendar", "kind": "signal", "rule": { "trigger": "event", "reaction": "negative", "guidance": null, "entry": "immediate", "watchSessions": null, "invalidation": null, "timeExit": 20, "sizing": "close_minus_2m" } },
+    { "id": "B1", "family": "B", "role": "candidate", "label": "event-calendar", "kind": "signal", "rule": { "trigger": "event", "reaction": "negative", "guidance": null, "entry": "recovery", "watchSessions": 10, "invalidation": "below_post_trigger_low", "timeExit": 20, "sizing": "post_trigger_low" } },
+    { "id": "B2", "family": "B", "role": "candidate", "label": "news-understanding", "kind": "signal", "rule": { "trigger": "event", "reaction": "negative", "guidance": ["raised", "reaffirmed"], "entry": "recovery", "watchSessions": 10, "invalidation": "below_post_trigger_low", "timeExit": 20, "sizing": "post_trigger_low" } },
+    { "id": "B3", "family": "B", "role": "candidate", "label": "news-understanding", "kind": "signal", "rule": { "trigger": "event", "reaction": "negative", "guidance": ["lowered"], "entry": "recovery", "watchSessions": 10, "invalidation": "below_post_trigger_low", "timeExit": 20, "sizing": "post_trigger_low" } },
+    { "id": "BP", "family": "B", "role": "price_control", "label": "price-only", "kind": "signal", "rule": { "trigger": "price", "priceSessions": 2, "priceMove": "negative", "entry": "recovery", "watchSessions": 10, "invalidation": "below_post_trigger_low", "timeExit": 20, "sizing": "post_trigger_low" } },
+    { "id": "C0", "family": "C", "role": "family_baseline", "label": "event-calendar", "kind": "signal", "rule": { "trigger": "event", "reaction": null, "guidance": null, "entry": "immediate", "watchSessions": null, "invalidation": null, "timeExit": 20, "sizing": "close_minus_2m" } },
+    { "id": "C1", "family": "C", "role": "candidate", "label": "event-calendar", "kind": "signal", "rule": { "trigger": "event", "reaction": "positive", "guidance": null, "entry": "immediate", "watchSessions": null, "invalidation": "below_pre_trigger_close", "timeExit": 20, "sizing": "pre_trigger_close" } },
+    { "id": "C2", "family": "C", "role": "candidate", "label": "news-understanding", "kind": "signal", "rule": { "trigger": "event", "reaction": "positive", "guidance": ["raised"], "entry": "immediate", "watchSessions": null, "invalidation": "below_pre_trigger_close", "timeExit": 20, "sizing": "pre_trigger_close" } },
+    { "id": "CP", "family": "C", "role": "price_control", "label": "price-only", "kind": "signal", "rule": { "trigger": "price", "priceSessions": 2, "priceMove": "positive", "entry": "immediate", "watchSessions": null, "invalidation": "below_pre_trigger_close", "timeExit": 20, "sizing": "pre_trigger_close" } },
+    { "id": "D0", "family": "D", "role": "family_baseline", "label": "price-only", "kind": "signal", "rule": { "trigger": "m1", "down": 3, "filterSma": 200, "exitSma": 5, "timeExit": 10, "stopM": 2, "pause": null } },
+    { "id": "D1", "family": "D", "role": "candidate", "label": "news-understanding", "kind": "signal", "rule": { "trigger": "m1", "down": 3, "filterSma": 200, "exitSma": 5, "timeExit": 10, "stopM": 2, "pause": { "sessions": 20, "guidance": ["lowered"], "reaction": null } } },
+    { "id": "D2", "family": "D", "role": "candidate", "label": "event-calendar", "kind": "signal", "rule": { "trigger": "m1", "down": 3, "filterSma": 200, "exitSma": 5, "timeExit": 10, "stopM": 2, "pause": { "sessions": 20, "guidance": null, "reaction": "negative" } } },
+    { "id": "D3", "family": "D", "role": "candidate", "label": "event-calendar", "kind": "signal", "rule": { "trigger": "m1", "down": 3, "filterSma": 200, "exitSma": 5, "timeExit": 10, "stopM": 2, "pause": { "sessions": 20, "guidance": null, "reaction": null } } }
+  ],
+  "comparators": {
+    "A1": { "baseline": "A0", "control": null }, "A2": { "baseline": "A0", "control": null },
+    "B1": { "baseline": "B0", "control": "BP" }, "B2": { "baseline": "B0", "control": "BP" }, "B3": { "baseline": "B0", "control": "BP" },
+    "C1": { "baseline": "C0", "control": "CP" }, "C2": { "baseline": "C0", "control": "CP" },
+    "D1": { "baseline": "D0", "control": "D0" }, "D2": { "baseline": "D0", "control": "D0" }, "D3": { "baseline": "D0", "control": "D0" }
+  },
+  "categories": {
+    "A1": "estimates_in_window", "A2": "estimates_in_window",
+    "B0": "negative", "B1": "negative", "B2": "negative_unchanged_or_raised", "B3": "negative_lowered",
+    "C0": "usable", "C1": "positive", "C2": "positive_raised",
+    "D1": "lowered", "D2": "negative", "D3": "usable"
+  },
+  "holmFamily": ["A1", "A2", "B1", "B2", "B3", "C1", "C2", "D1", "D2", "D3"],
+  "inference": { "resamples": 2000, "seed": 20261106, "alpha": 0.05, "eligibleBufferSessions": 30, "spellBufferSessions": 10, "minPriorCloses": 21, "maxRedraws": 1000 },
+  "selection": { "minCompletedTrades": 30, "maxDrawdownPct": 15, "bestFivePct": 5, "maxTopStockShare": 0.40, "descriptiveBelowEvents": 20 },
+  "sensitivities": { "doubleCosts": { "costMultiplier": 2 }, "delayedEvents": { "extraSessions": 1 } },
+  "budget": { "maxConfigurations": 24, "replacementRuns": 6, "maxExecutionHours": 2 }
+}

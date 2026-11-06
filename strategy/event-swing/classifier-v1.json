@@ -1,0 +1,26 @@
+{
+  "name": "es-classifier-v1",
+  "frozenAt": "2026-11-06",
+  "frozenBefore": "any release text was downloaded or read (CAMPAIGN-1.md section 4)",
+  "exhibitTypes": ["EX-99.1", "EX-99.01", "EX-99", "EX-99.(1)", "EX-99.A"],
+  "lineBreakTags": ["br", "p", "div", "tr", "li", "td", "th", "table", "h1", "h2", "h3", "h4", "h5", "h6"],
+  "removeBlocks": ["script", "style"],
+  "sentenceEnders": [".", "!", "?", ";"],
+  "excludedPhrases": ["forward-looking", "forward looking", "differ materially", "safe harbor", "risks and uncertainties", "private securities litigation reform act", "undue reliance"],
+  "guidanceNouns": ["guidance", "outlook", "forecast", "forecasts"],
+  "raiseWords": ["raise", "raises", "raised", "raising", "boost", "boosts", "boosted", "boosting", "lift", "lifts", "lifted", "lifting", "increases", "increased", "increasing"],
+  "lowerWords": ["lower", "lowers", "lowered", "lowering", "reduce", "reduces", "reduced", "reducing", "cut", "cuts", "cutting", "decreases", "decreased", "decreasing", "withdraw", "withdraws", "withdrew", "withdrawn", "withdrawing", "suspend", "suspends", "suspended", "suspending"],
+  "reaffirmWords": ["reaffirm", "reaffirms", "reaffirmed", "reaffirming", "reiterate", "reiterates", "reiterated", "reiterating", "maintain", "maintains", "maintained", "maintaining"],
+  "classes": {
+    "lowered": "l > 0 and r = 0",
+    "raised": "r > 0 and l = 0",
+    "mixed": "r > 0 and l > 0",
+    "reaffirmed": "r = 0 and l = 0 and a > 0",
+    "none_detected": "r = 0 and l = 0 and a = 0",
+    "no_text": "no exhibit 99, or no text after normalisation"
+  },
+  "groups": {
+    "unchanged_or_raised": ["raised", "reaffirmed"],
+    "deteriorating": ["lowered"]
+  }
+}
