@@ -49,11 +49,13 @@ export async function downloadIntraday({ db, src, today, clock, from: fromFloor,
 
 export async function downloadNews({ db, src, clock, from, symbols = BASKET }) {
   // Six hours of overlap with the newest stored item (an update that failed part-way loses nothing; duplicates are
-  // ignored at insert), never before the start session.
+  // ignored at insert), never before `from` (2026-10-22) and never a window that starts in the future.
   const last = store.lastNewsAt(db);
   const floorIso = new Date(zonedToUtc(from, 0, 0)).toISOString();
   const back = last ? new Date(Date.parse(last) - 6 * 3600000).toISOString() : floorIso;
+  const nowIso = clock().toISOString();
   const startIso = back < floorIso ? floorIso : back;
+  if (startIso >= nowIso) return { stored: 0 };
   const rows = [];
   for (const sym of symbols) {
     const tags = [sym, ...(NEWS_TICKER_ALIASES[sym] || [])];

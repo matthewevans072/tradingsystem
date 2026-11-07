@@ -100,7 +100,7 @@ function fakeSource(clock) {
       }
       return out;
     },
-    async news(tags, { start }) { return news.filter((x) => tags.some((t) => x.symbols.includes(t)) && x.created_at >= start && Date.parse(x.created_at) <= clock().getTime()); },
+    async news(tags, { start }) { if (start && Date.parse(start) > clock().getTime()) throw new Error('Alpaca: request refused (HTTP 400): start should not be before end'); return news.filter((x) => tags.some((t) => x.symbols.includes(t)) && x.created_at >= start && Date.parse(x.created_at) <= clock().getTime()); },
     async corporateActions() { return []; },
   };
 }
@@ -114,6 +114,8 @@ test('the forward account: plans recorded on time or late, a fill only after the
   const act = fwd.activate({ spreadTable: SPREAD });
   assert.equal(act.startSession, '2026-10-26');
   await assert.rejects(Promise.resolve().then(() => fwd.activate({ spreadTable: SPREAD })), /already activated/);
+  t = et('2026-10-24', 12, 0); // a Saturday, before the start session: nothing to plan, and no request starts in the future
+  assert.deepEqual((await fwd.update({ kind: 'idle', withFilings: false })).detail.plans, { recorded: 0, late: 0 });
   t = et('2026-11-23', 10, 12);
   let r = await fwd.update({ kind: 'session', withFilings: false });
   assert.deepEqual(r.detail.plans, { recorded: 1, late: 0 });

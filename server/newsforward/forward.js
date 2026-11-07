@@ -135,9 +135,11 @@ export function createForward({ db, clock = () => new Date(), source = null, sec
       const clockFn = () => now();
       detail.daily = await dl.downloadDaily({ db, src: source, today, clock: clockFn });
       detail.intraday = await dl.downloadIntraday({ db, src: source, today, clock: clockFn, from: WARMUP_FROM });
-      detail.news = await dl.downloadNews({ db, src: source, clock: clockFn, from: act.startSession });
+      // News and filings from 2026-10-22 (never later than now): items published before the start session that
+      // become eligible in it (a weekend item at Monday's first bar) are planned; earlier sessions are never planned.
+      detail.news = await dl.downloadNews({ db, src: source, clock: clockFn, from: WARMUP_FROM });
       detail.corporate = await dl.downloadCorporateActions({ db, src: source, clock: clockFn, from: WARMUP_FROM });
-      if (withFilings && sec) detail.filings = await dl.downloadFilings({ db, sec, clock: clockFn, from: act.startSession });
+      if (withFilings && sec) detail.filings = await dl.downloadFilings({ db, sec, clock: clockFn, from: WARMUP_FROM });
       // Plans: built from the rows stored now, recorded now.
       const nowMs = now().getTime();
       const a = assemble({ asOf: new Date(nowMs).toISOString(), today });

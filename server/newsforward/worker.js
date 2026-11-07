@@ -47,7 +47,9 @@ export async function runWorker({ db, forward, clock = () => new Date(), sleep =
       if (s.due) {
         store.heartbeat(db, token, at(), `updating (${s.kind})`);
         try {
-          const r = await forward.update({ kind: s.kind, withFilings: s.kind !== 'session' || Math.floor(nowMs / UPDATE_EVERY_MS) % 3 === 0 });
+          // Filings: every 15 minutes in the session, at the final update, once an hour otherwise.
+          const withFilings = s.kind === 'final' || (s.kind === 'session' ? Math.floor(nowMs / UPDATE_EVERY_MS) % 3 === 0 : new Date(nowMs).getUTCMinutes() < 15);
+          const r = await forward.update({ kind: s.kind, withFilings });
           if (s.kind === 'final') finalDoneFor = r.detail.today;
           log(`update ${s.kind} done`);
         } catch (e) { log(`update ${s.kind} failed: ${e.message}`); }

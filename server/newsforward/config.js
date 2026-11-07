@@ -14,7 +14,8 @@ export const PROTOCOL_PATH = path.join(NF_DIR, 'PROTOCOL-1.md');
 export const PIPELINE_PATH = path.join(NF_DIR, 'PIPELINE-1.json');
 export const LOG_PATH = path.join(NF_DIR, 'EXPERIMENT-LOG.md');
 export const DB_NAME = 'news-forward.sqlite';
-export const CODE_REVISION = 'nf-code-2026-11-07-1';
+// nf-code-2026-11-07-2: news and filings fetched from 2026-10-22 and never from a future start (EXPERIMENT-LOG.md entry 3).
+export const CODE_REVISION = 'nf-code-2026-11-07-2';
 // The first session after every closed window (HXR's final period and the range-trend reserve end 2026-10-21). No
 // row dated earlier is requested, stored (CHECK constraints) or read.
 export const WARMUP_FROM = '2026-10-22';
