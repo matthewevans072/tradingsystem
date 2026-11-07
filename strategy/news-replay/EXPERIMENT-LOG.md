@@ -256,3 +256,81 @@ net 2123.17 US$; T -8969.27; completed trades 273; exploratory (a heavily used d
 **The placebo** (CAMPAIGN-1.md section 9; 10,000 resamples, seed 20261107, complete, 30.7 minutes of execution for B1 and the placebo together; no group without a candidate session; 502 of 504 date clusters drawn per stock, as disclosed in advance): C1 event against price-only S = −US$20,466.85, p = 1.0000 (every resample at least as large: the rules did worse on news sessions than on randomly moved item-free sessions); C2 content against content-blind S = +US$636.06, p = 0.2199; C5 immediate against pullback S = −US$4,372.44, p = 0.9722; C6 volume profile against price-only pullback S = −US$904.66, p = 0.9837; C3 and C4 not run (no API spending authorised). Holm-adjusted p = 1.0000 for every tested comparison; none significant.
 
 **Outcome: NONE** (CAMPAIGN-1.md section 10): no configuration is the first arm of a positive, Holm-significant comparison, and none has T > 0. D-A and DC-A made money in the simulation (+US$3,472.16 and +US$3,079.15) and do not qualify; both are true. Report: `reports/campaign-1.md`. Campaign 2 (the AMT exits, committed as 983b5e8 before any outcome) uses D-C's entry as fixed; its X1 must reproduce D-C's −US$1,661.94 and 140 trades to the cent.
+
+## 36 | 2026-11-07 | **Frozen for campaign 2**
+
+code revision: `nr2-code-2026-11-06-1`; engine `nr-engine-2` (X1 runs nr-engine-1's path); campaign 2 commit: `983b5e8c020505df38f42a03b458930c65f67bcc`; HEAD `38b4982e6f8efd57695ab34cb42a389b78d27d30`; data manifest hash: `062021bcd0cf7c8daac8d56faf6032e78086fe3417f3f7becde1aa780b293907`. Configurations and settings: CAMPAIGN-2.md and matrix-2.json as pinned. Implementation ends here.
+
+## 37 | 2026-11-07 | **Run (campaign 2)** run id: 29, config: X1, config hash: eef54c769483627eabf33922009684f64e12d0da47d05f4247f0e56bdd7a6d30, status: done; variant: base
+
+net -1661.94 US$; T -6790; completed trades 140; exits {"bearish_activation":72,"invalidation":51,"time_stop":17}; reproduction of D-C: OK (D-C run 17: net -1661.94, trades 140, 10080 actions; X1: net -1661.94, trades 140, 10080 actions); exploratory (a heavily used development period).
+
+## 38 | 2026-11-07 | **Run (campaign 2)** run id: 30, config: X1, config hash: 4c2d9998d710123ae871da272c01f5f545345c255e4d59befd0ef690619be667, status: done; variant: costs_x2
+
+net -2058.75 US$; T -7178.03; completed trades 140; exits {"bearish_activation":72,"invalidation":51,"time_stop":17}; exploratory (a heavily used development period).
+
+## 39 | 2026-11-07 | **Run (campaign 2)** run id: 31, config: X1, config hash: 84f59092b6a5777ae0651b5043172eeb63d538a23e11d20fb3d96ccca2269af1, status: done; variant: delay_bar
+
+net -1420.43 US$; T -6806.68; completed trades 140; exits {"bearish_activation":73,"invalidation":50,"time_stop":17}; exploratory (a heavily used development period).
+
+## 40 | 2026-11-07 | **Run (campaign 2)** run id: 32, config: X1, config hash: 39504539505cadb83b2c6c9f7337a20efdd88cbc3d4bc60ee16f886d1c6dff0d, status: done; variant: delay_session
+
+net -1373.12 US$; T -5798.73; completed trades 111; exits {"bearish_activation":74,"invalidation":25,"time_stop":12}; exploratory (a heavily used development period).
+
+## 41 | 2026-11-07 | **Run (campaign 2)** run id: 33, config: X2, config hash: b586eec1edc1a3c871acba3e4fd513cba0c8d7e152ec77a84c707048aac1f25a, status: done; variant: base
+
+net -1154.83 US$; T -2486.4; completed trades 159; exits {"acceptance":115,"invalidation":18,"bearish_activation":26}; exploratory (a heavily used development period).
+
+## 42 | 2026-11-07 | **Run (campaign 2)** run id: 34, config: X2, config hash: 3088ee6a06d7832b85fd84a9fac7da9ee7d0721598189ae6a15236f74d921e8a, status: done; variant: costs_x2
+
+net -1598.43 US$; T -2912.27; completed trades 159; exits {"acceptance":115,"invalidation":18,"bearish_activation":26}; exploratory (a heavily used development period).
+
+## 43 | 2026-11-07 | **Run (campaign 2)** run id: 35, config: X2, config hash: 84886c6a01ece5e8a1c1002286c43ccb3c6c379183c8de1b411cc72a53f23d0e, status: done; variant: delay_bar
+
+net -1028.63 US$; T -2259.14; completed trades 159; exits {"acceptance":115,"invalidation":18,"bearish_activation":26}; exploratory (a heavily used development period).
+
+## 44 | 2026-11-07 | **Run (campaign 2)** run id: 36, config: X2, config hash: 407f79ccb1bc03e3764a4fbf1cf05a413f37abaa76f820fa998d7675bb741584, status: done; variant: delay_session
+
+net -547.25 US$; T -1902.44; completed trades 129; exits {"acceptance":91,"invalidation":9,"bearish_activation":29}; exploratory (a heavily used development period).
+
+## 45 | 2026-11-07 | **Run (campaign 2)** run id: 37, config: X3, config hash: 913d841cc584c64e1ecda37d51fe6e3729001a2becc19db611b082d6d0e0caa7, status: done; variant: base
+
+net 403.01 US$; T -2423.41; completed trades 173; exits {"target":94,"invalidation":47,"bearish_activation":30,"time_stop":2}; exploratory (a heavily used development period).
+
+## 46 | 2026-11-07 | **Run (campaign 2)** run id: 38, config: X3, config hash: 59263b6e4bc8262d00abc83d4bf2363a3dd4b5844034938ed3239b112e4430e3, status: done; variant: costs_x2
+
+net -172.15 US$; T -2609.83; completed trades 171; exits {"target":93,"invalidation":46,"bearish_activation":30,"time_stop":2}; exploratory (a heavily used development period).
+
+## 47 | 2026-11-07 | **Run (campaign 2)** run id: 39, config: X3, config hash: 02fd0823bcd16093e37fc9d1dfa7f9322f9b89550c90506dacb348b9ca2247ce, status: done; variant: delay_bar
+
+net 370.47 US$; T -2234.91; completed trades 171; exits {"target":94,"invalidation":45,"bearish_activation":30,"time_stop":2}; exploratory (a heavily used development period).
+
+## 48 | 2026-11-07 | **Run (campaign 2)** run id: 40, config: X3, config hash: 85864c7b32a9fa12b1169e15633ef3c3f84e24d0b18b761b36739d37eb498ab5, status: done; variant: delay_session
+
+net -1129.27 US$; T -2949.49; completed trades 126; exits {"target":61,"invalidation":21,"bearish_activation":41,"time_stop":3}; exploratory (a heavily used development period).
+
+## 49 | 2026-11-07 | **Run (campaign 2)** run id: 41, config: X4, config hash: 5f647726ca24e47a6083a8cb34c46884c9bbfd026fc6be391752695fb788291a, status: done; variant: base
+
+net -1167.09 US$; T -1756.83; completed trades 154; exits {"price_only":128,"bearish_activation":25,"time_stop":1}; exploratory (a heavily used development period).
+
+## 50 | 2026-11-07 | **Run (campaign 2)** run id: 42, config: X4, config hash: cf69082266d9478c91d02dfd3f0775df28baf91891057edf78e92a1fd9e20fa5, status: done; variant: costs_x2
+
+net -1608.51 US$; T -2185.92; completed trades 154; exits {"price_only":128,"bearish_activation":25,"time_stop":1}; exploratory (a heavily used development period).
+
+## 51 | 2026-11-07 | **Run (campaign 2)** run id: 43, config: X4, config hash: 5576c9b1f583ffc4ac4bfe159ae17a3a943044cdc23c1432c13187c9045265aa, status: done; variant: delay_bar
+
+net -982.2 US$; T -1721.32; completed trades 153; exits {"price_only":124,"bearish_activation":27,"time_stop":2}; exploratory (a heavily used development period).
+
+## 52 | 2026-11-07 | **Run (campaign 2)** run id: 44, config: X4, config hash: 9c911b7427db3a6c790e2d623b49f57872c39b6b795add4e60d500a3c29c2d6b, status: done; variant: delay_session
+
+net -1332.36 US$; T -2951.15; completed trades 119; exits {"price_only":82,"bearish_activation":32,"time_stop":5}; exploratory (a heavily used development period).
+
+## 53 | 2026-11-07 | **Campaign 2 complete (the AMT exits): NONE; E1 and E2 Holm-significant, E3 not** (simulated development results on a heavily used period, not validated)
+
+**Runs** (entries 37 to 52): 16, none failed, 2026-11-07T04:00:05Z to 04:00:12Z. **X1 reproduced campaign 1's D-C to the cent** before X2 to X4 ran: net −US$1,661.94, 140 trades, the same 10,080 actions. Base case (net after costs; T = net minus the exposure-matched hold; completed trades; exits): X1 existing −US$1,661.94, T −US$6,790.00, 140 (bearish activation 72, invalidation 51, time stop 17); X2 acceptance −US$1,154.83, T −US$2,486.40, 159 (acceptance 115); X3 target +US$403.01, T −US$2,423.41, 173 (target 94); X4 price-only −US$1,167.09, T −US$1,756.83, 154 (price-only 128). T is negative for every exit under every sensitivity.
+
+**The placebo** (10,000 resamples, seed 20261108, complete; 40.8 minutes of execution for the runs and the placebo, within the 1-hour budget; no group without a candidate; 502 of 504 date clusters drawn per stock, as in campaign 1): E1 acceptance against existing S = +US$4,303.60, raw p = 0.0001 (no resample reached it), Holm p = 0.0003; E2 target against existing S = +US$4,366.59, raw p = 0.0001, Holm p = 0.0003; E3 acceptance against the price-only matched exit S = −US$729.57, p = 0.5591, Holm p = 0.5591.
+
+**Outcome: NONE** (CAMPAIGN-2.md section 10). E1 and E2 are Holm-significant, but X2 and X3 have T below zero at the base case and under every sensitivity (and X2's gross gain is 51.7% PYPL), so neither qualifies. Plain reading: on news sessions, leaving sooner (the AMT exits) lost much less than the existing exits, but the price-only matched exit did as well as the AMT acceptance exit (E3), so the volume profile added nothing measurable; and none of the exits beat its exposure-matched hold. X3 made money in the simulation (+US$403.01) and does not qualify; both are true. Report: `reports/campaign-2.md` (its outcome line was reworded after the run by the report writer only, from "no exit passes a pre-registered comparison", which was wrong for E1 and E2, to the conditions each first arm fails; no figure changed).
+
+**Phase C1's pipeline** (`strategy/news-forward/PIPELINE-1.json`): the control, Phase A's D-A with the existing exits. AMT timing as such did not help (E3), no exit qualified, and picking the best-looking exit (X4 or X2) after seeing these results would be tuning on them; that would be a new recorded experiment.

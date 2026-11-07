@@ -62,7 +62,10 @@ export function writeReport2(nr, c2, { file = path.join(REPORT_DIR, 'campaign-2.
   const ran = m2.configurations.filter((c) => by.get(`${c.id}|base`));
   const cands = ran.map((c) => ({ id: c.id, s: selection2(c.id, by, holm, m2) })).filter((x) => x.s.candidate).map((x) => `${x.id} (${x.s.comparisons.join(', ')})`);
   const allDone = m2.configurations.every((c) => by.get(`${c.id}|base`)) && Object.values(holm).every((h) => !/^pending|^incomplete/.test(h.status));
-  L.push('', `**Outcome:** ${cands.length ? `development candidate(s): ${cands.join(', ')}; exploratory, never validated` : allDone ? 'NONE: no exit passes a pre-registered comparison and the conditions of CAMPAIGN-2.md section 10; Phase C1 uses the control exits.' : 'not decided yet: some runs or the placebo have not finished.'}`, '');
+  // Which conditions failed, per first arm of a Holm-significant positive comparison (a significant comparison is not a qualification).
+  const sigFirst = m2.comparisons.filter((c) => holm[c.id]?.significant && holm[c.id].statistic > 0).map((c) => c.pair[0]);
+  const why = [...new Set(sigFirst)].map((id) => `${id}: ${selection2(id, by, holm, m2).problems.join('; ')}`).join(' | ');
+  L.push('', `**Outcome:** ${cands.length ? `development candidate(s): ${cands.join(', ')}; exploratory, never validated` : allDone ? `NONE: no configuration meets every condition of CAMPAIGN-2.md section 10.${why ? ` Holm-significant comparisons exist, but their first arms fail other conditions (${why}).` : ''}` : 'not decided yet: some runs or the placebo have not finished.'}`, '');
   L.push('## Per configuration', '');
   for (const c of ran) {
     const r = by.get(`${c.id}|base`), a = fourAnswers2(c.id, by, holm, m2, start);
