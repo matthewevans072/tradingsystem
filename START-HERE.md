@@ -241,7 +241,7 @@ A simulated account that applies news-replay's tested rules to live news and fil
 
 How it runs:
 - **The worker** (`npm run nf:start`) keeps it up to date: every 5 minutes during the market session, once after the close, and every 15 minutes otherwise. `npm run nf:pause`, `nf:resume` and `nf:stop` ask it to pause, resume or stop (it reads the request within a minute); `npm run nf:status` shows whether it is alive and the latest result.
-- **Windows Task Scheduler** starts the worker when you log on and checks each weekday at 07:00 that it is running (folder `SignalDesk` in Task Scheduler).
+- **Windows Task Scheduler** starts the worker when you log on and, on weekdays from 07:00 your time, checks every 30 minutes that it is running and starts it if not (folder `SignalDesk` in Task Scheduler: `NewsForwardWorker` and `NewsForwardDaily`). To turn this off, disable those two tasks and run `npm run nf:stop`.
 - **What must stay true:** your PC on and not asleep, and the worker running. If the PC is off or asleep during the session, the plans for that time are recorded late when it next runs and can never trade; nothing is filled in afterwards.
 - **The data:** Alpaca's free feed, delayed 16 minutes, and SEC filings. Nothing before 2026-10-22 is used, so for the first weeks the plans are "no trade" (the rules need 21 earlier closes).
 - `npm run nf:verify` re-derives every recorded plan from the data that existed when it was recorded and checks the chain.

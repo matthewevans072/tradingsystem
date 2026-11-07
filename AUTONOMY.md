@@ -49,6 +49,15 @@ Only for: an unresolved data permission, a new credential, opening a closed wind
 
 The worker runs replays, campaign configurations, the forward accounts and their condition checks; it does not write code (that needs a Claude Code session) and does not read CNBC (that needs the scheduled Claude session). When Phase C is built, these must stay running for it to work: the PC on and awake, the worker started (at logon by Task Scheduler), and for C2 Chrome open with the Claude extension and CNBC logged in by the owner. A closed chat session or this file keeps nothing running. Every scheduled run records missed or failed sessions and never backfills.
 
+**Update 2026-11-07:**
+
+| Item | State on 2026-11-07 | How to check |
+|---|---|---|
+| news-replay campaigns 1 and 2 (historical) | finished: both NONE | `npm run nr:status`, `npm run nr2:check` |
+| The persistent worker (news-forward, Phase C1) | **running** since 2026-11-07T05:08Z (pid 3884); the start session is 2026-11-09 | `npm run nf:status`; the Research page |
+| Windows Task Scheduler entries | **registered**: `\SignalDesk\NewsForwardWorker` (at logon) and `\SignalDesk\NewsForwardDaily` (weekdays from 07:00 local, every 30 minutes for 16 hours); both only make sure the worker runs | Task Scheduler, folder `\SignalDesk\` |
+| C2 Claude-read CNBC sessions | **stopped**: CNBC's publisher's terms forbid automated data-gathering tools (`strategy/news-forward/EXPERIMENT-LOG.md` entry 2); nothing exists for it | — |
+
 ## 5. The order, verbatim
 
 Received 2026-11-06 during the news-replay build, quoted in full:

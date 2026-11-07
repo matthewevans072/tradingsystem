@@ -7,7 +7,7 @@ Updated 2026-11-07 by the assistant, as master work order version 3 section 8 as
 - **Phase A, done:** the historical news replay works end to end on real data (2020 to 2021): timestamped news and filings → bullish, bearish and no-trade plans saved before activation → activation checks → simulated trades with costs → accounting (reconciles) → results, four plain-English answers and a plan inspector on the Research page.
 - **Phase B1, done:** every non-AI configuration of news-replay campaign 1 ran, with the pre-registered placebo test. Outcome NONE.
 - **Phase B2, done:** campaign 2 (the AMT exits) was committed before any outcome existed and ran; its control reproduced campaign 1 to the cent. Outcome NONE.
-- **Phase C1, built:** the forward account (news-forward) and its worker; see "Worker health" for whether it is running.
+- **Phase C1, running:** the forward account (news-forward), its worker and the Task Scheduler entries (see "Worker health").
 - **Phase C2, stopped:** CNBC's publisher's terms forbid automated data-gathering tools (below).
 - **event-swing** campaign 1: NONE (2026-11-06).
 - **Tests:** news-replay 17 of 17, news-forward 4 of 4; the news-replay planted-bug check catches 37 of 37 bugs.
@@ -40,11 +40,14 @@ CNBC's terms are Versant Media's. Their Prohibited Actions, section 12 "No Data 
 
 ## Worker health
 
-See the next update of this file after activation.
+- **The forward account (Phase C1)** was activated on 2026-11-07; it starts making plans from **Monday 2026-11-09**. Its rules are the control (Phase A's immediate entry with the existing exits), because Phase B found nothing better that qualifies.
+- **The worker is running** (started 2026-11-07T05:08Z, pid 3884) and checks in every minute. Windows Task Scheduler starts it at logon and, on weekdays from 07:00 your time, makes sure every 30 minutes that it is running.
+- **First update:** it failed once (it asked Alpaca for news from a future time); fixed before any plan existed, then the update stored the data from 2026-10-22 on. No result yet: the first plans come on 2026-11-09, and the rules need 21 earlier closes, so the first weeks are mostly "no trade".
+- **What must stay true:** your PC on and not asleep during market hours. A session missed while it is off is recorded as late and never filled in.
 
 ## What's next
 
-1. Phase C1: activate the forward account, run its first update, start the worker and create the Task Scheduler entries.
+1. Phase C1 runs on its own from Monday 2026-11-09; its running result appears on the Research page.
 2. Phase B3 (the research queue): any new campaign needs its own pre-registered document; at most two a week, 24 configurations each; pause after four in a row with no candidate. The obvious next question, a price-only "leave sooner" exit on the immediate entry, would be a new recorded experiment, not a change to the forward account.
 
 ## What I need from you

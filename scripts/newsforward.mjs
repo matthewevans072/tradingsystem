@@ -5,7 +5,7 @@
 //   npm run nf:status | nf:verify      operational status and the running result; re-derive every plan
 //   npm run nf:start                   starts the detached worker (it keeps running while the PC is on and awake)
 //   npm run nf:pause | nf:resume | nf:stop
-//   npm run nf:tasks [-- --create]     the Windows Task Scheduler entries (start the worker at logon; ensure it daily)
+//   npm run nf:tasks [-- --create]     the Task Scheduler entries (start at logon; ensure it every 30 minutes on weekdays)
 // Keys and SEC_CONTACT_EMAIL come from .env and are never printed.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,7 +28,6 @@ const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
 const cmd = args[0] && !args[0].startsWith('--') ? args[0] : 'status';
 const out = (s) => process.stdout.write(`${new Date().toISOString().slice(0, 19)}Z ${s}\n`);
-const TASK_FOLDER = 'SignalDesk';
 
 async function main() {
   const cfg = loadConfig();
@@ -82,16 +81,28 @@ async function main() {
       const r = await runWorker({ db, forward: fwd, token: crypto.randomBytes(8).toString('hex'), log: out });
       out(`worker exited: ${r.exit}`);
     } else if (cmd === 'tasks') {
-      const node = process.execPath;
-      const tasks = [
-        { name: `${TASK_FOLDER}\\NewsForwardWorker`, args: ['/SC', 'ONLOGON'], run: `"${node}" --disable-warning=ExperimentalWarning "${SELF}" worker --ensure` },
-        { name: `${TASK_FOLDER}\\NewsForwardDaily`, args: ['/SC', 'WEEKLY', '/D', 'MON,TUE,WED,THU,FRI', '/ST', '07:00'], run: `"${node}" --disable-warning=ExperimentalWarning "${SELF}" worker --ensure` },
-      ];
-      for (const t of tasks) out(`schtasks /Create /TN "${t.name}" ${t.args.join(' ')} /TR "${t.run.replace(/"/g, '\\"')}" /F`);
-      if (has('--create')) for (const t of tasks) {
-        try { execFileSync('schtasks', ['/Create', '/TN', t.name, ...t.args, '/TR', t.run, '/F'], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' }); out(`created ${t.name}`); }
-        catch (e) { out(`could not create ${t.name}: ${(e.stderr || e.message).toString().trim()}`); process.exitCode = 1; }
-      }
+      // Two entries in the Task Scheduler folder \SignalDesk\, registered with PowerShell (schtasks cannot remove the
+      // default 3-day execution limit, which would stop a worker the task started): NewsForwardWorker at logon, and
+      // NewsForwardDaily on weekdays from 07:00 local, repeated every 30 minutes for 16 hours, so a crash or a reboot is
+      // recovered within half an hour. Both run "worker --ensure", which exits at once when a live worker exists.
+      // No time limit; a new run is ignored while one runs; a run missed while the PC was off starts when it is on.
+      const q = (s) => s.replace(/'/g, "''");
+      const ps = [
+        `$action = New-ScheduledTaskAction -Execute '${q(process.execPath)}' -Argument '--disable-warning=ExperimentalWarning "${q(SELF)}" worker --ensure' -WorkingDirectory '${q(ROOT)}'`,
+        '$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries',
+        "$daily = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At '07:00'",
+        "$rep = New-ScheduledTaskTrigger -Once -At '07:00' -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Hours 16)",
+        '$daily.Repetition = $rep.Repetition',
+        "Register-ScheduledTask -TaskPath '\\SignalDesk\\' -TaskName 'NewsForwardDaily' -Action $action -Trigger $daily -Settings $settings -Description 'Signal Desk news-forward (simulation only): ensures the forward worker runs on weekdays. Never places an order.' -Force -ErrorAction Stop | Out-Null",
+        '$logon = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\\$env:USERNAME"',
+        "Register-ScheduledTask -TaskPath '\\SignalDesk\\' -TaskName 'NewsForwardWorker' -Action $action -Trigger $logon -Settings $settings -Description 'Signal Desk news-forward (simulation only): starts the forward worker at logon. Never places an order.' -Force -ErrorAction Stop | Out-Null",
+        "'registered'",
+      ].join('; ');
+      out('Task Scheduler \\SignalDesk\\NewsForwardWorker (at logon) and \\SignalDesk\\NewsForwardDaily (weekdays from 07:00 local, every 30 minutes for 16 hours): "worker --ensure", no time limit, one instance');
+      if (has('--create')) {
+        try { out(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' }).trim()); }
+        catch (e) { out(`could not register the tasks: ${(e.stderr || e.message).toString().trim().slice(0, 500)}`); process.exitCode = 1; }
+      } else out('add --create to register them');
     } else { out(`unknown command ${cmd}`); process.exitCode = 2; }
   } finally { db.close(); }
 }
