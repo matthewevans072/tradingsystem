@@ -44,8 +44,10 @@ export function activationOf(plan, mk) {
   if (!arr) return null;
   const up = plan.bullish.activation.level, down = plan.bearish.activation.level;
   const end = plan.T + WINDOW_MS;
+  // news-forward: a plan recorded after T (plan.notBeforeMs) looks only at bars that close after it was recorded.
+  const startMs = plan.notBeforeMs != null && plan.notBeforeMs > plan.T ? plan.notBeforeMs : plan.T;
   let lo = 0, hi = arr.length;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid].e <= plan.T) lo = mid + 1; else hi = mid; }
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid].e <= startMs) lo = mid + 1; else hi = mid; }
   for (let i = lo; i < arr.length && arr[i].e <= end; i++) {
     const b = arr[i];
     if (b.date !== plan.session) break;

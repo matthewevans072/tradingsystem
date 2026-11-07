@@ -56,7 +56,17 @@
     "nr2:check": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs check2",
     "nr2:freeze": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs freeze2",
     "nr2:run": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs run2",
-    "nr2:report": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs report2"
+    "nr2:report": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs report2",
+    "nf:activate": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs activate",
+    "nf:update": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs update",
+    "nf:status": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs status",
+    "nf:verify": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs verify",
+    "nf:start": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs start",
+    "nf:pause": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs pause",
+    "nf:resume": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs resume",
+    "nf:stop": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs stop",
+    "nf:worker": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs worker",
+    "nf:tasks": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs tasks"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

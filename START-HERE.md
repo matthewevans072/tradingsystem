@@ -232,3 +232,16 @@ Commands (in the project folder; nothing runs on its own):
 Nothing in Signal Desk's research runs by itself today: every campaign above was started from the command line and stops when it is done, and prospective journal 1 waits for you to run `npm run pj:update` after the close. Markdown files and a closed chat session keep nothing running.
 
 Master work order version 3 (`AUTONOMY.md`) authorises a persistent worker and Windows Task Scheduler entries for a forward simulated account (Phase C). They are **not built yet**. When they are: the worker runs replays, campaign configurations, the forward accounts and their condition checks; it does not write code (that needs a Claude Code session) and does not read CNBC (that needs the scheduled Claude session, which also waits for your confirmation that CNBC's terms allow automated reading for personal use). For any of it to work, your PC must be on and not asleep, the worker started, and, for the CNBC reading, Chrome open with the Claude extension and CNBC logged in by you. A session missed because any of these was not true is recorded as missed and never filled in later.
+
+*Update 2026-11-07:* the worker now exists for the forward account (section 19). What it does and does not do is unchanged from the paragraph above: it runs updates and the account's condition checks; it does not write code and does not read any news site. The CNBC reading (C2) is **stopped**: CNBC's publisher's terms forbid automated data-gathering tools (`strategy/news-forward/EXPERIMENT-LOG.md` entry 2), so nothing reads CNBC and nothing is scheduled for it.
+
+## 19. The forward account: news-forward (simulation only; running simulated result, not validated)
+
+A simulated account that applies news-replay's tested rules to live news and filings from the start session on (`strategy/news-forward/PROTOCOL-1.md`). No order is placed anywhere. It shows its running profit or loss, drawdown, exposure, costs and the two benchmarks every day on the Research page, labelled "running simulated result, not validated". No rule is tuned on these figures.
+
+How it runs:
+- **The worker** (`npm run nf:start`) keeps it up to date: every 5 minutes during the market session, once after the close, and every 15 minutes otherwise. `npm run nf:pause`, `nf:resume` and `nf:stop` ask it to pause, resume or stop (it reads the request within a minute); `npm run nf:status` shows whether it is alive and the latest result.
+- **Windows Task Scheduler** starts the worker when you log on and checks each weekday at 07:00 that it is running (folder `SignalDesk` in Task Scheduler).
+- **What must stay true:** your PC on and not asleep, and the worker running. If the PC is off or asleep during the session, the plans for that time are recorded late when it next runs and can never trade; nothing is filled in afterwards.
+- **The data:** Alpaca's free feed, delayed 16 minutes, and SEC filings. Nothing before 2026-10-22 is used, so for the first weeks the plans are "no trade" (the rules need 21 earlier closes).
+- `npm run nf:verify` re-derives every recorded plan from the data that existed when it was recorded and checks the chain.

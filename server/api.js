@@ -546,3 +546,7 @@ registerEventSwingRoutes(r, HttpError);
 // ---------- news-replay (simulation only, real workspace only, read-only; server/newsreplay/api.js) ----------
 import { registerNewsReplayRoutes } from './newsreplay/api.js';
 registerNewsReplayRoutes(r, HttpError);
+
+// ---------- news-forward (simulation only, real workspace only, read-only; server/newsforward/service.js) ----------
+import { registerNewsForwardRoutes } from './newsforward/service.js';
+registerNewsForwardRoutes(r, HttpError);

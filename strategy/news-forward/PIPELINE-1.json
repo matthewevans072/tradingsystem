@@ -1,0 +1,30 @@
+{
+  "name": "nf-pipeline-1",
+  "label": "the control pipeline: news-replay's Phase A configuration D-A (planner D, immediate entry A, the existing exits); experimental assumptions (author-selected), not a validated strategy",
+  "why": "Master work order version 3, C1: 'the same tested pipeline (planner, AMT entries and exits as Phase B found best, or the control if AMT did not help)'. Phase B found no candidate. Entries: campaign 1's volume-profile entry (D-C) did not beat the price-only pullback (C6, p 0.9837) and every configuration's T was negative. Exits (campaign 2): the AMT acceptance and target exits beat the existing exits on news sessions (E1 and E2 Holm-significant, p 0.0003), but the price-only matched exit did as well as the AMT acceptance exit (E3, p 0.5591), so the gain came from leaving sooner, not from the volume profile; and every exit's T stayed below zero, so none qualifies (CAMPAIGN-2.md section 10). AMT timing as such did not help, and choosing the best-looking exit after seeing the results would be tuning on them, which needs a new recorded experiment. The forward account therefore runs the control: Phase A's D-A (planner D, immediate entry, the existing exits). It is not a candidate; it is the working system's forward test.",
+  "planner": "D",
+  "entry": "A",
+  "exit": "existing",
+  "portfolio": {
+    "startingCash": 15000,
+    "positionCapPct": 20,
+    "riskPerTradePct": 1,
+    "totalEntryRiskPct": 5
+  },
+  "costs": {
+    "commissionPerOrder": 0,
+    "commissionPerShare": 0,
+    "secFeeRate": 2.06e-05,
+    "tafPerShare": 0.000166,
+    "tafMaxPerTrade": 8.3,
+    "halfSpreadFloorBps": 2,
+    "slippageBps": 2,
+    "withholdingPct": 15
+  },
+  "source": {
+    "planner": "strategy/news-replay/CAMPAIGN-1.md section 4",
+    "entry": "CAMPAIGN-1.md section 5 (A)",
+    "exits": "CAMPAIGN-1.md section 7",
+    "portfolioAndCosts": "strategy/news-replay/matrix-v1.json"
+  }
+}

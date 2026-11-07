@@ -86,14 +86,14 @@ export async function downloadNews({ db, src, symbols = BASKET, from = DATA_FROM
 
 // Company filings (8-K, 10-Q, 10-K and their amendments) with acceptance times, through EDGAR's bounded company feed.
 const FORMS = ['8-K', '10-Q', '10-K'];
-export function createSecGet({ contactEmail, fetchImpl = globalThis.fetch, minIntervalMs = 250, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createSecGet({ contactEmail, agent = 'news-replay', fetchImpl = globalThis.fetch, minIntervalMs = 250, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   if (!contactEmail || !/@/.test(contactEmail)) throw new NrError(409, 'SEC EDGAR needs SEC_CONTACT_EMAIL in .env; nothing was requested');
   let last = 0, requests = 0;
   const get = async (url) => {
     const u = assertSecUrl(url);
     const wait = last + minIntervalMs - Date.now(); if (wait > 0) await sleep(wait);
     last = Date.now(); requests++;
-    const res = await fetchImpl(u, { headers: { 'User-Agent': `SignalDesk news-replay research ${contactEmail}`, Accept: '*/*' }, redirect: 'manual' });
+    const res = await fetchImpl(u, { headers: { 'User-Agent': `SignalDesk ${agent} research ${contactEmail}`, Accept: '*/*' }, redirect: 'manual' });
     if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) throw new NrError(502, 'SEC EDGAR answered with a redirect; refused');
     const body = await res.text();
     if (res.status === 403) throw new NrError(403, 'SEC EDGAR refused the request (HTTP 403)');
