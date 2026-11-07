@@ -168,3 +168,91 @@ net -46.29 US$; T -1209.52; completed trades 34; exploratory (a heavily used dev
 - **D-A** (news plans, immediate entry): net +US$3,472.16 after US$1,530.08 of modelled costs; 401 completed trades and 3 open at the end; T = −US$10,257.78 (its exposure-matched hold made +US$13,729.94); the equal-weight hold of basket A made +US$26,358.92; maximum drawdown 17.77%; on average 49.28% invested; TSLA 44.5% of the gross gain; accounting reconciles. Sensitivities: T −US$11,262.99 (costs doubled), −US$9,560.12 (one bar later), −US$8,498.53 (one session later). Plan fates of the 3,090 entry plans: neither activated 1,921; bearish activated 541; bullish activated then a gain 173, a loss at exit 147, invalidated 81, open at the end 3; already held 192; funding or caps rejected 32. By category: news 2,826 plans, 354 trades, +US$3,826.10; earnings 8-Ks 91 plans, 22 trades, −US$166.84; other filings 173 plans, 28 trades, −US$187.11.
 - **P-A** (the price-only control, sessions without items): net −US$191.97 after US$304.60 of costs; 41 completed trades and 1 open; T = −US$1,931.05; maximum drawdown 12.96%; on average 8.45% invested; MU 91.4% of the gross gain; accounting reconciles.
 - **Plain reading:** D-A made money; it did not beat its exposure-matched hold, the equal-weight hold or (on T) its price-only control, and it does not qualify (drawdown above 15%, TSLA above 40%, T below zero in every variant; the placebo has not run). The placebo runs after Phase B1. Results are visible on the Research page; no frozen rule is tuned on them (entry 3).
+
+## 15 | 2026-11-06 | **Run** run id: 9, config: D-B, config hash: 37dbfa9ed0417af675e57a9c6c63b524e2786d70db9825402f67e060d25c4289, status: done; variant: base
+
+net -762.14 US$; T -5885.34; completed trades 146; exploratory (a heavily used development period).
+
+## 16 | 2026-11-06 | **Run** run id: 10, config: D-B, config hash: 2a3856a55af2ba0b841069e90b59a66dd03af8b22b71bb9d37edc6c376359387, status: done; variant: costs_x2
+
+net -1182 US$; T -6281.87; completed trades 146; exploratory (a heavily used development period).
+
+## 17 | 2026-11-06 | **Run** run id: 11, config: D-B, config hash: 5fa00e450c0c6e50df35a8b3d5477a5e9e96fd601dddcc825e88958dbc67e700, status: done; variant: delay_bar
+
+net -393.18 US$; T -5907.01; completed trades 151; exploratory (a heavily used development period).
+
+## 18 | 2026-11-06 | **Run** run id: 12, config: D-B, config hash: db2e5b7b96d142469638f4d609d027e5a6c50e97f18d6e16bdae0519911746e9, status: done; variant: delay_session
+
+net 572.05 US$; T -3770.2; completed trades 116; exploratory (a heavily used development period).
+
+## 19 | 2026-11-06 | **Run** run id: 13, config: P-B, config hash: 5ab3baaac0cf42529ac51263ed8fa245c06119a4df2a6d6a9db3cc54b89c0dfa, status: done; variant: base
+
+net 920.55 US$; T -142.31; completed trades 24; exploratory (a heavily used development period).
+
+## 20 | 2026-11-06 | **Run** run id: 14, config: P-B, config hash: 879dda5c054a36589e219b55496c2df56a7126539fc09a0ff526b6b4213548af, status: done; variant: costs_x2
+
+net 714.19 US$; T -346.29; completed trades 24; exploratory (a heavily used development period).
+
+## 21 | 2026-11-06 | **Run** run id: 15, config: P-B, config hash: 69e4b9ccac6b48f23c452ebbecdf9768759ff58dc95850bdbf6b38eb9fc06abc, status: done; variant: delay_bar
+
+net 980.34 US$; T -183.55; completed trades 24; exploratory (a heavily used development period).
+
+## 22 | 2026-11-06 | **Run** run id: 16, config: P-B, config hash: d8a33e26ba4d5e6f64cafde4c1211f0d9ccb0b75728501fa9cb1a0b15b84f8d6, status: done; variant: delay_session
+
+net 384.02 US$; T -159.19; completed trades 21; exploratory (a heavily used development period).
+
+## 23 | 2026-11-06 | **Run** run id: 17, config: D-C, config hash: 07b029e71b19f1452841db79990a69806daa29f1bb4dc6eb72ea002f4bd58cc5, status: done; variant: base
+
+net -1661.94 US$; T -6790; completed trades 140; exploratory (a heavily used development period).
+
+## 24 | 2026-11-06 | **Run** run id: 18, config: D-C, config hash: 5c318bb048cff4844f46e5108c79306b66a44b2773c50f21613758116e293c02, status: done; variant: costs_x2
+
+net -2058.75 US$; T -7178.03; completed trades 140; exploratory (a heavily used development period).
+
+## 25 | 2026-11-06 | **Run** run id: 19, config: D-C, config hash: 37d6f7bf719be772865526ac0a7db6117c937e14154984423bee237b28bd7b28, status: done; variant: delay_bar
+
+net -1420.43 US$; T -6806.68; completed trades 140; exploratory (a heavily used development period).
+
+## 26 | 2026-11-06 | **Run** run id: 20, config: D-C, config hash: 145206c3dd24bedb1dcdf2c19ddd2c597a3a34ecf2c2ba52222fbc796421aad8, status: done; variant: delay_session
+
+net -1373.12 US$; T -5798.73; completed trades 111; exploratory (a heavily used development period).
+
+## 27 | 2026-11-06 | **Run** run id: 21, config: P-C, config hash: de9b5739767c0f6a33d699a4a5530b3afecb495d5e75774aacf348ff2f3f4725, status: done; variant: base
+
+net 213.57 US$; T -392.91; completed trades 21; exploratory (a heavily used development period).
+
+## 28 | 2026-11-06 | **Run** run id: 22, config: P-C, config hash: a8a6b5111d4c8dbbe4969300cce60252cc86f6a2d4ce41f8c496f703282af8ea, status: done; variant: costs_x2
+
+net 31.58 US$; T -575.66; completed trades 21; exploratory (a heavily used development period).
+
+## 29 | 2026-11-06 | **Run** run id: 23, config: P-C, config hash: b871c4b60a7704fc946998d277b95207ae014039031db13c9bf0a21286bc721a, status: done; variant: delay_bar
+
+net 273.61 US$; T -416.68; completed trades 21; exploratory (a heavily used development period).
+
+## 30 | 2026-11-06 | **Run** run id: 24, config: P-C, config hash: 2af5932382a7c232b149c4caf74cb0b9e2ffa250551e083cee2631665d1d339d, status: done; variant: delay_session
+
+net -860.94 US$; T -895.15; completed trades 19; exploratory (a heavily used development period).
+
+## 31 | 2026-11-06 | **Run** run id: 25, config: DC-A, config hash: 8228e543e46bd73fe278f5a4cf6229ff03d574c5b84144f80a867698063be6de, status: done; variant: base
+
+net 3079.15 US$; T -9621.72; completed trades 356; exploratory (a heavily used development period).
+
+## 32 | 2026-11-06 | **Run** run id: 26, config: DC-A, config hash: b7a9bc370d9335969593e81fd5d27096975d8f32814db0025c21b1b86aa709fa, status: done; variant: costs_x2
+
+net 1954.21 US$; T -10297.97; completed trades 347; exploratory (a heavily used development period).
+
+## 33 | 2026-11-06 | **Run** run id: 27, config: DC-A, config hash: bb666cec8453bac19f356e936826f689243f21f1caf65e96fb82273d90b9100a, status: done; variant: delay_bar
+
+net 3715.26 US$; T -9120.23; completed trades 361; exploratory (a heavily used development period).
+
+## 34 | 2026-11-06 | **Run** run id: 28, config: DC-A, config hash: ac284409a5c6ea0b0ae4eb08868838a20983c861551ea19d859c2eec89a37676, status: done; variant: delay_session
+
+net 2123.17 US$; T -8969.27; completed trades 273; exploratory (a heavily used development period).
+
+## 35 | 2026-11-06 | **Campaign 1 complete: NONE** (Phase B1 and the placebo; simulated development results on a heavily used period, not validated)
+
+**Phase B1** (entries 15 to 34): 20 runs, none failed, 2026-11-06T21:40:02Z to 21:40:14Z; accounting reconciles for every configuration; every entry plan has a fate. Base case (net after costs; T = net minus the exposure-matched hold; completed trades): D-B −US$762.14, T −US$5,885.34, 146; P-B +US$920.55, T −US$142.31, 24; D-C −US$1,661.94, T −US$6,790.00, 140; P-C +US$213.57, T −US$392.91, 21; DC-A +US$3,079.15, T −US$9,621.72, 356. T is negative for every configuration under every sensitivity. The equal-weight hold of basket A made +US$26,358.92.
+
+**The placebo** (CAMPAIGN-1.md section 9; 10,000 resamples, seed 20261107, complete, 30.7 minutes of execution for B1 and the placebo together; no group without a candidate session; 502 of 504 date clusters drawn per stock, as disclosed in advance): C1 event against price-only S = −US$20,466.85, p = 1.0000 (every resample at least as large: the rules did worse on news sessions than on randomly moved item-free sessions); C2 content against content-blind S = +US$636.06, p = 0.2199; C5 immediate against pullback S = −US$4,372.44, p = 0.9722; C6 volume profile against price-only pullback S = −US$904.66, p = 0.9837; C3 and C4 not run (no API spending authorised). Holm-adjusted p = 1.0000 for every tested comparison; none significant.
+
+**Outcome: NONE** (CAMPAIGN-1.md section 10): no configuration is the first arm of a positive, Holm-significant comparison, and none has T > 0. D-A and DC-A made money in the simulation (+US$3,472.16 and +US$3,079.15) and do not qualify; both are true. Report: `reports/campaign-1.md`. Campaign 2 (the AMT exits, committed as 983b5e8 before any outcome) uses D-C's entry as fixed; its X1 must reproduce D-C's −US$1,661.94 and 140 trades to the cent.
