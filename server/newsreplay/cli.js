@@ -1,6 +1,7 @@
 // The news-replay commands behind scripts/newsreplay.mjs (everything but the download). Simulation only.
 import { createNewsReplay } from './campaign.js';
-import { writeReport } from './reportfile.js';
+import { writeReport, writeReport2 } from './reportfile.js';
+import { createCampaign2 } from './campaign2.js';
 
 export async function runCommand(cmd, { has, val, out, cfg }) {
   const nr = createNewsReplay({ dataDir: cfg.dataDir });
@@ -37,6 +38,22 @@ export async function runCommand(cmd, { has, val, out, cfg }) {
       for (const [k, v] of Object.entries(s.holm)) out(`${k}: ${v.status}; statistic ${v.statistic}; p ${v.p}; Holm ${v.holmP}`);
     } else if (cmd === 'report') {
       out(`written ${writeReport(nr)}`);
+    } else if (cmd === 'check2') {
+      const g = createCampaign2(nr).gateStatus();
+      for (const c of g.conditions) out(`${c.ok ? 'OK  ' : 'NO  '} ${c.name}: ${c.detail}`);
+      out(g.ok ? 'The campaign 2 gate is open.' : 'The campaign 2 gate is closed.');
+      process.exitCode = g.ok ? 0 : 2;
+    } else if (cmd === 'freeze2') {
+      if (!has('--record')) { out('add --record'); process.exitCode = 2; return; }
+      const r = createCampaign2(nr).freeze(); out(`appended log entry ${r.number}`); process.stdout.write(`${r.text}
+`);
+    } else if (cmd === 'run2') {
+      if (!has('--confirm')) { out('add --confirm: this runs X1 (which must reproduce D-C), X2 to X4 with their sensitivities, then the placebo'); process.exitCode = 2; return; }
+      const c2 = createCampaign2(nr);
+      try { const r = c2.runAll({ log: out }); out(`campaign 2 runs ${r.runs}; placebo comparisons ${r.placebo.length}; execution ${(r.elapsedMs / 60000).toFixed(1)} min`); }
+      finally { out(`report ${writeReport2(nr, c2)}`); }
+    } else if (cmd === 'report2') {
+      out(`written ${writeReport2(nr, createCampaign2(nr))}`);
     } else { out(`unknown command ${cmd}`); process.exitCode = 2; }
   } finally { nr.close(); }
 }

@@ -38,6 +38,7 @@ export function newsReplaySection(o, api) {
   parts.push(resultsTable(o));
   for (const c of o.configs) if (c.report) parts.push(configDetails(c, o));
   parts.push(h('h4', {}, 'Pre-registered comparisons'), table(['Comparison', 'Pairs', 'Statistic (sum of T differences)', 'Placebo p', 'Holm p', 'Status'], o.comparisons.map((c) => h('tr', {}, h('td', {}, `${c.id} ${c.name}`), h('td', {}, c.pairs.map((p) => p.join(' vs ')).join('; ')), num(c.statistic == null ? '—' : money(c.statistic)), num(c.p == null ? '—' : c.p.toFixed(4)), num(c.holmP == null ? '—' : c.holmP.toFixed(4)), h('td', {}, c.significant ? badge('Holm-significant', 'ok') : c.status)))));
+  if (o.campaign2) parts.push(campaign2Block(o.campaign2, o));
   parts.push(inspector(o));
   return section(title, h('div', { class: 'stack' }, ...parts));
 }
@@ -72,10 +73,32 @@ function configDetails(c, o) {
   return d;
 }
 
+// ---------- campaign 2 (CAMPAIGN-2.md): AMT exits on D-C ----------
+function campaign2Block(c2, o) {
+  const rows = c2.configs.map((c) => {
+    const r = c.report, s = c.sensitivities;
+    if (!r) return h('tr', {}, h('td', {}, c.id), h('td', {}, c.exit), h('td', { colspan: '8' }, 'not run yet'));
+    return h('tr', {}, h('td', {}, c.id), h('td', {}, c.exit), num(money(r.net)), num(money(r.T)), num(money(r.exposureMatched.net)), num(fmt.plainPct(r.maxDrawdownPct, 2)), num(r.completedTrades), num(s.costs_x2 == null ? '—' : money(s.costs_x2)), num(s.delay_bar == null ? '—' : money(s.delay_bar)), h('td', {}, Object.entries(r.exitSummary?.sells || {}).map(([k, v]) => `${k} ${v}`).join(', ')));
+  });
+  const parts = [h('h4', {}, 'Campaign 2: AMT exits on the volume-profile entry (D-C)'),
+    h('p', { class: 'cell-sub' }, `The entry is fixed (planner D, entry C); only the exit differs: X1 the existing exits, X2 leave when a 30-minute close is back inside the prior session's value area below its point of control, X3 take profit at a volume-profile target, X4 the price-only matched exit. Reproduction of D-C by X1: ${c2.reproduction ? `${c2.reproduction.ok ? 'OK' : 'FAILED'} (${c2.reproduction.detail})` : 'not run yet'}.`),
+    table(['Config', 'Exit', 'Net after costs', 'T', 'Exposure-matched hold net', 'Max drawdown', 'Completed trades', 'T, costs x2', 'T, +1 bar', 'Exits'], rows),
+    table(['Comparison', 'Pair', 'Statistic', 'Placebo p', 'Holm p', 'Status'], c2.comparisons.map((c) => h('tr', {}, h('td', {}, `${c.id} ${c.name}`), h('td', {}, c.pair.join(' vs ')), num(c.statistic == null ? '—' : money(c.statistic)), num(c.p == null ? '—' : c.p.toFixed(4)), num(c.holmP == null ? '—' : c.holmP.toFixed(4)), h('td', {}, c.significant ? badge('Holm-significant', 'ok') : c.status))))];
+  for (const c of c2.configs) {
+    if (!c.report) continue;
+    const key = `c2:${c.id}`;
+    const d = h('details', { class: 'card', open: OPEN.has(key), ontoggle: (e) => { if (e.target.open) OPEN.add(key); else OPEN.delete(key); } });
+    d.append(h('summary', {}, h('strong', {}, `${c.id} (${c.exit}): `), `net ${money(c.report.net)}, T ${money(c.report.T)} `, c.answers.madeMoney ? badge('made money (simulated)', 'ok') : badge('did not make money (simulated)', 'muted'), ' ', c.answers.qualified ? badge('development candidate', 'ok') : badge('does not qualify', 'muted')),
+      h('div', { class: 'stack' }, ...Object.entries(o.questions).map(([k, q]) => h('div', {}, h('strong', {}, q), h('p', {}, c.answers[k])))));
+    parts.push(d);
+  }
+  return h('div', { class: 'stack' }, ...parts);
+}
+
 // ---------- the plan inspector (kept across the page's periodic re-renders) ----------
 function inspector(o) {
   if (!I.el) I.el = h('div', { class: 'stack' });
-  const configs = o.configs.filter((c) => !c.notRun && c.report).map((c) => c.id);
+  const configs = [...o.configs.filter((c) => !c.notRun && c.report).map((c) => c.id), ...(o.campaign2?.configs || []).filter((c) => c.report).map((c) => c.id)];
   const changed = configs.join() !== (I.configs || []).join();
   I.configs = configs;
   I.basket = o.basket;

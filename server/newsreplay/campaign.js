@@ -15,7 +15,7 @@ import { holmAdjust } from '../research/runner.js';
 import { REPLAY, DATA_FROM, MAX_DATE, BASKET, CODE_REVISION, ENGINE_VERSION, PREREG, CLOSED_WINDOWS, LOG_PATH, REPORT_DIR, MATRIX_PATH, WORDS_PATH, NrError, hashOf, sha256, readLog, logStatus, appendLogEntry, isAncestor, committedSha, uncommitted, headCommit, textSha256 } from './config.js';
 import * as store from './store.js';
 import { newsItems, filingItems, fomcItems, planGroups } from './items.js';
-import { sessionProfile } from './profile.js';
+import { sessionProfile, compositeTarget } from './profile.js';
 import { createLoader } from './loader.js';
 import { deterministicPlan, classifyHeadline } from './planner.js';
 import { prepareMarket, runReplay, activationOf } from './sim.js';
@@ -109,7 +109,13 @@ export function createNewsReplay({ dataDir = null, dbFile = null, testOverrides 
       if (!profCache.has(key)) { const pb = bars1.get(sym)?.get(prior) || []; const f = unitsFactor(sym, prior, asOf); profCache.set(key, pb.length ? sessionProfile(pb.map((b) => ({ ...b, h: b.h / f, l: b.l / f, c: b.c / f, vw: b.vw ? b.vw / f : null })), { session: prior, asOfSession: asOf }) : null); }
       return profCache.get(key);
     };
-    const market = prepareMarket({ sessions, sessionIndex, bars5, daily, profiles, splits, dividends, halfSpread: halfSpreadFn(spread), openMs: (d) => ms(d, 'open'), closeMs: (d) => ms(d, 'close') });
+    // Campaign 2's composite target (CAMPAIGN-2.md section 5): the five completed sessions before the fill session, in its units.
+    const composite = (sym, fillSession, fillPrice) => {
+      const i = sessionIndex.get(fillSession);
+      const list = sessions.slice(Math.max(0, i - 5), i).map((d) => { const f = unitsFactor(sym, d, fillSession); return { session: d, bars: (bars1.get(sym)?.get(d) || []).map((b) => ({ ...b, h: b.h / f, l: b.l / f, c: b.c / f })) }; });
+      return compositeTarget(list, { fillSession, fillPrice });
+    };
+    const market = prepareMarket({ sessions, sessionIndex, bars5, daily, profiles, composite, splits, dividends, halfSpread: halfSpreadFn(spread), openMs: (d) => ms(d, 'open'), closeMs: (d) => ms(d, 'close') });
     const loader = createLoader({ items, daily: dailyArr, bars5, bars1, splits, sessions });
     const replaySessions = sessions.filter((d) => d >= from && d <= to);
     const itemSessions = new Map(syms.map((s) => [s, new Set()]));

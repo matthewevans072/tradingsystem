@@ -17,12 +17,18 @@ export const MATRIX_PATH = path.join(NR_DIR, 'matrix-v1.json');
 export const WORDS_PATH = path.join(NR_DIR, 'headline-words-v1.json');
 export const AI_PROMPT_PATH = path.join(NR_DIR, 'ai-planner-v1.json');
 export const REPORT_DIR = path.join(NR_DIR, 'reports');
+export const CAMPAIGN2_PATH = path.join(NR_DIR, 'CAMPAIGN-2.md');
+export const MATRIX2_PATH = path.join(NR_DIR, 'matrix-2.json');
 export const DB_NAME = 'news-replay.sqlite';
 
 // Bump with any change that can alter results (loader, planners, profile, simulator, metrics, placebo).
 // nr-code-2026-11-06-1: the build of the owner's work order of 2026-11-06 (EXPERIMENT-LOG.md entry 1).
 export const CODE_REVISION = 'nr-code-2026-11-06-1';
 export const ENGINE_VERSION = 'nr-engine-1';
+// Campaign 2 (CAMPAIGN-2.md, the AMT exits) has its own revision, so campaign 1's records stay valid; its X1 runs the
+// unchanged nr-engine-1 path and must reproduce campaign 1's D-C to the cent. Bump with any change that can alter its results.
+export const CODE_REVISION_2 = 'nr2-code-2026-11-06-1';
+export const ENGINE_VERSION_2 = 'nr-engine-2';
 
 // The bounds (the order's section 3). MAX_DATE is enforced at download, insert (CHECK constraints) and every load;
 // nothing after it is requested, stored or read. DATA_FROM gives a month of history before the replay.
@@ -63,11 +69,22 @@ export const PREREG = Object.freeze({
   }),
 });
 
+// Pins of campaign 2's files and their commit (CAMPAIGN-2.md; EXPERIMENT-LOG.md entry 14).
+export const PREREG2 = Object.freeze({
+  commit: '983b5e8c020505df38f42a03b458930c65f67bcc',
+  committedAt: '2026-11-06T15:32:16-06:00',
+  sha256: Object.freeze({
+    'CAMPAIGN-2.md': '2d6dae21d512b86be73754e4a6c5aba57598fb136237cda117c395cfd4d67a7e',
+    'matrix-2.json': '8cdf1700ec33fd6010b7dde53c0feabfb7ad9929a4216b3fd6175f759ff3ccd8',
+  }),
+});
+
 export function git(args, { root = ROOT } = {}) { return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
 export function headCommit() { try { return git(['rev-parse', 'HEAD']); } catch { return null; } }
 export function isAncestor(commit) { try { execFileSync('git', ['merge-base', '--is-ancestor', commit, 'HEAD'], { cwd: ROOT, stdio: 'ignore' }); return true; } catch { return false; } }
 export function committedSha(commit, relPath) { try { return textSha256(execFileSync('git', ['show', `${commit}:${relPath}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })); } catch { return null; } }
 export const COMMITTED_PATHS = ['server/newsreplay', 'scripts/newsreplay.mjs', 'strategy/news-replay/CAMPAIGN-1.md', 'strategy/news-replay/matrix-v1.json', 'strategy/news-replay/headline-words-v1.json', 'strategy/news-replay/ai-planner-v1.json'];
+export const COMMITTED_PATHS_2 = ['server/newsreplay', 'scripts/newsreplay.mjs', 'strategy/news-replay/CAMPAIGN-2.md', 'strategy/news-replay/matrix-2.json'];
 export function uncommitted(paths = COMMITTED_PATHS) { try { const o = git(['status', '--porcelain', '--', ...paths]); return o ? o.split('\n').filter(Boolean) : []; } catch (e) { return [`git status failed: ${e.message}`]; } }
 
 // ---------- the experiment log (append-only; read outside code fences and HTML comments) ----------
@@ -80,6 +97,7 @@ export function logEntries(text) {
   return out;
 }
 const RUN_ROW = /\*\*Run\*\* run id: (\d+), config: ([A-Z]+-[A-C]), config hash: ([0-9a-f]{64}), status: (done|failed); variant: ([a-z_0-9]+)/g;
+const RUN_ROW_2 = /\*\*Run \(campaign 2\)\*\* run id: (\d+), config: (X[1-4]), config hash: ([0-9a-f]{64}), status: (done|failed); variant: ([a-z_0-9]+)/g;
 export function logStatus(text) {
   const entries = logEntries(text);
   const numbers = entries.map((e) => e.number);
@@ -87,9 +105,14 @@ export function logStatus(text) {
     const all = `${e.title}\n${e.body}`;
     return { number: e.number, codeRevision: all.match(/code revision:?\s*`?(nr-code-[0-9-]+)`?/i)?.[1] ?? null, commit: all.match(/campaign commit:?\s*`?([0-9a-f]{40})`?/i)?.[1] ?? null, manifest: all.match(/data manifest hash:?\s*`?([0-9a-f]{64})`?/i)?.[1] ?? null };
   });
-  const runs = [];
+  const runs = [], runs2 = [];
   for (const e of entries) for (const m of `${e.title}\n${e.body}`.matchAll(RUN_ROW)) runs.push({ runId: Number(m[1]), config: m[2], configHash: m[3], status: m[4], variant: m[5] });
-  return { entries: entries.length, ordered: numbers.every((n, i) => n === i + 1), nextNumber: (numbers.length ? Math.max(...numbers) : 0) + 1, counts: entries.filter((e) => /\*\*Event counts\*\*/.test(e.title)).map((e) => e.number), frozen, runs };
+  for (const e of entries) for (const m of `${e.title}\n${e.body}`.matchAll(RUN_ROW_2)) runs2.push({ runId: Number(m[1]), config: m[2], configHash: m[3], status: m[4], variant: m[5] });
+  const frozen2 = entries.filter((e) => /\*\*Frozen for campaign 2\*\*/.test(e.title)).map((e) => {
+    const all = `${e.title}\n${e.body}`;
+    return { number: e.number, codeRevision: all.match(/code revision:?\s*`?(nr2-code-[0-9-]+)`?/i)?.[1] ?? null, commit: all.match(/campaign 2 commit:?\s*`?([0-9a-f]{40})`?/i)?.[1] ?? null, manifest: all.match(/data manifest hash:?\s*`?([0-9a-f]{64})`?/i)?.[1] ?? null };
+  });
+  return { entries: entries.length, ordered: numbers.every((n, i) => n === i + 1), nextNumber: (numbers.length ? Math.max(...numbers) : 0) + 1, counts: entries.filter((e) => /\*\*Event counts\*\*/.test(e.title)).map((e) => e.number), frozen, runs, frozen2, runs2 };
 }
 export const readLog = (file = LOG_PATH) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '');
 export function appendLogEntry({ title, body, date, file = LOG_PATH }) {

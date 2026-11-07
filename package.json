@@ -52,7 +52,11 @@
     "nr:status": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs status",
     "nr:report": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs report",
     "nr:ai-estimate": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs ai-estimate",
-    "nr:planted": "node --disable-warning=ExperimentalWarning scripts/newsreplay-planted.mjs"
+    "nr:planted": "node --disable-warning=ExperimentalWarning scripts/newsreplay-planted.mjs",
+    "nr2:check": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs check2",
+    "nr2:freeze": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs freeze2",
+    "nr2:run": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs run2",
+    "nr2:report": "node --disable-warning=ExperimentalWarning scripts/newsreplay.mjs report2"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

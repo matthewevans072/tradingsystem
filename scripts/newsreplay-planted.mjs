@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { runTests, freeBytes, MIN_FREE_BYTES, DEFAULT_TIMEOUT_MS } from './sweepbos-planted.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const IT = 'server/newsreplay/items.js', LO = 'server/newsreplay/loader.js', PR = 'server/newsreplay/profile.js', PL = 'server/newsreplay/planner.js', SI = 'server/newsreplay/sim.js', EV = 'server/newsreplay/evaluate.js', ST = 'server/newsreplay/store.js', AI = 'server/newsreplay/ai.js';
+const EX = 'server/newsreplay/exits.js', IT = 'server/newsreplay/items.js', LO = 'server/newsreplay/loader.js', PR = 'server/newsreplay/profile.js', PL = 'server/newsreplay/planner.js', SI = 'server/newsreplay/sim.js', EV = 'server/newsreplay/evaluate.js', ST = 'server/newsreplay/store.js', AI = 'server/newsreplay/ai.js';
 export const TESTS = ['tests/newsreplay.test.js'];
 export const BUGS = [
   { name: 'no processing delay before eligibility', file: IT, find: 'export const PROCESSING_DELAY_MS = 5 * 60000;', replace: 'export const PROCESSING_DELAY_MS = 0;' },
@@ -35,9 +35,19 @@ export const BUGS = [
   { name: 'a split leaves the shares unchanged', file: SI, find: '        p.shares = whole; p.inv /= sp.ratio; p.entry /= sp.ratio;', replace: '        p.inv /= sp.ratio; p.entry /= sp.ratio;' },
   { name: 'the evaluation drops paid dividends from cash', file: EV, find: "    else if (a.kind === 'dividend_paid' || a.kind === 'cash_in_lieu') {\n      cash += d.amount;", replace: "    else if (a.kind === 'dividend_paid' || a.kind === 'cash_in_lieu') {\n      cash += 0;" },
   { name: 'the plan chain ignores the plan', file: ST, find: '  const chain = sha256(`${prev}|${packetHash}|${sha256(planJson)}`);', replace: '  const chain = sha256(`${prev}|${packetHash}`);' },
-  { name: 'the answers drop "made money and does not qualify"', file: 'server/newsreplay/answers.js', find: "${made && !sel.candidate ? ' It made money in this simulation and it does not qualify; both are true.' : ''}", replace: '' },
-  { name: 'the selection ignores the minimum of 30 completed trades', file: 'server/newsreplay/answers.js', find: '  if (r.completedTrades < sel.minCompletedTrades) problems.push(', replace: '  if (false) problems.push(' },
+  { name: 'the answers drop "made money and does not qualify"', file: 'server/newsreplay/answers.js', find: "${made && !sel.candidate ? ' It made money in this simulation and it does not qualify; both are true.' : ''}", replace: '', all: true },
+  { name: 'the selection ignores the minimum of 30 completed trades', file: 'server/newsreplay/answers.js', find: '  if (r.completedTrades < sel.minCompletedTrades) problems.push(', replace: '  if (false) problems.push(', all: true },
   { name: 'the inspector shows a plan under another planner\'s configuration', file: 'server/newsreplay/service.js', find: "      if (row.planner !== PLANNER_OF(config)) throw new NrError(400,", replace: "      if (false) throw new NrError(400," },
+  { name: 'X2: a close at the POC exits', file: EX, find: 'if (w.c >= p.val - EPS && w.c < p.poc - EPS) return', replace: 'if (w.c >= p.val - EPS && w.c <= p.poc + EPS) return' },
+  { name: 'X2: the 30-minute window holding the fill is counted', file: EX, find: '      if (w.s < fb.s) continue; // only windows that start at or after the fill\n', replace: '' },
+  { name: 'X2: the delay sensitivities ignored for the AMT exits', file: EX, find: '    const j = delay ? delayed(i, arr, delay) : i;', replace: '    const j = i;' },
+  { name: 'X3: a touch fills without the one-cent margin', file: EX, find: 'export const TOUCH_EXCESS = 0.01;', replace: 'export const TOUCH_EXCESS = 0;' },
+  { name: 'X3: the target active on the fill bar itself', file: EX, find: '  for (let j = fillI + 1; j <= endI; j++) {', replace: '  for (let j = fillI; j <= endI; j++) {' },
+  { name: 'X3: the primary target without the value area height', file: EX, find: '  const primary = P.vah + (P.vah - P.val);', replace: '  const primary = P.vah;' },
+  { name: 'X3: an intrabar touch before the sales at the bar open', file: EX, find: "raw: t, order: 2.5,", replace: "raw: t, order: 0.5," },
+  { name: 'X4: a close equal to the activation bar low exits', file: EX, find: '        if (w.c < level - EPS) return', replace: '        if (w.c <= level + EPS) return' },
+  { name: 'the composite target ties to the higher price', file: PR, find: '(Math.abs(v - vol.get(best)) <= 1e-9 && i < best)) best = i;', replace: '(Math.abs(v - vol.get(best)) <= 1e-9 && i > best)) best = i;' },
+  { name: 'the existing exits gain an exit plan (X1 no longer campaign 1 unchanged)', file: SI, find: "        if (exit !== 'existing') {\n          const ax = amtExitOf(", replace: "        if (true) {\n          const ax = amtExitOf(" },
   { name: 'the AI validator ignores dates after T', file: AI, find: "  for (const m of all.matchAll(/\\b(20\\d{2})-(\\d{2})-(\\d{2})\\b/g)) if (m[0] > asOfDate) problems.push(`mentions the date ${m[0]}, after T`);", replace: '' },
   { name: 'the AI cache ignores the variant', file: AI, find: '    const key = { packetHash: hashOf(sent), variant, model: spec.model, promptSha: psha };', replace: "    const key = { packetHash: hashOf(packet), variant: 'AI', model: spec.model, promptSha: psha };" },
 ];
@@ -61,8 +71,9 @@ export function runPlanted({ ref = 'HEAD', workingTree = false, timeoutMs = DEFA
       const file = path.join(wt, bug.file);
       const orig = fs.readFileSync(file, 'utf8');
       const n = orig.split(bug.find).length - 1;
-      if (n !== 1) { results.push({ name: bug.name, status: 'INVALID', failing: [], detail: `pattern found ${n} times` }); log(`INVALID      | ${bug.name} | pattern found ${n} times`); continue; }
-      fs.writeFileSync(file, orig.replace(bug.find, bug.replace));
+      // all: plant in every occurrence (a rule shared by campaign 1's and campaign 2's functions); otherwise exactly one.
+      if (bug.all ? n < 1 : n !== 1) { results.push({ name: bug.name, status: 'INVALID', failing: [], detail: `pattern found ${n} times` }); log(`INVALID      | ${bug.name} | pattern found ${n} times`); continue; }
+      fs.writeFileSync(file, orig.split(bug.find).join(bug.replace));
       try {
         const check = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
         if (check.status !== 0) { results.push({ name: bug.name, status: 'INVALID', failing: [], detail: 'does not load' }); log(`INVALID      | ${bug.name} | does not load`); continue; }

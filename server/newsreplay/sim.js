@@ -14,8 +14,10 @@
 // at a price from before its decision. Simulation only: no order, no broker.
 import { sellFees } from '../hxr/engine.js';
 import { WINDOW_MS, TIME_STOP_SESSIONS } from './planner.js';
+import { amtExitOf } from './exits.js';
 
 export const ENGINE = 'nr-engine-1';
+export const ENGINE_2 = 'nr-engine-2'; // campaign 2: nr-engine-1 plus the AMT exits (exit 'existing' is nr-engine-1 unchanged)
 const EPS = 1e-9;
 
 // market: { sessions, sessionIndex: Map, bars5: Map sym -> Map date -> [{ s, e, o, h, l, c, v }], daily: Map sym -> Map
@@ -91,7 +93,9 @@ function delayed(i, arr, delay) {
 // The whole run: plans (entry plans and follow-up checks) -> actions and signal fates. Pure and deterministic.
 // activations: optional precomputed activationOf results (one per plan, same order); lean: no activation or signal
 // records (the placebo needs only the trades and the equity).
-export function runReplay({ plans, treatment, market: mk, costs, portfolio, from, to, costMultiplier = 1, delay = null, activations = null, lean = false }) {
+// exit: 'existing' (campaign 1's exits; the default, unchanged) or campaign 2's 'acceptance', 'target' or 'price_only'
+// (CAMPAIGN-2.md), each added to the existing exits.
+export function runReplay({ plans, treatment, market: mk, costs, portfolio, from, to, costMultiplier = 1, delay = null, activations = null, lean = false, exit = 'existing' }) {
   const k = (sym, date) => (Math.max(costs.halfSpreadFloorBps, mk.halfSpread(sym, date)) + costs.slippageBps) * costMultiplier / 10000;
   const hs = (sym, date) => Math.max(costs.halfSpreadFloorBps, mk.halfSpread(sym, date)) * costMultiplier;
   const actions = [], signals = [];
@@ -125,7 +129,10 @@ export function runReplay({ plans, treatment, market: mk, costs, portfolio, from
   // 2. Session opens and closes.
   const sessions = mk.sessions.filter((d) => d >= from && d <= to);
   for (const d of sessions) { events.push({ ms: mk.openMs(d), order: 0, kind: 'open', date: d }); events.push({ ms: mk.closeMs(d), order: 3, kind: 'close', date: d }); }
-  events.sort((a, b) => a.ms - b.ms || a.order - b.order || (a.stock ?? '').localeCompare(b.stock ?? ''));
+  const cmpEv = (a, b) => a.ms - b.ms || a.order - b.order || (a.stock ?? '').localeCompare(b.stock ?? '');
+  events.sort(cmpEv);
+  // Inserts a later event after every event that sorts at or before it (campaign 2's exits only).
+  const insertAfter = (x, ev) => { let lo = x + 1, hi = events.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (cmpEv(events[mid], ev) <= 0) lo = mid + 1; else hi = mid; } events.splice(lo, 0, ev); };
   // 3. The account, in time order.
   let cash = portfolio.startingCash;
   const posn = new Map(); // stock -> position
@@ -176,6 +183,16 @@ export function runReplay({ plans, treatment, market: mk, costs, portfolio, from
       pendingExit.delete(ev.stock);
       continue;
     }
+    if (ev.kind === 'amt_exit') {
+      const p = posn.get(ev.stock);
+      if (!p || p.tradeId !== ev.tradeId) continue;
+      const b = mk.flat.get(ev.stock)[ev.i];
+      const raw = ev.raw ?? b.o;
+      act(ev.decisionMs, ev.stock, 'exit_scheduled', { reason: ev.reason, ...ev.detail, tradeId: p.tradeId });
+      sell(ev.stock, raw * (1 - k(ev.stock, b.date)), raw, b.s, ev.reason, b.date);
+      pendingExit.delete(ev.stock);
+      continue;
+    }
     if (ev.kind === 'buy') {
       // Same-time buys share cash and risk room equally.
       const group = [ev];
@@ -203,7 +220,13 @@ export function runReplay({ plans, treatment, market: mk, costs, portfolio, from
         const tradeId = `${g.stock}:${b.s}`;
         posn.set(g.stock, { stock: g.stock, shares, entry: px, inv: g.inv, fillDi: b.di, tradeId, receivables: [] });
         sig.fate = 'filled';
-        act(g.ms, g.stock, 'buy', { shares, price: px, raw: b.o, cost, inv: g.inv, date: b.date, tradeId, planId: sig.planId, T: sig.T, caps });
+        let exitPlan;
+        if (exit !== 'existing') {
+          const ax = amtExitOf({ exit, stock: g.stock, fillI: g.i, fillRaw: b.o, activationMs: sig.activationMs, mk, delay, delayed });
+          exitPlan = ax?.detail ? { source: ax.detail.source ?? null, target: ax.detail.target ?? null, first: ax.reason ?? null } : null;
+          if (ax?.reason) insertAfter(x, { ms: mk.flat.get(g.stock)[ax.fillI].s, order: ax.order, kind: 'amt_exit', stock: g.stock, i: ax.fillI, raw: ax.raw, reason: ax.reason, decisionMs: ax.decisionMs, detail: ax.detail, tradeId });
+        }
+        act(g.ms, g.stock, 'buy', { shares, price: px, raw: b.o, cost, inv: g.inv, date: b.date, tradeId, planId: sig.planId, T: sig.T, caps, ...(exitPlan !== undefined ? { exitPlan } : {}) });
         act(g.ms, g.stock, 'signal', { ...sig });
       }
       continue;
@@ -226,5 +249,5 @@ export function runReplay({ plans, treatment, market: mk, costs, portfolio, from
   }
   const endMs = sessions.length ? mk.closeMs(sessions.at(-1)) : 0;
   for (const s of signals) if (s.fate === 'pending') { s.fate = 'expired'; s.why = 'the fill falls after the replay'; act(endMs, s.stock, 'signal', { ...s }); }
-  return { actions, signals, engine: ENGINE, treatment, costMultiplier, delay };
+  return { actions, signals, engine: exit === 'existing' ? ENGINE : ENGINE_2, treatment, costMultiplier, delay, exit };
 }

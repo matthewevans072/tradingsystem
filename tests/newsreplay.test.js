@@ -11,7 +11,8 @@ import { tradingDays } from '../server/strategy/sessions.js';
 import { regularSessionBounds } from '../server/calendar.js';
 import { eligibleOf, newsItems, etMs } from '../server/newsreplay/items.js';
 import { createLoader } from '../server/newsreplay/loader.js';
-import { sessionProfile } from '../server/newsreplay/profile.js';
+import { sessionProfile, compositeTarget } from '../server/newsreplay/profile.js';
+import { thirtyMinuteBars } from '../server/newsreplay/exits.js';
 import { deterministicPlan, classifyHeadline } from '../server/newsreplay/planner.js';
 import { prepareMarket, runReplay, activationOf } from '../server/newsreplay/sim.js';
 import { evaluateActions, report, planFates } from '../server/newsreplay/evaluate.js';
@@ -372,4 +373,83 @@ test('the four plain-English answers say both "made money" and "does not qualify
   svc.close();
   assert.equal(fs.statSync(store.nrDbFile(dir)).mtimeMs, before, 'reading changes nothing');
   assert.equal(createNewsReplayService({ mode: 'demo', cfg: {} }).overview().demo, true);
+});
+
+// ---------- campaign 2: the AMT exits (CAMPAIGN-2.md sections 3 to 7) ----------
+const runX = (m, plans, exit, o = {}) => runReplay({ plans, treatment: 'A', market: mk(m, o.market), costs: COSTS, portfolio: PORT, from: m.sessions[0], to: m.sessions.at(-1), delay: o.delay ?? null, exit });
+const sellOf = (r) => r.actions.find((a) => a.kind === 'sell');
+const armedAt = (m, d = '2020-02-10') => { const p = planAt(m, 'AAA', d, 10, 2); shape(m, 'AAA', d, 10, 20, { c: p.bullish.activation.level + 0.01 }); return p; };
+
+test('campaign 2: 30-minute bars from 5-minute bars (early closes included); the composite target; X1 is campaign 1 unchanged', () => {
+  const m = market({ from: '2020-11-20', to: '2020-12-04' });
+  const M = mk(m), arr = M.flat.get('AAA');
+  const day = (d) => { const i = arr.findIndex((b) => b.date === d); let j = i; while (j + 1 < arr.length && arr[j + 1].date === d) j++; return thirtyMinuteBars(arr, i, j, open, close); };
+  assert.equal(day('2020-11-23').length, 13);
+  const early = day('2020-11-27');
+  assert.equal(early.length, 7, 'the early close at 13:00 gives seven windows');
+  assert.equal(early.at(-1).e, close('2020-11-27'));
+  assert.deepEqual([early[0].s, early[0].e, early[0].lastI - arr.findIndex((b) => b.date === '2020-11-27')], [open('2020-11-27'), open('2020-11-27') + 1800000, 5]);
+  const sess = (d, prices) => ({ session: d, bars: prices.map(([p, v]) => ({ h: p, l: p, c: p, v })) });
+  const c = compositeTarget([sess('2020-02-06', [[51, 100], [52, 300]]), sess('2020-02-07', [[52.5, 300], [50, 10]])], { fillSession: '2020-02-10', fillPrice: 50.2 });
+  assert.ok(c.target > 51.94 && c.target <= 52, `ties go to the lower price (${c.target})`);
+  assert.equal(compositeTarget([sess('2020-02-07', [[50, 10]])], { fillSession: '2020-02-10', fillPrice: 60 }), null);
+  assert.throws(() => compositeTarget([sess('2020-02-10', [[50, 10]])], { fillSession: '2020-02-10', fillPrice: 40 }), /completed before the fill session/);
+  const m1 = market(); const p1 = armedAt(m1);
+  assert.deepEqual(runX(m1, [p1], 'existing').actions, run(m1, [p1]).actions, 'exit "existing" is nr-engine-1');
+  const buy1 = runX(m1, [p1], 'existing').actions.find((x) => x.kind === 'buy');
+  assert.deepEqual(Object.keys(buy1.detail).sort(), ['T', 'caps', 'cost', 'date', 'inv', 'planId', 'price', 'raw', 'shares', 'tradeId'], 'the campaign 1 buy record has no exit plan');
+});
+
+test('campaign 2 X2: a counted 30-minute close with VAL <= close < POC sells at the next 5-minute open; the window holding the fill is not counted; POC itself does not exit', () => {
+  const prof = { profiles: () => ({ val: 49.0, poc: 49.5, vah: 49.9 }) };
+  const d = '2020-02-10';
+  const m = market(); const p = armedAt(m);
+  shape(m, 'AAA', d, 10, 30, { c: 49.2 }); // inside value, but in the window that holds the fill (10:00-10:30)
+  shape(m, 'AAA', d, 11, 30, { c: 49.2 }); // the window 11:00-11:30 closes inside value, below the POC
+  const s = sellOf(runX(m, [p], 'acceptance', { market: prof }));
+  assert.deepEqual([s.detail.reason, s.ms], ['acceptance', et(d, 11, 30)]);
+  const mDelay = market(); const pD = armedAt(mDelay); shape(mDelay, 'AAA', d, 11, 30, { c: 49.2 });
+  assert.equal(sellOf(runX(mDelay, [pD], 'acceptance', { market: prof, delay: 'bar' })).ms, et(d, 11, 35), 'one bar later');
+  const m2 = market(); const p2 = armedAt(m2); shape(m2, 'AAA', d, 11, 30, { c: 49.5 });
+  assert.notEqual(sellOf(runX(m2, [p2], 'acceptance', { market: prof })).detail.reason, 'acceptance', 'a close at the POC is not below it');
+  const m3 = market(); const p3 = armedAt(m3); shape(m3, 'AAA', d, 11, 30, { c: 49.0 });
+  assert.equal(sellOf(runX(m3, [p3], 'acceptance', { market: prof })).detail.reason, 'acceptance', 'a close at the value-area low is inside');
+  // Prefix invariance: changing bars after the exit changes no earlier action.
+  const m4 = market(); const p4 = armedAt(m4); shape(m4, 'AAA', d, 11, 30, { c: 49.2 });
+  const a4 = runX(m4, [p4], 'acceptance', { market: prof }).actions;
+  shape(m4, 'AAA', '2020-02-12', 12, 0, { c: 40 });
+  const b4 = runX(m4, [p4], 'acceptance', { market: prof }).actions;
+  const cut = et(d, 11, 30);
+  assert.deepEqual(b4.filter((x) => x.ms <= cut), a4.filter((x) => x.ms <= cut));
+});
+
+test('campaign 2 X3 and X4: the target (primary, composite, one-cent touch, gap at the open, from the bar after the fill); the activation bar low; precedence', () => {
+  const d = '2020-02-10';
+  const prof = { profiles: () => ({ val: 49.0, poc: 49.5, vah: 50.0 }) }; // primary target 51.0
+  const m = market(); const p = armedAt(m);
+  shape(m, 'AAA', d, 10, 25, { h: 51.5 }); // the fill bar itself: not active yet
+  shape(m, 'AAA', d, 11, 0, { h: 51.005 }); // less than one cent beyond: no fill
+  shape(m, 'AAA', d, 11, 30, { h: 51.02 });
+  const r = runX(m, [p], 'target', { market: prof });
+  const s = sellOf(r);
+  assert.deepEqual([s.detail.reason, s.ms, s.detail.raw], ['target', et(d, 11, 25), 51.0]);
+  assert.equal(r.actions.find((a) => a.kind === 'buy').detail.exitPlan.source, 'primary');
+  const g = market(); const pg = armedAt(g); shape(g, 'AAA', d, 11, 30, { o: 51.3, h: 51.3, c: 51.3 });
+  assert.equal(sellOf(runX(g, [pg], 'target', { market: prof })).detail.raw, 51.3, 'a gap through the target fills at the open');
+  const cm = market(); const pc = armedAt(cm);
+  const rc = runX(cm, [pc], 'target', { market: { profiles: () => ({ val: 48, poc: 48.5, vah: 49 }), composite: () => ({ target: 52 }) } });
+  const plan = rc.actions.find((a) => a.kind === 'buy').detail.exitPlan;
+  assert.deepEqual([plan.source, plan.target], ['composite', 52], 'entered at or above the primary target: the composite');
+  // A bearish exit scheduled for a bar's open fills before a touch in the same bar.
+  const b = market(); const pb = armedAt(b);
+  const q = planAt(b, 'AAA', d, 11, 2, { id: 2, followUp: true });
+  shape(b, 'AAA', d, 11, 15, { c: q.bearish.activation.level - 0.01 });
+  shape(b, 'AAA', d, 11, 20, { h: 51.5 });
+  assert.equal(sellOf(runX(b, [pb, q], 'target', { market: prof })).detail.reason, 'bearish_activation');
+  // X4: a 30-minute close strictly below the activation bar's low.
+  const x = market(); const px4 = planAt(x, 'AAA', d, 10, 2); shape(x, 'AAA', d, 10, 20, { c: px4.bullish.activation.level + 0.01, l: 50.3 });
+  const s4 = sellOf(runX(x, [px4], 'price_only'));
+  assert.deepEqual([s4.detail.reason, s4.ms], ['price_only', et('2020-02-11', 10, 0)], 'the next session first window closes at 50, below 50.3');
+  const y = market(); const py = planAt(y, 'AAA', d, 10, 2); shape(y, 'AAA', d, 10, 20, { c: py.bullish.activation.level + 0.01, l: 50.0 });
+  assert.notEqual(sellOf(runX(y, [py], 'price_only')).detail.reason, 'price_only', 'a close equal to the level does not exit');
 });

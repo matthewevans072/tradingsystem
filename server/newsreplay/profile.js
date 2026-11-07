@@ -45,3 +45,28 @@ export function sessionProfile(bars, { session, asOfSession }) {
   }
   return { session, binSize: size, poc: center(poc), pocBin: poc, vah: (hi + 1) * size, val: lo * size, vwap, volume: total, valueShare: acc / total, bins: keys.length };
 }
+
+// Campaign 2's composite target (CAMPAIGN-2.md section 5, step 2): the five completed sessions before the fill session,
+// each session's 1-minute bars (already in the fill session's share units) added into bins of 0.1% of the last of
+// them's close, anchored at zero, volume spread evenly as above. Returns the lower edge of the highest-volume bin whose
+// lower edge is above the fill price (ties to the lower price), or null when no bin lies above it.
+export function compositeTarget(sessionsBars, { fillSession, fillPrice }) {
+  if (!Array.isArray(sessionsBars) || !sessionsBars.length) return null;
+  for (const s of sessionsBars) if (!s.session || s.session >= fillSession) throw new Error('a composite profile may use only sessions completed before the fill session');
+  const last = sessionsBars.at(-1).bars;
+  if (!last?.length) return null;
+  const size = last.at(-1).c * BIN_SHARE;
+  const vol = new Map();
+  for (const { bars } of sessionsBars) for (const b of bars || []) {
+    if (!(b.v > 0)) continue;
+    const lo = Math.floor(b.l / size), hi = Math.floor(b.h / size);
+    const each = b.v / (hi - lo + 1);
+    for (let i = lo; i <= hi; i++) vol.set(i, (vol.get(i) || 0) + each);
+  }
+  let best = null;
+  for (const [i, v] of vol) {
+    if (!(i * size > fillPrice + 1e-12)) continue;
+    if (best == null || v > vol.get(best) + 1e-9 || (Math.abs(v - vol.get(best)) <= 1e-9 && i < best)) best = i;
+  }
+  return best == null ? null : { target: best * size, binSize: size, bin: best };
+}

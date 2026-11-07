@@ -5,8 +5,9 @@
 // workspace gets a stub. Simulation only: no holdings, no cash, no order.
 import { createNewsReplay } from './campaign.js';
 import * as store from './store.js';
-import { NrError, REPLAY, CODE_REVISION, ENGINE_VERSION, logStatus, readLog, BASKET } from './config.js';
-import { fourAnswers, selection, QUESTIONS } from './answers.js';
+import { NrError, REPLAY, CODE_REVISION, ENGINE_VERSION, CODE_REVISION_2, logStatus, readLog, BASKET } from './config.js';
+import { fourAnswers, QUESTIONS, fourAnswers2 } from './answers.js';
+import { createCampaign2, X_IDS } from './campaign2.js';
 
 export { NrError };
 const PLANNER_OF = (configId) => (configId.startsWith('DC-') ? 'DC' : configId.startsWith('AIM-') ? 'AIM' : configId.startsWith('AI-') ? 'AI' : configId.startsWith('P-') ? 'P' : 'D');
@@ -19,13 +20,28 @@ export function createNewsReplayService(ctx, opts = {}) {
   }
   const nr = createNewsReplay({ dataDir: ctx.cfg.dataDir, ...opts, testOverrides: Object.keys(opts).length > 0 });
   const { db, matrix } = nr;
+  let c2 = null;
+  const camp2 = () => (c2 ||= createCampaign2(nr));
   const phaseOf = (id) => Object.entries(matrix.phases).find(([, ids]) => ids.includes(id))?.[0] ?? null;
   const configOf = (id) => {
+    if (X_IDS.includes(id)) return { id, planner: 'D', entry: 'C' };
     const c = matrix.configurations.find((x) => x.id === id);
     if (!c) throw new NrError(400, `unknown configuration ${id}`);
     if (c.status) throw new NrError(409, `${id}: ${c.status}`);
     return c;
   };
+  // Campaign 2 (CAMPAIGN-2.md, the AMT exits): read-only, from its stored runs and placebo rows.
+  function overview2() {
+    const c = camp2(), m2 = c.matrix2, by = c.reports(), holm = c.holm();
+    const x1 = c.runs().filter((r) => r.configId === 'X1' && r.variant === 'base').at(-1);
+    return {
+      label: LABEL, codeRevision: CODE_REVISION_2, reproduction: x1?.summary?.reproduction ?? null,
+      runs: c.runs().map((r) => ({ id: r.id, configId: r.configId, variant: r.variant, status: r.status, net: r.summary?.report?.net ?? null, T: r.summary?.report?.T ?? null, error: r.error ? r.error.split('\n')[0] : null })),
+      configs: m2.configurations.map((x) => { const r = by.get(`${x.id}|base`); return { id: x.id, exit: x.exit, report: r ? { net: r.net, T: r.T, index: r.index, exposureMatched: r.exposureMatched, maxDrawdownPct: r.maxDrawdownPct, avgInvestedPct: r.avgInvestedPct, completedTrades: r.completedTrades, openAtEnd: r.openAtEnd, costs: r.costs, perStock: r.perStock, exitSummary: r.exitSummary, accounting: r.accounting, planFates: r.planFates ?? null } : null, sensitivities: Object.fromEntries(m2.sensitivities.map((s) => [s.id, by.get(`${x.id}|${s.id}`)?.T ?? null])), answers: r ? fourAnswers2(x.id, by, holm, m2, matrix.portfolio.startingCash) : null }; }),
+      comparisons: m2.comparisons.map((x) => ({ id: x.id, name: x.name, pair: x.pair, ...holm[x.id] })),
+      inference: m2.inference,
+    };
+  }
   return {
     overview() {
       const by = store.doneReports(db);
@@ -45,7 +61,7 @@ export function createNewsReplayService(ctx, opts = {}) {
         simulated: true, label: LABEL, questions: QUESTIONS, replay: REPLAY, basket: BASKET, codeRevision: CODE_REVISION, engineVersion: ENGINE_VERSION,
         downloads: store.listDownloads(db).length, records: { countsEntries: log.counts.length, frozen: log.frozen.length, loggedRuns: log.runs.length },
         runs, configs, comparisons: matrix.comparisons.map((x) => ({ id: x.id, name: x.name, pairs: x.pairs, ...holm[x.id] })),
-        inference: matrix.inference, closedWindows: nr.closedWindows,
+        inference: matrix.inference, closedWindows: nr.closedWindows, campaign2: overview2(),
       };
     },
     plans({ config, stock = null, session = null, offset = 0, limit = 50 }) {

@@ -4,7 +4,7 @@
 import { NrError } from './service.js';
 import { BASKET } from './config.js';
 
-const ID = /^\d{1,12}$/, CONFIG = /^[A-Z]{1,3}-[A-C]$/, DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ID = /^\d{1,12}$/, CONFIG = /^(?:[A-Z]{1,3}-[A-C]|X[1-4])$/, DATE = /^\d{4}-\d{2}-\d{2}$/;
 export function registerNewsReplayRoutes(r, HttpError) {
   const route = (method, pattern, fn) => r(method, pattern, async (ctx, req) => {
     try { return await fn(ctx.newsreplay, req, ctx); } catch (e) { if (e instanceof NrError) throw new HttpError(e.status, e.message); throw e; }
