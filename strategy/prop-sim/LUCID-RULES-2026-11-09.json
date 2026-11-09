@@ -1,0 +1,102 @@
+{
+  "name": "lucid-rules-2026-11-09",
+  "label": "simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid",
+  "dateRead": "2026-11-09",
+  "howRead": "Lucid Trading's help center (support.lucidtrading.com), read-only, no login, with a page-reading tool (WebFetch) that returns quoted sentences; the quotes below are as that tool returned them and should be checked against the pages before any reliance. lucidtrading.com itself (the product and price pages) refused the tool with HTTP 403, so prices and the LucidFlex daily-loss-limit amounts could not be read from Lucid.",
+  "sources": {
+    "flexEvaluation": "https://support.lucidtrading.com/en/articles/12945790-lucidflex-evaluation-account",
+    "flexDrawdown": "https://support.lucidtrading.com/en/articles/12945815-lucidflex-drawdown",
+    "flexFunded": "https://support.lucidtrading.com/en/articles/12945795-lucidflex-funded-account",
+    "flexPayouts": "https://support.lucidtrading.com/en/articles/12945796-lucidflex-payouts",
+    "flexConsistency": "https://support.lucidtrading.com/en/articles/12945805-lucidflex-consistency-percentage",
+    "flexScaling": "https://support.lucidtrading.com/en/articles/12945808-lucidflex-scaling-plan",
+    "flexCustomization": "https://support.lucidtrading.com/en/articles/16226050-lucidflex-customization",
+    "proEvaluation": "https://support.lucidtrading.com/en/articles/12890029-lucidpro-evaluation-account",
+    "proDrawdown": "https://support.lucidtrading.com/en/articles/12890136-lucidpro-drawdown",
+    "proDailyLossLimit": "https://support.lucidtrading.com/en/articles/12890122-lucidpro-daily-loss-limit",
+    "proFunded": "https://support.lucidtrading.com/en/articles/12890069-lucidpro-funded-account",
+    "proPayouts": "https://support.lucidtrading.com/en/articles/12890092-lucidpro-payouts",
+    "proConsistency": "https://support.lucidtrading.com/en/articles/12890109-lucidpro-consistency-percentage",
+    "dailyEvaluation": "https://support.lucidtrading.com/en/articles/15996664-luciddaily-evaluation",
+    "dailyDrawdown": "https://support.lucidtrading.com/en/articles/15998425-luciddaily-drawdown",
+    "dailyDailyLossLimit": "https://support.lucidtrading.com/en/articles/16085900-luciddaily-daily-loss-limit",
+    "dailyConsistency": "https://support.lucidtrading.com/en/articles/15998336-luciddaily-consistency",
+    "dailyPayouts": "https://support.lucidtrading.com/en/articles/15997266-luciddaily-payouts",
+    "directFunded": "https://support.lucidtrading.com/en/articles/12890148-luciddirect-funded-account",
+    "maxxNew": "https://support.lucidtrading.com/en/articles/17327076-new-lucidmaxx-program",
+    "fees": "https://support.lucidtrading.com/en/articles/11404620-simulated-account-fees",
+    "allowedTimes": "https://support.lucidtrading.com/en/articles/11404729-allowed-trading-times",
+    "otherActivities": "https://support.lucidtrading.com/en/articles/11404728-other-trading-activities",
+    "microscalping": "https://support.lucidtrading.com/en/articles/11404742-prohibited-microscalping",
+    "helpCenter": "https://support.lucidtrading.com/"
+  },
+  "common": {
+    "allowedHours": { "value": "positions closed by 16:45 Eastern Monday to Friday; trading resumes 18:00 Eastern Sunday to Thursday; on holidays with altered closes, flat before the market closes", "source": "allowedTimes", "sentences": ["All positions must be closed by 4:45 PM EST, Monday through Friday", "Any open positions will be automatically closed by Lucid Trading at 4:45 PM EST", "Important: Holding a position past this time does not result in a failed account", "Trading resumes at 6:00 PM EST, Sunday through Thursday", "On market holidays with altered closing times, all positions must be closed before the market closes,"], "simulated": "every position is closed by the programme's own flat-by time (earlier than 16:45 Eastern; CAMPAIGN-1.md), and on early-close days before the close" },
+    "newsLucidFlexProDirect": { "value": "no news restriction on these plans", "source": "otherActivities", "sentences": ["Traders may enter or exit positions around scheduled or unscheduled news events on these plans without it being a breach"] },
+    "newsLucidDaily": { "value": "trading red-folder news is a hard breach on LucidDaily; the events and the minutes around them are not defined on the page", "source": "otherActivities", "sentences": ["Trading red folder news on the LucidDaily is a hard breach"], "unclear": "which events count and for how long are not stated; no economic calendar exists in the data, so LucidDaily is recorded but not simulated" },
+    "automation": { "value": "automated trading permitted", "source": "otherActivities", "sentences": ["Automated trading systems and trade copiers are permitted", "All automated activity must comply with Lucid Trading rules"] },
+    "microscalping": { "value": "flagged when more than 50% of profits come from trades held 5 seconds or less", "source": "microscalping", "sentences": ["More than 50% of your profits are generated from trades held for 5 seconds or less"], "simulated": "no simulated trade is shorter than one 1-minute bar, so the rule cannot bind" },
+    "dailyLossLimitNature": { "value": "every daily loss limit is a soft breach: trading stops until the next session, the account is not failed", "source": "proDailyLossLimit", "sentences": ["All DLLs at Lucid Trading are considered soft breaches, meaning you do not lose your account for hitting DLL", "as long as the Max Loss Limit (MLL) has not been reached."], "unclear": "whether open (unrealized) losses count is not stated", "readings": ["realized losses only", "realized plus open losses"], "simulated": "realized plus open losses (stricter): when the day's result including the open position touches minus the limit, the position is closed at that price and no further trade is taken that session" },
+    "breachBasis": { "value": "the account breaches when its balance reaches the Max Loss Limit", "source": "flexDrawdown", "sentences": ["If your account balance reached the MLL, your account will be breached."], "unclear": "'balance' could mean the closed balance or the live balance including open profit and loss", "readings": ["closed balance only", "live balance including the open position"], "simulated": "the live balance including the open position at each 1-minute bar's adverse extreme (stricter)" },
+    "commissions": { "value": "not published on the pages read", "assumption": "experimental assumption (author-selected): US$0.50 per micro contract per side and US$2.00 per mini contract per side, all-in" },
+    "fees": { "value": "evaluation prices are not on the help pages; lucidtrading.com refused the page-reading tool", "source": "fees", "sentences": ["LucidPro Evaluation and LucidDirect accounts are purchased by paying a one-time fee.", "There is no activation fee to upgrade a LucidPro Evaluation to a LucidPro Funded.", "Resets are not automatic or free."], "thirdPartyUnverified": { "LucidPro 50K": 129.5, "LucidFlex 50K": [130, 175] }, "thirdPartySources": ["https://proptradingvibes.com/blog/lucid-trading-50k-account-rules", "https://www.proptradingvibes.com/blog/lucid-trading-50k-lucidflex-vs-lucidpro-vs-lucidblack"], "simulated": "experimental assumption (author-selected), from unverified third-party listings, the higher figure where they disagree: LucidFlex 50K US$175, LucidPro 50K US$129.50; every report also gives the result before fees" }
+  },
+  "plans": {
+    "LucidFlex": {
+      "simulated": true,
+      "sizes": {
+        "25000": { "profitTarget": 1250, "maxLoss": 1000, "initialTrailBalance": 26100, "lockedMll": 25100, "maxSizeEval": "2 mini or 20 micros", "minDailyProfitForPayout": 100, "payoutMax": "50% of Profit up to $1,000" },
+        "50000": { "profitTarget": 3000, "maxLoss": 2000, "initialTrailBalance": 52100, "lockedMll": 50100, "maxSizeEval": "4 mini or 40 micros", "minDailyProfitForPayout": 150, "payoutMax": "50% of Profit up to $2,000" },
+        "100000": { "profitTarget": 6000, "maxLoss": 3000, "initialTrailBalance": 103100, "lockedMll": 100100, "maxSizeEval": "6 mini or 60 micros", "minDailyProfitForPayout": 200, "payoutMax": "50% of Profit up to $2,500" },
+        "150000": { "profitTarget": 9000, "maxLoss": 4500, "initialTrailBalance": 154600, "lockedMll": 150100, "maxSizeEval": "10 mini or 100 micros", "minDailyProfitForPayout": 250, "payoutMax": "50% of Profit up to $3,000" }
+      },
+      "rules": {
+        "profitTarget": { "source": "flexEvaluation", "sentences": ["The LucidFlex evaluation is a simulated account with a profit target that must be hit before traders are eligible", "to upgrade to a LucidFlex funded account."], "table": "Account Size | Profit Target | Max Loss Limit | Consistency % | Max Size: $50,000 | $3,000 | $2,000 | 40% (50% with add-on) | 4 mini or 40 micros" },
+        "maxLoss": { "source": "flexDrawdown", "sentences": ["use an End-of-Day Drawdown (EOD Drawdown) system to calculate the Max Loss Limit (MLL)", "At the end of each trading session, the system calculates the account's highest closing balance", "The MLL increases as your balance grows, up to a defined point", "Once your account exceeds the Initial Trail Balance, the MLL locks and no longer moves", "Once the account exceeds the trail, the MLL locks at the initial balance plus $100", "Once you request a payout from LucidFlex, your MLL automatically adjusts to the Locked MLL Balance"], "table": "Account Size | MLL Amount | Initial Trail Balance | Locked MLL Balance: $50,000 | $2,000 | $52,100 | $50,100", "trailing": "end of day: MLL = min(highest closing balance - MLL Amount, initial balance + $100), updated at each session's close; does not follow open profit (it trails closing balances)", "evaluationAndFunded": "the same EOD system in both stages (the page lists no difference)" },
+        "dailyLossLimit": { "source": "flexCustomization", "sentences": ["The DLL is a soft breach, so if you hit it you will simply be locked out until the next trading session."], "value": "optional at purchase (DLL On lowers the price); the amounts are not on the help pages", "simulated": "DLL Off (a published option whose rules are fully known)" },
+        "consistency": { "source": "flexConsistency", "sentences": ["Largest Single Day Profit / Account Profit = Consistency Percentage", "your Consistency Percentage must be 40% or less to be eligible to upgrade to a LucidFlex funded account.", "The consistency requirement (40%, or 50% with the add-on) applies only during the evaluation stage."], "fundedSentence": "There is no Consistency Percentage on LucidFlex funded accounts", "simulated": "40% (the default; stricter than the 50% add-on), checked when the target is reached: if the largest day is above 40% of the profit, trading continues until it is not" },
+        "minimumTradingDays": { "source": "flexEvaluation", "sentences": ["Pass in as few as 3 days with 40% consistency, or 2 days with the 50% consistency add-on"], "value": "no separate minimum stated; the 40% consistency rule implies at least 3 profitable days", "simulated": "no minimum beyond the consistency rule" },
+        "contractLimits": { "source": "flexScaling", "sentences": ["There is no scaling plan in the evaluation phase.", "The scaling plan updates at the end of each session, so your limits will not update in real-time throughout the day."], "evaluation50K": "4 mini or 40 micros", "funded50KScaling": { "0-999": "2 minis (20 micros)", "1000-1999": "3 minis (30 micros)", "2000+": "4 minis (40 micros)" }, "simulated": "evaluation 40 micros; funded by profit at the previous session's close (20, 30, 40 micros)" },
+        "timeLimit": { "source": "flexEvaluation", "sentences": ["One-time fee, no monthly rebilling, take as long as you need to pass"], "simulated": "no time limit by rule; the simulation stops an attempt after an author-selected horizon (CAMPAIGN-1.md) and reports it as timed out" },
+        "funded": { "source": "flexFunded", "sentences": ["LucidFlex funded accounts have an optional Daily Loss Limit, no consistency rule and no payout buffer.", "90/10 profit split.", "EOD trailing drawdown."] },
+        "activationFee": { "source": "flexEvaluation", "sentences": ["No activation fees to upgrade to funded account"] },
+        "payout": { "source": "flexPayouts", "sentences": ["Traders must earn at least the minimum required profit on 5 separate days during the payout cycle.", "Traders must have positive net profit (even just $1) during each payout cycle in order to request a payout.", "Minimum payout request: $500", "Futures traders may request 50% of their account balance up to a maximum dollar amount.", "There is no buffer balance that must be maintained in LucidFlex funded accounts.", "All LucidFlex funded account payouts are split 90% to the trader and 10% to Lucid Trading."], "table": "Account Size | Minimum Daily Profit: $50,000 | $150; Payout Maximum: $50,000 | 50% of Profit up to $2,000", "unclear": "'50% of their account balance' (a sentence) against '50% of Profit up to $2,000' (the table)", "readings": ["50% of the account balance, capped", "50% of the profit, capped"], "simulated": "50% of the profit, capped at $2,000 (stricter); at least $500, else the trader keeps trading; the trader receives 90%" }
+      }
+    },
+    "LucidPro": {
+      "simulated": true,
+      "sizes": {
+        "25000": { "profitTarget": 1250, "maxLoss": 1000, "dailyLossLimitEval": null, "initialTrailBalance": 26100, "payoutMinGoal": 250, "payoutMaxFirst": 1000 },
+        "50000": { "profitTarget": 3000, "maxLoss": 2000, "dailyLossLimitEval": 1200, "initialTrailBalance": 52100, "payoutMinGoal": 500, "payoutMaxFirst": 2000 },
+        "100000": { "profitTarget": 6000, "maxLoss": 3000, "dailyLossLimitEval": 1800, "initialTrailBalance": 103100, "payoutMinGoal": 750, "payoutMaxFirst": 2500 },
+        "150000": { "profitTarget": 9000, "maxLoss": 4500, "dailyLossLimitEval": 2700, "initialTrailBalance": 154600, "payoutMinGoal": 1000, "payoutMaxFirst": 3000 }
+      },
+      "rules": {
+        "profitTarget": { "source": "proEvaluation", "sentences": ["LucidPro evaluation accounts: $25K-$150K accounts, profit targets from $1,250,", "Pass the evaluation in one trading day"], "table": "Account Size | Profit Target | Max Loss Limit | Daily Loss Limit | Max Size: $50,000 | $3,000 | $2,000 | $1,200 | 4 mini or 40 micros" },
+        "maxLoss": { "source": "proDrawdown", "sentences": ["use an End-of-Day Drawdown (EOD Drawdown) system to calculate the Max Loss Limit (MLL).", "At the end of each trading session, the system calculates the account's highest closing balance", "Once the account exceeds the trail, the MLL locks at the initial balance plus $100"], "trailing": "as LucidFlex" },
+        "dailyLossLimit": { "source": "proDailyLossLimit", "sentences": ["LucidPro Evaluation accounts use a Fixed DLL that does not change over time.", "If you reach the DLL listed for your account size, you will be restricted from placing additional trades", "until the next trading session, provided your account has not been liquidated.", "Once the account closes above the Initial Trail Balance, the Fixed DLL is replaced by the LucidScale DLL.", "Highest end-of-day account profit × 60% = LucidScale DLL"], "fundedPageSentence": "The Daily Loss Limit is optional, and each Pro account can be customized at the time of evaluation purchase.", "simulated": "DLL On (stricter): evaluation fixed $1,200 (50K); funded fixed $1,200 until a close above $52,100, then 60% of the highest end-of-day profit" },
+        "consistency": { "source": "proConsistency", "sentences": ["In our LucidPro funded accounts you must meet a Consistency Percentage of 40% to be eligible to request a payout.", "The Consistency Percentage resets and must be met again after each payout."], "evaluation": "no evaluation consistency rule on the pages read", "simulated": "none in the evaluation; 40% within the payout cycle in the funded stage" },
+        "contractLimits": { "source": "proFunded", "sentences": ["No scaling plan, access to max contract size immediately"], "value": "4 mini or 40 micros (50K) in both stages" },
+        "activationFee": { "source": "fees", "sentences": ["There is no activation fee to upgrade a LucidPro Evaluation to a LucidPro Funded."] },
+        "payout": { "source": "proPayouts", "sentences": ["You must earn at least the minimum goal between payout cycles to earn a payout.", "Your largest single-day profit must be no more than 40% of your total profit during the payout cycle.", "You can not take payout from the buffer balance.", "All funded account payouts are split 90% to the trader and 10% to Lucid Trading."], "table": "$50k: buffer balance $52,100; min request $500; min balance for $500 payout $52,600; max payout 1st $2,000", "simulated": "at least $500 of profit in the cycle, the 40% consistency in the cycle, a payout only from the balance above $52,100, at least $500 and at most $2,000 (first payout); the trader receives 90%" }
+      }
+    },
+    "LucidDaily": {
+      "simulated": false,
+      "whyNot": "trading red-folder news is a hard breach and the page does not define the events or the time around them; no economic calendar is in the data, so a faithful simulation is not possible",
+      "rules": {
+        "evaluation": { "source": "dailyEvaluation", "table": "Account Size | Profit Target | Max Loss Limit | Consistency % | Max Size: $50,000 | $3,000 | $2,000 | 50% | 4 mini or 40 micros", "sentences": ["Customizable drawdown type,", "Intraday for lower evaluation price", "End-of-day for more flexibility"] },
+        "drawdown": { "source": "dailyDrawdown", "sentences": ["The LucidDaily funded accounts always use an Intraday drawdown.", "Intraday drawdown brings your MLL up with your real-time P&L"] },
+        "dailyLossLimit": { "source": "dailyDailyLossLimit", "table": "$50,000 | $1,200 (DLL On, both stages)" },
+        "payout": { "source": "dailyPayouts", "sentences": ["The buffer is equal to: Initial Max Loss Limit + $100", "Traders must have positive net profit (even just $1) between each payout request in order to request a payout.", "The minimum payout request per account is $500"] }
+      }
+    },
+    "LucidDirect": { "simulated": false, "whyNot": "no evaluation: the order's question is about evaluations", "source": "directFunded", "sentences": ["The LucidDirect is a simulated straight-to-funded account which does not have an evaluation phase."], "table50K": "Max Loss Limit $2,000; Fixed DLL $1,200; Scaling DLL 60% of Peak EOD Balance; Max Size 4 mini or 40 micros" },
+    "LucidMaxx": { "simulated": false, "whyNot": "not sold publicly (invitation only)", "source": "maxxNew", "value": "Step 1 profit target $3,000 and Step 2 $2,000 (50K), Max Drawdown (EOD) $2,000, no DLL, 40% consistency in Step 1" },
+    "LucidBlack": { "simulated": false, "whyNot": "listed as Legacy in the help center; not read" }
+  },
+  "simulatedAccounts": {
+    "primary": "LucidFlex 50K, DLL Off, 40% consistency (the main comparison)",
+    "secondary": "LucidPro 50K, DLL On (reported, descriptive)"
+  }
+}
