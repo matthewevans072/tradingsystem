@@ -10,8 +10,9 @@ Updated 2026-11-09 by the assistant, as master work order version 3 section 8 as
 - **Phase C1, running:** the forward account (news-forward), its worker and the Task Scheduler entries (see "Worker health").
 - **Phase C2, stopped:** CNBC's publisher's terms forbid automated data-gathering tools (below).
 - **event-swing** campaign 1: NONE (2026-11-06).
-- **prop-sim, Phase 1 done (2026-11-09):** ICT structure strategies in a simulated funded-account evaluation (simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid), on stand-in data (QQQ and SPY as NQ and ES, regular hours only, not futures). Outcome NONE. Phase 2 (the live simulated account) is next.
-- **Tests:** news-replay 17 of 17, news-forward 4 of 4; the news-replay planted-bug check catches 37 of 37 bugs.
+- **prop-sim, Phase 1 done (2026-11-09):** ICT structure strategies in a simulated funded-account evaluation (simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid), on stand-in data (QQQ and SPY as NQ and ES, regular hours only, not futures). Outcome NONE.
+- **prop-sim Phase 2, running from 2026-11-10:** the live simulated funded account. While the market is open it reads QQQ from Alpaca's free real-time IEX feed (measured 21 seconds behind), runs Phase 1's frozen rules as prices arrive and keeps one simulated LucidFlex 50K account trading LB-NQ, the plain level break (the configuration that passed most often in Phase 1; it did not beat random entries either); the ICT setups are shown, not traded. Each decision is recorded before any later price is read; a missed stretch is a gap and is never filled in. Dashboard on the Research page (refreshes every 5 seconds). Running simulated result, not validated. Rules: `strategy/prop-sim/LIVE-1.md`.
+- **Tests:** news-replay 17 of 17, news-forward 4 of 4, prop-sim 12 of 12, prop-sim live 15 of 15 (synthetic streams); the planted-bug checks catch 37 of 37 (news-replay) and 34 of 34 (prop-sim, the live account included); full suite 775 (772 pass, 1 skipped, 1 known unrelated failure, 1 HXR test cancelled under CPU load).
 
 ## Finished experiments: the four answers
 
@@ -51,14 +52,15 @@ CNBC's terms are Versant Media's. Their Prohibited Actions, section 12 "No Data 
 ## Worker health
 
 - **The forward account (Phase C1)** was activated on 2026-11-07; it starts making plans from **Monday 2026-11-09**. Its rules are the control (Phase A's immediate entry with the existing exits), because Phase B found nothing better that qualifies.
-- **The worker is running** (started 2026-11-07T05:08Z, pid 3884) and checks in every minute. Windows Task Scheduler starts it at logon and, on weekdays from 07:00 your time, makes sure every 30 minutes that it is running.
+- **The worker is running** (started 2026-11-07T05:08Z as pid 3884; on 2026-11-09 at 16:48Z it was pid 32440, restarted by Task Scheduler, heartbeat 36 seconds old) and checks in every minute. Its first live session (2026-11-09) had made 15 plans by 16:48Z (10 entry plans), none late. Windows Task Scheduler starts it at logon and, on weekdays from 07:00 your time, makes sure every 30 minutes that it is running.
 - **First update:** it failed once (it asked Alpaca for news from a future time); fixed before any plan existed, then the update stored the data from 2026-10-22 on. No result yet: the first plans come on 2026-11-09, and the rules need 21 earlier closes, so the first weeks are mostly "no trade".
-- **What must stay true:** your PC on and not asleep during market hours. A session missed while it is off is recorded as late and never filled in.
+- **The live prop-sim account (Phase 2)** was activated on 2026-11-09; its first session is **2026-11-10**. Its worker is running (pid 39388) and asks for new prices a few seconds after every minute while the market is open; Task Scheduler starts it at logon and checks every 30 minutes on weekdays from 07:00 your time (`\SignalDesk\PropSimLiveWorker`, `PropSimLiveDaily`). The first session has no previous-day levels, so it cannot trade that day; level breaks are possible from the second session.
+- **What must stay true:** your PC on and not asleep during market hours, from before 09:30 New York time (08:30 your time). A session missed while it is off is recorded as late (news-forward) or as a gap (prop-sim live: nothing traded for the rest of that session) and is never filled in.
 
 ## What's next
 
 1. Phase C1 runs on its own from Monday 2026-11-09; its running result appears on the Research page.
-2. prop-sim Phase 2: the live simulated funded account on Alpaca's free real-time IEX feed (QQQ and SPY), with a worker and a dashboard; it runs the frozen strategy without changing it.
+2. prop-sim Phase 2 runs on its own from 2026-11-10 (`npm run psl:status`; the Research page). Nothing is concluded from its first weeks: they are a handful of trades.
 3. Phase B3 (the research queue): any new campaign needs its own pre-registered document; at most two a week, 24 configurations each; pause after four in a row with no candidate. The obvious next question, a price-only "leave sooner" exit on the immediate entry, would be a new recorded experiment, not a change to the forward account.
 
 ## What I need from you
