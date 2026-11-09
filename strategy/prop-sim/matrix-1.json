@@ -1,0 +1,30 @@
+{
+  "name": "ps-matrix-1",
+  "campaign": "CAMPAIGN-1.md",
+  "frozenAt": "2026-11-09",
+  "label": "experimental assumptions (author-selected), not the owner's trading preferences; simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid",
+  "rulesFile": "LUCID-RULES-2026-11-09.json",
+  "dataSource": { "id": "B", "label": "stand-in, regular hours only, not futures", "symbols": { "NQ": "QQQ", "ES": "SPY" }, "ratio": { "NQ": 41.0, "ES": 10.0 }, "tickPoints": 0.25 },
+  "period": { "from": "2018-06-01", "to": "2022-12-30" },
+  "contracts": { "NQ": { "symbol": "MNQ", "tickValue": 0.5 }, "ES": { "symbol": "MES", "tickValue": 1.25 }, "microsPerMini": 10 },
+  "windows": [{ "id": "AM", "from": "09:30", "to": "11:30" }, { "id": "PM", "from": "13:30", "to": "15:30" }],
+  "flatBy": "15:55",
+  "signal": { "barMinutes": 5, "swing": { "leftBars": 1, "rightBars": 1, "confirmBarOffset": 1 }, "atrBars": 14, "minStopAtr": 0.25, "stopBufferTicks": 1, "rMultiple": 2, "orderLifeMinutes": 30, "maxTradesPerWindow": 2, "sweepToShiftMaxBars": 12, "ifvgEarliestOffset": 3, "obOriginLookback": 6 },
+  "execution": { "entrySlippageTicks": 1, "stopSlippageTicks": 1, "commissionPerMicroSide": 0.5, "riskShareOfRoom": 0.25, "riskCapUsd": 400 },
+  "configurations": [
+    { "id": "F1-NQ", "family": "F1", "market": "NQ" }, { "id": "F1-ES", "family": "F1", "market": "ES" },
+    { "id": "F2-NQ", "family": "F2", "market": "NQ" }, { "id": "F2-ES", "family": "F2", "market": "ES" },
+    { "id": "F3-NQ", "family": "F3", "market": "NQ" }, { "id": "F3-ES", "family": "F3", "market": "ES" },
+    { "id": "LB-NQ", "family": "LB", "market": "NQ" }, { "id": "LB-ES", "family": "LB", "market": "ES" },
+    { "id": "RND-NQ", "family": "RND", "market": "NQ", "matches": ["F1-NQ", "F2-NQ", "F3-NQ", "LB-NQ"] },
+    { "id": "RND-ES", "family": "RND", "market": "ES", "matches": ["F1-ES", "F2-ES", "F3-ES", "LB-ES"] }
+  ],
+  "accounts": {
+    "primary": { "plan": "LucidFlex", "size": 50000, "profitTarget": 3000, "maxLoss": 2000, "lockedMll": 50100, "consistency": 0.40, "dailyLossLimit": null, "evalContracts": 40, "fundedScaling": [[1000, 20], [2000, 30], [null, 40]], "payout": { "minDays": 5, "minDayProfit": 150, "share": 0.5, "max": 2000, "min": 500, "split": 0.9 }, "fee": 175 },
+    "secondary": { "plan": "LucidPro", "size": 50000, "profitTarget": 3000, "maxLoss": 2000, "lockedMll": 50100, "consistency": null, "dailyLossLimit": 1200, "evalContracts": 40, "fundedContracts": 40, "fundedDll": { "fixed": 1200, "trailBalance": 52100, "scaleShare": 0.6 }, "payout": { "minCycleProfit": 500, "consistency": 0.40, "buffer": 52100, "min": 500, "max": 2000, "split": 0.9 }, "fee": 129.5 }
+  },
+  "horizons": { "evaluationSessions": 60, "fundedSessions": 120 },
+  "random": { "seeds": 1000, "seedBase": 20261109 },
+  "inference": { "statistic": "pass rate minus the mean pass rate of the matched random twins (primary account)", "monthResamples": 10000, "seed": 20261110, "alpha": 0.05, "holmFamily": ["F1-NQ", "F1-ES", "F2-NQ", "F2-ES", "F3-NQ", "F3-ES", "LB-NQ", "LB-ES"], "minCompletedTrades": 100 },
+  "budget": { "maxConfigurations": 12, "executionHours": 4, "replacementRuns": 2 }
+}
