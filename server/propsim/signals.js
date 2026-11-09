@@ -89,9 +89,11 @@ export function execute({ m1, d, entryType, entry, stop, t0, fillUntil, flatBy, 
   for (let q = f; q < m1.length; q++) {
     const x = m1[q];
     if (q > f && x.s >= flatBy) { exitI = q; exit = x.o; kind = 'time'; mae = Math.max(mae, d * (fill - x.o)); break; }
-    mae = Math.max(mae, adverse(x));
     const hitStop = d > 0 ? x.l <= stop : x.h >= stop;
+    // A stopped position is closed at its stop fill: the bar's extreme beyond the stop never reaches the account
+    // (corrected in ps-code-2026-11-09-2; EXPERIMENT-LOG.md entry 13).
     if (hitStop) { exitI = q; exit = (q === f ? stop : (d > 0 ? Math.min(stop, x.o) : Math.max(stop, x.o))) - d * exec.stopSlippageTicks; kind = 'stop'; mae = Math.max(mae, d * (fill - exit)); break; }
+    mae = Math.max(mae, adverse(x));
     if (q > f && (d > 0 ? x.h > target : x.l < target)) { exitI = q; exit = target; kind = 'target'; break; }
   }
   if (exitI < 0) { exitI = m1.length - 1; exit = m1[exitI].c; kind = 'session_end'; mae = Math.max(mae, d * (fill - exit)); }

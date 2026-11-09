@@ -17,7 +17,7 @@ import { createHxrSource } from '../server/hxr/source.js';
 import { openPsDb, psDbFile, takeLock, heartbeat, releaseLock, lockRow, setDesired, listRuns, listRandom, logLine } from '../server/propsim/store.js';
 import { downloadBars } from '../server/propsim/download.js';
 import { createPropSim, writeReport } from '../server/propsim/campaign.js';
-import { LABEL, STAND_IN } from '../server/propsim/config.js';
+import { LABEL, STAND_IN, CODE_REVISION } from '../server/propsim/config.js';
 
 const SELF = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SELF), '..');
@@ -68,8 +68,8 @@ async function main() {
       out(`${LABEL}. ${STAND_IN}.`);
       const lk = lockRow(db);
       out(`worker: ${lk?.token ? `alive pid ${lk.pid}, heartbeat ${lk.heartbeat_at}` : 'not running'}; requested ${lk?.desired ?? 'running'}`);
-      for (const r of listRuns(db)) out(`run ${r.id} ${r.configId}: ${r.status}${r.summary ? ` trades ${r.summary.trades}, Flex pass ${(100 * r.summary.plans.primary.passRate).toFixed(1)}%` : ''}`);
-      for (const id of ps.TESTED) { const n = listRandom(db, id).length; if (n) out(`${id} random twins: ${n} of ${ps.matrix.random.seeds}`); }
+      for (const r of listRuns(db)) out(`run ${r.id} ${r.configId} (${r.codeRevision}): ${r.status}${r.summary ? ` trades ${r.summary.trades}, Flex pass ${(100 * r.summary.plans.primary.passRate).toFixed(1)}%` : ''}`);
+      for (const id of ps.TESTED) { const n = listRandom(db, id, CODE_REVISION).length; if (n) out(`${id} random twins: ${n} of ${ps.matrix.random.seeds}`); }
     } else if (cmd === 'report') {
       out(`written ${writeReport(ps)}`);
     } else { out(`unknown command ${cmd}`); process.exitCode = 2; }

@@ -100,7 +100,7 @@ test('fills and exits: a limit fills only strictly through; the stop is tested b
   const m1 = [bar(0, 105, 106, 100, 104), bar(1, 104, 104, 99, 101), bar(2, 101, 130, 88, 120), bar(3, 120, 121, 119, 120)];
   const t = execute({ m1, d: 1, entryType: 'limit', entry: 100, stop: 90, t0: open, fillUntil: open + 10 * MIN, flatBy: open + 100 * MIN, sig, exec });
   assert.equal(t.fillMs, open + MIN, 'the low equal to the limit does not fill');
-  assert.deepEqual([t.fill, t.kind, t.exit, t.maeTicks], [101, 'stop', 89, 13], 'both touched in one bar: the stop, less 1 tick');
+  assert.deepEqual([t.fill, t.kind, t.exit, t.maeTicks], [101, 'stop', 89, 12], 'both touched in one bar: the stop, less 1 tick; the worst point of a stopped trade is its stop fill (12 ticks), not the bar low of 88 (the defect of ps-code-2026-11-09-1)');
   const s = execute({ m1, d: -1, entryType: 'market', entry: null, stop: 130, t0: open + 3 * MIN, fillUntil: open + 4 * MIN, flatBy: open + 100 * MIN, sig, exec });
   assert.deepEqual([s.fill, s.kind, s.exit], [119, 'session_end', 120]);
   const w = execute({ m1, d: 1, entryType: 'market', entry: null, stop: 119, t0: open + 3 * MIN, fillUntil: open + 4 * MIN, flatBy: open + 100 * MIN, sig: { rMultiple: 2, minStopTicks: 3 }, exec });

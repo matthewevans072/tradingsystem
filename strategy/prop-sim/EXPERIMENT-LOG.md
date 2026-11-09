@@ -116,3 +116,53 @@ The owner's second message of 2026-11-09, received while the rules were being re
 **Rules** (`LUCID-RULES-2026-11-09.json`): Lucid Trading's help center (`support.lucidtrading.com`) read on 2026-11-09, read-only, no login, 25 pages, with every rule's URL and the sentences as the page-reading tool returned them. `lucidtrading.com` itself refused the tool (HTTP 403), so evaluation prices and LucidFlex's daily-loss-limit amounts could not be read from Lucid; prices are taken from unverified third-party listings as an experimental assumption (the higher figure where they disagree) and every report also gives results before fees. Unclear rules recorded with both readings and the stricter one simulated: the breach basis (live balance including the open position), the daily loss limit's basis (realized plus open), the LucidFlex payout size (50% of profit, capped). Plans simulated: **LucidFlex 50K, DLL Off, 40% consistency** (primary) and **LucidPro 50K, DLL On** (secondary). Recorded, not simulated: LucidDaily (its red-folder news rule is a hard breach and the page defines neither the events nor the time around them; no news calendar exists in the data), LucidDirect (no evaluation), LucidMaxx (invitation only), LucidBlack (legacy).
 
 **Data** (`DATA-INVENTORY.md`): Alpaca has no futures. Option B (QQQ and SPY 1-minute regular-session bars, 2018-06-01 to 2022-12-30, converted at NQ = 41.0 × QQQ and ES = 10.0 × SPY, labelled "stand-in, regular hours only, not futures") starts now. Option A (Databento `GLBX.MDP3` `ohlcv-1m` for NQ, ES, MNQ, MES, all hours, 2018-06-01 to 2022-12-30; MNQ and MES from 2019-05-06) is estimated at about US$0.20 to US$4 from published per-GB pricing and record sizes, inside the US$125 free credit; the exact figure needs Databento's cost tool, which needs an account and API key (a new credential), so the owner is asked once. Phase 2 options: (a) Databento live CME, US$199 a month (Standard plan); (b) Alpaca's free real-time IEX feed. Nothing is bought or subscribed.
+
+## 3 | 2026-11-09 | **Frozen for campaign 1**
+
+code revision: `ps-code-2026-11-09-1`; engine `ps-engine-1`; campaign commit: `067f7098c8d686cd62dfbd1f96135f87c826c4e4`; HEAD `6e14765eede223baafa50bfaf61b3e4b3774c844`; data hash: `44144eb2414c0ef690cab95158d654fd4b3d817afafd4906846651867f4ded9a` (QQQ and SPY 1-minute regular-session bars, 2018-06-01 to 2022-12-30). stand-in, regular hours only, not futures. Implementation ends here.
+
+## 4 | 2026-11-09 | **Signal counts seen before any run** (a timing check during the build; no profit, loss, pass or payout figure was computed or seen)
+
+While timing the code on the downloaded data, the number of signal trades per configuration was printed: F1 46 (NQ) and 36 (ES), F2 1,227 and 1,068, F3 278 and 254, LB 1,738 and 1,795; and one random twin's trade count and run time for LB-NQ (1,609 trades) and F2-ES (1,061). By the pre-registered rule (CAMPAIGN-1.md section 9) F1-NQ and F1-ES have fewer than 100 completed trades and will be reported as insufficient sample, description only. Nothing in the campaign was changed after these counts were seen.
+
+## 5 | 2026-11-09 | **Run** run id: 1, config: F1-NQ, status: done
+
+completed trades 46; LucidFlex 50K pass rate 0, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0. stand-in, regular hours only, not futures; exploratory.
+
+## 6 | 2026-11-09 | **Run** run id: 2, config: F1-ES, status: done
+
+completed trades 36; LucidFlex 50K pass rate 0, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0. stand-in, regular hours only, not futures; exploratory.
+
+## 7 | 2026-11-09 | **Run** run id: 3, config: F2-NQ, status: done
+
+completed trades 1227; LucidFlex 50K pass rate 0.0237, payouts 5, expected net per attempt US$-172.7 (before the fee US$2.3); LucidPro 50K pass rate 0.0128. stand-in, regular hours only, not futures; exploratory.
+
+## 8 | 2026-11-09 | **Run** run id: 4, config: F2-ES, status: done
+
+completed trades 1068; LucidFlex 50K pass rate 0.0073, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0.0046. stand-in, regular hours only, not futures; exploratory.
+
+## 9 | 2026-11-09 | **Run** run id: 5, config: F3-NQ, status: done
+
+completed trades 278; LucidFlex 50K pass rate 0, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0. stand-in, regular hours only, not futures; exploratory.
+
+## 10 | 2026-11-09 | **Run** run id: 6, config: F3-ES, status: done
+
+completed trades 254; LucidFlex 50K pass rate 0.0265, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0.0265. stand-in, regular hours only, not futures; exploratory.
+
+## 11 | 2026-11-09 | **Run** run id: 7, config: LB-NQ, status: done
+
+completed trades 1738; LucidFlex 50K pass rate 0.0995, payouts 49, expected net per attempt US$-140.11 (before the fee US$34.89); LucidPro 50K pass rate 0.0995. stand-in, regular hours only, not futures; exploratory.
+
+## 12 | 2026-11-09 | **Run** run id: 8, config: LB-ES, status: done
+
+completed trades 1795; LucidFlex 50K pass rate 0.0502, payouts 14, expected net per attempt US$-166.99 (before the fee US$8.01); LucidPro 50K pass rate 0.0593. stand-in, regular hours only, not futures; exploratory.
+
+## 13 | 2026-11-09 | **Defect replacement 1**: the worst point of a stopped trade was charged beyond the stop; ps-code-2026-11-09-1's run invalidated and kept; corrected as ps-code-2026-11-09-2
+
+**The run under ps-code-2026-11-09-1** (entries 5 to 12; random twins and the test completed 2026-11-09T16:29Z; report kept as `reports/campaign-1-rev1-defective.md`): outcome NONE. LucidFlex 50K pass rates: F1 0.0% and 0.0% (insufficient sample), F2 2.4% and 0.7%, F3 0.0% and 2.6%, LB 9.9% and 5.0%; no configuration beat its matched random entries (p from 0.1426 to 1.0000, Holm 1.0000 for every tested one).
+
+**The defect:** CAMPAIGN-1.md section 7 says a stop "exits at the lower of the stop and the bar's open, minus 1 tick", and section 8 judges the breach and the daily loss limit at the live balance including the open position. `signals.js` `execute` added the stop bar's full adverse extreme to the trade's worst point (MAE) before testing the stop, so a position already closed at its stop was charged the price move beyond it. The account then counted breaches and daily-limit hits that the rules would not produce, worst for tiny stops sized up to the 40-micro cap.
+
+**Its verification** (read-only, from the stored trades of ps-code-2026-11-09-1): stopped trades whose MAE exceeded the stop-fill distance: F1-NQ 17 of 19, F1-ES 11 of 13, F2-NQ 715 of 880, F2-ES 387 of 796, F3-NQ 179 of 199, F3-ES 118 of 196, LB-NQ 1,001 of 1,116, LB-ES 679 of 1,149. Example (F2-NQ): a 4-tick stop that filled 7 ticks from the entry was charged 9 ticks. A pattern in the results pointed to it: LB-NQ used a median 98% of the drawdown room with no breach, while F2-NQ breached 479 times under the same sizing rule.
+
+**The correction** (ps-code-2026-11-09-2): on the bar where the stop is hit, the worst point is the stop fill; the bar's extreme is counted only on bars where the position stays open. `tests/propsim.test.js` pins it (a stopped trade's worst point is 12 ticks, not the bar low's 13), and a planted bug that reintroduces the defect is caught (the harness: 20 of 20). Random results and test rows are now keyed by code revision (store migration 2, additive), so this run's rows stay beside the defective revision's. Nothing in CAMPAIGN-1.md or matrix-1.json changes; the replacement reruns the whole frozen matrix. This uses the first of the campaign's two defect replacements. The report's wording was also corrected ("behind by N points" for a negative difference; no "-0.0"); no figure changes because of that.

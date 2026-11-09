@@ -18,7 +18,9 @@ export const LABEL = "simulated using Lucid Trading's published rules as read on
 export const STAND_IN = 'stand-in, regular hours only, not futures';
 
 // Bump with any change that can alter results.
-export const CODE_REVISION = 'ps-code-2026-11-09-1';
+// ps-code-2026-11-09-2: a stopped trade's worst point is its stop fill, not the bar beyond the stop (defect replacement 1;
+// EXPERIMENT-LOG.md entry 13). The broken run of ps-code-2026-11-09-1 is kept.
+export const CODE_REVISION = 'ps-code-2026-11-09-2';
 export const ENGINE_VERSION = 'ps-engine-1';
 
 // The development period (the order's section 4). Nothing later is requested, stored (CHECK constraints) or read; the

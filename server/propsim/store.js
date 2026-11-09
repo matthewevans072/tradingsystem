@@ -25,7 +25,24 @@ export function openPsDb(file) {
 
 const APPEND_ONLY = ['ps_bars1m', 'ps_downloads', 'ps_trades', 'ps_attempts', 'ps_random', 'ps_inference', 'ps_log'];
 function migrate(db) {
-  if (db.prepare("SELECT name FROM sqlite_master WHERE name = 'ps_schema'").get()) return;
+  if (!db.prepare("SELECT name FROM sqlite_master WHERE name = 'ps_schema'").get()) migrate1(db);
+  migrate2(db);
+}
+// Migration 2 (ps-code-2026-11-09-2, defect replacement 1): random results and test rows keyed by code revision, so a
+// replacement's rows sit beside the defective revision's, which stay in ps_random and ps_inference unchanged.
+function migrate2(db) {
+  if (db.prepare('SELECT max(version) AS v FROM ps_schema').get().v >= 2) return;
+  const trig = (t) => `CREATE TRIGGER ${t}_no_update BEFORE UPDATE ON ${t} BEGIN SELECT RAISE(ABORT, '${t} is append-only'); END;
+  CREATE TRIGGER ${t}_no_delete BEFORE DELETE ON ${t} BEGIN SELECT RAISE(ABORT, '${t} is append-only'); END;`;
+  db.exec(`BEGIN;
+  CREATE TABLE ps_random_v (config_id TEXT NOT NULL, code_revision TEXT NOT NULL, seed INTEGER NOT NULL, pass_rate REAL NOT NULL, months_json TEXT NOT NULL, trades INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (config_id, code_revision, seed)) WITHOUT ROWID;
+  CREATE TABLE ps_inference_v (config_id TEXT NOT NULL, code_revision TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (config_id, code_revision)) WITHOUT ROWID;
+  ${trig('ps_random_v')}
+  ${trig('ps_inference_v')}
+  INSERT INTO ps_schema (version) VALUES (2);
+  COMMIT;`);
+}
+function migrate1(db) {
   db.exec(`BEGIN;
   CREATE TABLE ps_schema (version INTEGER NOT NULL);
   CREATE TABLE ps_bars1m (symbol TEXT NOT NULL, date TEXT NOT NULL CHECK (date >= '${FROM}' AND date <= '${MAX_DATE}'), minute INTEGER NOT NULL, o REAL NOT NULL, h REAL NOT NULL, l REAL NOT NULL, c REAL NOT NULL, v REAL, PRIMARY KEY (symbol, date, minute)) WITHOUT ROWID;
@@ -67,11 +84,13 @@ export function insertTrades(db, runId, trades) { const st = db.prepare('INSERT 
 export const listTrades = (db, runId) => db.prepare('SELECT trade_json FROM ps_trades WHERE run_id = ? ORDER BY seq').all(runId).map((r) => JSON.parse(r.trade_json));
 export function insertAttempts(db, runId, plan, attempts) { const st = db.prepare('INSERT INTO ps_attempts (run_id, plan, start, attempt_json) VALUES (?, ?, ?, ?)'); tx(db, () => { for (const a of attempts) st.run(runId, plan, a.start, JSON.stringify(a)); }); }
 export const listAttempts = (db, runId, plan) => db.prepare('SELECT attempt_json FROM ps_attempts WHERE run_id = ? AND plan = ? ORDER BY start').all(runId, plan).map((r) => JSON.parse(r.attempt_json));
-export const insertRandom = (db, r) => db.prepare('INSERT INTO ps_random (config_id, seed, pass_rate, months_json, trades, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING').run(r.configId, r.seed, r.passRate, JSON.stringify(r.months), r.trades, r.at);
-export const randomSeedsDone = (db, configId) => db.prepare('SELECT seed FROM ps_random WHERE config_id = ? ORDER BY seed').all(configId).map((r) => r.seed);
-export const listRandom = (db, configId) => db.prepare('SELECT seed, pass_rate, months_json, trades FROM ps_random WHERE config_id = ? ORDER BY seed').all(configId).map((r) => ({ seed: r.seed, passRate: r.pass_rate, months: JSON.parse(r.months_json), trades: r.trades }));
-export const insertInference = (db, configId, result, at) => db.prepare('INSERT INTO ps_inference (config_id, result_json, created_at) VALUES (?, ?, ?)').run(configId, JSON.stringify(result), at);
-export const listInference = (db) => db.prepare('SELECT config_id, result_json, created_at FROM ps_inference ORDER BY config_id').all().map((r) => ({ configId: r.config_id, ...JSON.parse(r.result_json), createdAt: r.created_at }));
+export const insertRandom = (db, r) => db.prepare('INSERT INTO ps_random_v (config_id, code_revision, seed, pass_rate, months_json, trades, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING').run(r.configId, r.revision, r.seed, r.passRate, JSON.stringify(r.months), r.trades, r.at);
+export const randomSeedsDone = (db, configId, revision) => db.prepare('SELECT seed FROM ps_random_v WHERE config_id = ? AND code_revision = ? ORDER BY seed').all(configId, revision).map((r) => r.seed);
+export const listRandom = (db, configId, revision) => db.prepare('SELECT seed, pass_rate, months_json, trades FROM ps_random_v WHERE config_id = ? AND code_revision = ? ORDER BY seed').all(configId, revision).map((r) => ({ seed: r.seed, passRate: r.pass_rate, months: JSON.parse(r.months_json), trades: r.trades }));
+export const insertInference = (db, configId, revision, result, at) => db.prepare('INSERT INTO ps_inference_v (config_id, code_revision, result_json, created_at) VALUES (?, ?, ?, ?)').run(configId, revision, JSON.stringify(result), at);
+export const listInference = (db, revision) => db.prepare('SELECT config_id, result_json, created_at FROM ps_inference_v WHERE code_revision = ? ORDER BY config_id').all(revision).map((r) => ({ configId: r.config_id, ...JSON.parse(r.result_json), createdAt: r.created_at }));
+// The defective revision's rows (ps-code-2026-11-09-1), kept as they were.
+export const listRandomRev1 = (db, configId) => db.prepare('SELECT seed, pass_rate, trades FROM ps_random WHERE config_id = ? ORDER BY seed').all(configId).map((r) => ({ seed: r.seed, passRate: r.pass_rate, trades: r.trades }));
 export const logLine = (db, at, message) => db.prepare('INSERT INTO ps_log (at, message) VALUES (?, ?)').run(at, String(message).slice(0, 2000));
 export const listLog = (db, limit = 50) => db.prepare('SELECT at, message FROM ps_log ORDER BY id DESC LIMIT ?').all(limit);
 

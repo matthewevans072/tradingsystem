@@ -22,6 +22,7 @@ export const BUGS = [
   { name: 'no entry slippage', file: SG, find: '  const fill = ref + d * exec.entrySlippageTicks;', replace: '  const fill = ref;' },
   { name: 'no stop slippage', file: SG, find: "(d > 0 ? Math.min(stop, x.o) : Math.max(stop, x.o))) - d * exec.stopSlippageTicks;", replace: "(d > 0 ? Math.min(stop, x.o) : Math.max(stop, x.o)));" },
   { name: 'the target tested before the stop in one bar', file: SG, find: '    const hitStop = d > 0 ? x.l <= stop : x.h >= stop;', replace: "    if (q > f && (d > 0 ? x.h > target : x.l < target)) { exitI = q; exit = target; kind = 'target'; break; }\n    const hitStop = d > 0 ? x.l <= stop : x.h >= stop;" },
+  { name: 'the worst point of a stopped trade taken at the bar beyond the stop (the defect of ps-code-2026-11-09-1)', file: SG, find: '    if (hitStop) { exitI = q; exit =', replace: '    mae = Math.max(mae, adverse(x)); if (hitStop) { exitI = q; exit =' },
   { name: 'the minimum stop not applied', file: SG, find: '  if (risk < sig.minStopTicks) {', replace: '  if (false) {' },
   { name: 'the drawdown never locks', file: AC, find: '    mll = Math.min(Math.max(mll, maxClose - plan.maxLoss), plan.lockedMll);', replace: '    mll = Math.max(mll, maxClose - plan.maxLoss);' },
   { name: 'the breach judged on the closed result, not the worst point', file: AC, find: '  const worst = -trade.maeTicks * tickValue * n - comm;', replace: '  const worst = trade.resultTicks * tickValue * n - comm;' },

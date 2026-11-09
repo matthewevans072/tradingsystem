@@ -20,9 +20,9 @@ export function createPropSimService(ctx) {
       const inf = p.inference();
       const lk = lockRow(db);
       const configs = p.TESTED.map((id) => {
-        const run = runs.filter((r) => r.configId === id && r.status === 'done').at(-1);
-        const lb = runs.filter((r) => r.configId === `LB-${id.split('-')[1]}` && r.status === 'done').at(-1)?.summary.plans.primary;
-        return { id, run: run ? { trades: run.summary.trades, primary: { ...run.summary.plans.primary, months: undefined }, secondary: { ...run.summary.plans.secondary, months: undefined }, skips: run.summary.skips } : null, randomSeeds: listRandom(db, id).length, inference: inf[id] ?? null, answers: run ? fourAnswers(id, run, inf, lb) : null };
+        const run = runs.filter((r) => r.configId === id && r.status === 'done' && r.codeRevision === CODE_REVISION).at(-1);
+        const lb = runs.filter((r) => r.configId === `LB-${id.split('-')[1]}` && r.status === 'done' && r.codeRevision === CODE_REVISION).at(-1)?.summary.plans.primary;
+        return { id, run: run ? { trades: run.summary.trades, primary: { ...run.summary.plans.primary, months: undefined }, secondary: { ...run.summary.plans.secondary, months: undefined }, skips: run.summary.skips } : null, randomSeeds: listRandom(db, id, CODE_REVISION).length, inference: inf[id] ?? null, answers: run ? fourAnswers(id, run, inf, lb) : null };
       });
       return { simulated: true, label: LABEL, standIn: STAND_IN, codeRevision: CODE_REVISION, worker: lk?.token ? { pid: lk.pid, heartbeatAt: lk.heartbeat_at } : null, seedsPerConfig: p.matrix.random.seeds, configs };
     },
