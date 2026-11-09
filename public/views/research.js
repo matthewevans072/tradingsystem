@@ -12,6 +12,7 @@ import { line } from '../lib/charts.js';
 import { newsReplaySection } from './newsreplay.js';
 import { newsForwardSection } from './newsforward.js';
 import { propSimSection } from './propsim.js';
+import { propSimLiveSection } from './propsim-live.js';
 
 const STAGE_DEFAULT = { 0: 'reference', 1: 'single change (baseline)', 2: 'single change (other bases)', 3: 'combination' };
 let STAGE = STAGE_DEFAULT;
@@ -45,7 +46,7 @@ export async function renderResearch(view, ctx) {
   try { nfOv = await ctx.api('GET', '/api/newsforward/overview'); } catch { nfOv = null; }
   try { psOv = await ctx.api('GET', '/api/propsim/overview'); } catch { psOv = null; }
   if (!live(ep)) return;
-  mount(view, h('div', { class: 'stack lab hxr' }, banner(), propSimSection(psOv), newsForwardSection(nfOv), newsReplaySection(nrOv, ctx.api), statusSection(P), controlsSection(P), c ? leaderSection(P) : null, notificationsSection(P), c ? resultsSection(P) : null, rulesSection(P), eventSwingSection(esOv)));
+  mount(view, h('div', { class: 'stack lab hxr' }, banner(), propSimLiveSection(ctx.api), propSimSection(psOv), newsForwardSection(nfOv), newsReplaySection(nrOv, ctx.api), statusSection(P), controlsSection(P), c ? leaderSection(P) : null, notificationsSection(P), c ? resultsSection(P) : null, rulesSection(P), eventSwingSection(esOv)));
   browserNotify(notes);
   if ((c && (c.status === 'running' || c.worker)) || esOv?.campaign?.status === 'running' || nrOv?.runs?.some((r) => r.status === 'running')) timer = setTimeout(() => { if (live(ep)) reload(); }, 3000);
 }

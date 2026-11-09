@@ -75,7 +75,17 @@
     "ps:stop": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs stop",
     "ps:status": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs status",
     "ps:report": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs report",
-    "ps:planted": "node --disable-warning=ExperimentalWarning scripts/propsim-planted.mjs"
+    "ps:planted": "node --disable-warning=ExperimentalWarning scripts/propsim-planted.mjs",
+    "psl:activate": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs activate",
+    "psl:step": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs step",
+    "psl:status": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs status",
+    "psl:verify": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs verify",
+    "psl:start": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs start",
+    "psl:pause": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs pause",
+    "psl:resume": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs resume",
+    "psl:stop": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs stop",
+    "psl:worker": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs worker",
+    "psl:tasks": "node --disable-warning=ExperimentalWarning scripts/propsim-live.mjs tasks"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

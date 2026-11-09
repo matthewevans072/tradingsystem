@@ -4,11 +4,29 @@
 import fs from 'node:fs';
 import { openPsDb, psDbFile, listRuns, listRandom, lockRow } from './store.js';
 import { createPropSim, fourAnswers } from './campaign.js';
-import { LABEL, STAND_IN, CODE_REVISION, PsError } from './config.js';
+import { LABEL, STAND_IN, CODE_REVISION, PsError, loadMatrix } from './config.js';
+import { openPlDb, plDbFile } from './live-store.js';
+import { createLive } from './live-worker.js';
+import { loadLiveConfig, RUNNING } from './live-config.js';
 
 export { PsError };
+// The live account (Phase 2, LIVE-1.md): its own database, opened read-only in spirit (the overview writes nothing; the
+// worker is the only writer). Absent until the account is activated.
+function liveService(ctx) {
+  const file = plDbFile(ctx.cfg.dataDir);
+  let db = null, live = null;
+  return {
+    overview() {
+      if (!fs.existsSync(file)) return { simulated: true, activated: false, label: LABEL, running: RUNNING, standIn: STAND_IN, note: 'The live account is not activated yet (npm run psl:activate -- --confirm).' };
+      if (!live) { db = openPlDb(file); const matrix = loadMatrix(); live = createLive({ db, cfg: loadLiveConfig(undefined, matrix), matrix, checks: false }); }
+      return live.overview();
+    },
+    close: () => { try { db?.close(); } catch { /* */ } },
+  };
+}
 export function createPropSimService(ctx) {
-  if (ctx.mode === 'demo') return { overview: () => ({ simulated: true, demo: true, note: 'Demo workspace: prop-sim runs in your own workspace only.' }), close: () => {} };
+  if (ctx.mode === 'demo') return { overview: () => ({ simulated: true, demo: true, note: 'Demo workspace: prop-sim runs in your own workspace only.' }), live: () => ({ simulated: true, demo: true, note: 'Demo workspace: the live account runs in your own workspace only.' }), close: () => {} };
+  const lv = liveService(ctx);
   const file = psDbFile(ctx.cfg.dataDir);
   let db = null, ps = null;
   const open = () => { if (!db) { db = openPsDb(file); ps = createPropSim({ db }); } return ps; };
@@ -26,7 +44,8 @@ export function createPropSimService(ctx) {
       });
       return { simulated: true, label: LABEL, standIn: STAND_IN, codeRevision: CODE_REVISION, worker: lk?.token ? { pid: lk.pid, heartbeatAt: lk.heartbeat_at } : null, seedsPerConfig: p.matrix.random.seeds, configs };
     },
-    close: () => { try { db?.close(); } catch { /* */ } },
+    live: () => lv.overview(),
+    close: () => { try { db?.close(); } catch { /* */ } lv.close(); },
   };
 }
 export function attachPropSim(ctx) {
@@ -36,4 +55,5 @@ export function attachPropSim(ctx) {
 }
 export function registerPropSimRoutes(r, HttpError) {
   r('GET', '/api/propsim/overview', async (ctx) => { try { return ctx.propsim.overview(); } catch (e) { if (e instanceof PsError) throw new HttpError(e.status, e.message); throw e; } });
+  r('GET', '/api/propsim/live', async (ctx) => { try { return ctx.propsim.live(); } catch (e) { if (e instanceof PsError) throw new HttpError(e.status, e.message); throw e; } });
 }

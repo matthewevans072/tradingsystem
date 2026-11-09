@@ -256,3 +256,14 @@ The question: if the ICT structure setups (a sweep of the previous day's or week
 - **The data** for campaign 1 is a stand-in: QQQ and SPY 1-minute bars (regular hours only) converted to NQ and ES points at fixed ratios, labelled "stand-in, regular hours only, not futures". Real CME futures data (Option A) would cost a few dollars from Databento and needs your yes (and an API key) first.
 - **Commands:** `npm run ps:check` (every gate condition), `npm run ps:run -- --confirm` (runs everything in this window; resumable), `npm run ps:status`, `npm run ps:report` (writes `strategy/prop-sim/reports/campaign-1.md`). Results also appear on the Research page.
 - The period 2018 to 2022 was already used by sweep-bos and the ICT Lab on the same market: every result is exploratory.
+
+## 21. prop-sim live: the simulated funded account (Phase 2; running simulated result, not validated)
+
+*Simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid.* Live data, data only: no broker, no practice, demo or paper-trading account, no login, no order is sent anywhere.
+
+What it does: while the market is open, it reads QQQ's 1-minute bars from Alpaca's free IEX feed (real time; measured 21 seconds behind on 2026-11-09), turns them into NQ stand-in prices, runs Phase 1's frozen rules on them as they happen and keeps one simulated LucidFlex 50K account. It trades LB-NQ, the plain level break, which passed most often in Phase 1 (it did not beat random entries there either). The ICT setups F1, F2 and F3 are shown as "seen, not traded". The rules are in `strategy/prop-sim/LIVE-1.md`.
+
+- **Decisions before fills:** every 5-minute decision is recorded with its time before any later price is read, and an entry fills only from the next minute on.
+- **Gaps:** if the PC is off or asleep, the worker is paused or the feed is down, that stretch is a gap. Nothing is decided or traded for the rest of that session, an open position is closed at the last price seen, and nothing is filled in afterwards. Keep the PC on and awake from before 09:30 New York time (08:30 your time) to the close.
+- **Commands:** `npm run psl:status` (worker, last data request, the account), `npm run psl:verify` (re-derives every recorded decision), `npm run psl:pause`, `psl:resume`, `psl:stop`, `psl:start`. The dashboard is on the Research page and refreshes every 5 seconds.
+- **Reading it:** the account shows the drawdown left, today's result, the progress to the US$3,000 target and every attempt. A few weeks are a handful of trades; nothing should be concluded from them.

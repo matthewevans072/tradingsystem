@@ -17,8 +17,9 @@ export function windowsOf(session, matrix) {
 }
 export const flatByOf = (session, matrix) => { const [h, m] = matrix.flatBy.split(':').map(Number); return Math.min(at(session.date, h, m, session.open), session.close - 5 * MIN); };
 
-// Breaks of structure on one direction's bars: up[j] and down[j] at every close.
-function breaks(bars, swing) {
+// Breaks of structure on one direction's bars: up[j] and down[j] at every close. (Exported for the live account,
+// server/propsim/live.js, which runs these same functions; no change to any result.)
+export function breaks(bars, swing) {
   const up = bars.map((_, j) => bosAt(bars, j, swing).ok);
   const down = bars.map((_, j) => downwardBosAt(bars, j, swing).ok);
   return { up, down };
@@ -33,7 +34,7 @@ export function isShift(br, k) {
 
 // The setups of one family at the close of bar k, on one direction's bars (bars, levels and prevClose already mirrored
 // for shorts). Returns { entryType, entry, stop, why } in that direction's coordinates, or null.
-function setupAt(family, ctx, k) {
+export function setupAt(family, ctx, k) {
   const { bars, sweepLevels, breakLevels, br, sweeps, prevClose, sig, winOf } = ctx;
   const b = bars[k];
   if (family === 'F1') {

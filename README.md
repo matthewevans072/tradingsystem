@@ -10,7 +10,7 @@ Personal portfolio tracking and investment research desk: holdings in USD and CA
 - Backup now: `npm run backup`
 - Prospective journal 1 (a simulation, updated by hand after the close): `npm run pj:update`, then `npm run pj:status` (START-HERE.md section 15)
 - event-swing (a simulation; needs `SEC_CONTACT_EMAIL` in `.env`): `npm run es:check` (START-HERE.md section 16)
-- prop-sim (ICT strategies in a simulated funded-account evaluation; simulated using Lucid Trading's published rules as read on 2026-11-09, not affiliated with or endorsed by Lucid; stand-in data): `npm run ps:check`, `npm run ps:status` (START-HERE.md section 20)
+- prop-sim (ICT strategies in a simulated funded-account evaluation; simulated using Lucid Trading's published rules as read on 2026-11-09, not affiliated with or endorsed by Lucid; stand-in data): `npm run ps:check`, `npm run ps:status` (START-HERE.md section 20); its live simulated account on Alpaca's free IEX feed (Phase 2; running simulated result, not validated): `npm run psl:status`, `npm run psl:verify` (START-HERE.md section 21)
 - news-replay (a simulation of 2020–2021 news in order; results on the Research page): `npm run nr:check`, `npm run nr:status` (START-HERE.md section 17); what keeps running and what does not: START-HERE.md section 18 and `AUTONOMY.md`
 
 Stack: Node.js 22+ (built-in `node:sqlite`, `node:http`), vanilla JS front end, no build step. One runtime dependency: `@anthropic-ai/sdk`, used by Ask Signal Desk and the optional briefing analyst. Both need your own `ANTHROPIC_API_KEY` (billed per token; see START-HERE.md).

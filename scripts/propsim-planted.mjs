@@ -10,7 +10,9 @@ import { runTests, freeBytes, MIN_FREE_BYTES, DEFAULT_TIMEOUT_MS } from './sweep
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ST = 'server/propsim/store.js', MK = 'server/propsim/market.js', SG = 'server/propsim/signals.js', AC = 'server/propsim/account.js';
+const LV = 'server/propsim/live.js', LST = 'server/propsim/live-store.js', LW = 'server/propsim/live-worker.js', LSRC = 'server/propsim/live-source.js';
 export const TESTS = ['tests/propsim.test.js'];
+const LIVE_TESTS = ['tests/propsim-live.test.js'];
 export const BUGS = [
   { name: 'the store accepts bars after 2022-12-30', file: ST, find: "CHECK (date >= '${FROM}' AND date <= '${MAX_DATE}')", replace: "CHECK (date >= '${FROM}' AND date <= '2099-12-31')" },
   { name: 'the ATR over 13 bars instead of 14', file: MK, find: 'if (ring.length > 14) ring.shift();', replace: 'if (ring.length > 13) ring.shift();' },
@@ -32,6 +34,21 @@ export const BUGS = [
   { name: 'the LucidPro payout from the buffer', file: AC, find: 'amount = Math.min(bal - p.buffer, p.max);', replace: 'amount = Math.min(bal - plan.size, p.max);' },
   { name: 'sizing without slippage', file: AC, find: '  const lossPer = (riskTicks + exec.entrySlippageTicks + exec.stopSlippageTicks) * tickValue + 2 * exec.commissionPerMicroSide;', replace: '  const lossPer = riskTicks * tickValue + 2 * exec.commissionPerMicroSide;' },
   { name: 'sizing above the contract cap', file: AC, find: 'return Math.max(0, Math.min(cap, Math.floor((budget + 1e-9) / lossPer)));', replace: 'return Math.max(0, Math.floor((budget + 1e-9) / lossPer));' },
+  // Phase 2, the live account (LIVE-1.md), caught by tests/propsim-live.test.js.
+  { name: 'live: an entry fills from the bar the decision was recorded in', file: LV, tests: LIVE_TESTS, find: '      const t0 = Math.max(t, ceilMinute(rec.recordedMs));', replace: '      const t0 = t;' },
+  { name: 'live: a position open at a gap is not closed there', file: LV, tests: LIVE_TESTS, find: '  if (gapMs != null) {\n    // Flat across a gap', replace: '  if (false) {\n    // Flat across a gap' },
+  { name: 'live: the gap exit without the 1 tick of slippage', file: LV, tests: LIVE_TESTS, find: '    const exit = last.c - d * exec.stopSlippageTicks;', replace: '    const exit = last.c;' },
+  { name: 'live: setups after a gap are taken', file: LV, tests: LIVE_TESTS, find: "      if (rec.status !== 'on_time') {", replace: "      if (rec.status === 'late') {" },
+  { name: 'live: a minute observed by a request after its grace', file: LV, tests: LIVE_TESTS, find: "polls[pi] <= end + graceMs && polls[pi] <= nowMs ? 'observed'", replace: "polls[pi] <= end + 2 * graceMs && polls[pi] <= nowMs ? 'observed'" },
+  { name: "live: the open position's worst point not checked against the limit", file: LV, tests: LIVE_TESTS, find: '  if (open && !ended && !dllHit) {', replace: '  if (false && open && !ended && !dllHit) {' },
+  { name: 'live: the next attempt starts on the session an attempt ended', file: LV, tests: LIVE_TESTS, find: '    a.end = dates[ev.end]; attempts.push(a); i0 = ev.end + 1;', replace: '    a.end = dates[ev.end]; attempts.push(a); i0 = ev.end;' },
+  { name: 'live: a bar after its grace admitted as live', file: LST, tests: LIVE_TESTS, find: "const isLive = kind === 'live' && fetchedMs - (r.s + MIN) <= graceMs", replace: "const isLive = kind === 'live' && true" },
+  { name: 'live: a bar arriving after a later minute admitted as live', file: LST, tests: LIVE_TESTS, find: '        && !later.get(symbol, r.date, r.minute) && !decided', replace: '        && !decided' },
+  { name: "live: a bar of a decided bucket admitted as live", file: LST, tests: LIVE_TESTS, find: ' && !decided.get(r.date, Math.floor((r.minute - 570) / 5));', replace: ';' },
+  { name: 'live: the store accepts a bar before 2026-11-10', file: LST, tests: LIVE_TESTS, find: "date TEXT NOT NULL CHECK (date >= '${F}'), minute INTEGER NOT NULL, o REAL NOT NULL", replace: "date TEXT NOT NULL, minute INTEGER NOT NULL, o REAL NOT NULL" },
+  { name: 'live: the decision grace never applied', file: LW, tests: LIVE_TESTS, find: "const status = gap ? 'gap' : nowMs > e + T.decisionGraceMs ? 'late' : 'on_time';", replace: "const status = gap ? 'gap' : 'on_time';" },
+  { name: 'live: the IEX client requests before the start', file: LSRC, tests: LIVE_TESTS, find: '    if (zonedParts(new Date(startMs), NY).date < dataFrom)', replace: '    if (false)' },
+  { name: 'live: the client asks for the SIP feed', file: LSRC, tests: LIVE_TESTS, find: "export const FEED = 'iex';", replace: "export const FEED = 'sip';" },
 ];
 
 const copyInto = (wt, rel) => { const src = path.join(ROOT, rel); if (fs.existsSync(src)) { fs.mkdirSync(path.dirname(path.join(wt, rel)), { recursive: true }); fs.copyFileSync(src, path.join(wt, rel)); } };
@@ -43,9 +60,9 @@ export function runPlanted({ ref = 'HEAD', workingTree = false, timeoutMs = DEFA
     execFileSync('git', ['-c', 'core.autocrlf=false', 'worktree', 'add', '--detach', wt, ref], { cwd: ROOT, stdio: 'pipe' });
     if (workingTree) {
       for (const f of fs.readdirSync(path.join(ROOT, 'server/propsim'))) copyInto(wt, `server/propsim/${f}`);
-      for (const f of ['tests/propsim.test.js', 'tests/helpers.js', 'strategy/prop-sim/matrix-1.json', 'strategy/prop-sim/CAMPAIGN-1.md', 'strategy/prop-sim/LUCID-RULES-2026-11-09.json']) copyInto(wt, f);
+      for (const f of ['tests/propsim.test.js', 'tests/propsim-live.test.js', 'tests/helpers.js', 'strategy/prop-sim/matrix-1.json', 'strategy/prop-sim/CAMPAIGN-1.md', 'strategy/prop-sim/LUCID-RULES-2026-11-09.json', 'strategy/prop-sim/live-1.json', 'strategy/prop-sim/LIVE-1.md']) copyInto(wt, f);
     }
-    const base = runTests(wt, TESTS, timeoutMs);
+    const base = runTests(wt, [...TESTS, ...LIVE_TESTS], timeoutMs);
     log(`baseline: ${base.outcome}, ${base.passing} passing, ${base.failing.length} failing`);
     if (base.outcome !== 'completed' || base.failing.length || base.status !== 0) throw new Error(`baseline not passing: ${base.failing.join('; ') || base.outcome}`);
     for (const bug of BUGS) {
@@ -56,7 +73,7 @@ export function runPlanted({ ref = 'HEAD', workingTree = false, timeoutMs = DEFA
       fs.writeFileSync(file, orig.split(bug.find).join(bug.replace));
       try {
         if (spawnSync(process.execPath, ['--check', file]).status !== 0) { results.push({ name: bug.name, status: 'INVALID', failing: [] }); log(`INVALID      | ${bug.name} | does not load`); continue; }
-        const r = runTests(wt, TESTS, timeoutMs);
+        const r = runTests(wt, bug.tests ?? TESTS, timeoutMs);
         const status = r.outcome !== 'completed' ? 'INCONCLUSIVE' : r.failing.length ? 'CAUGHT' : 'MISSED';
         results.push({ name: bug.name, status, failing: r.failing });
         log(`${status.padEnd(12)} | ${bug.name} | ${r.failing.length ? r.failing.join('; ').slice(0, 140) : r.outcome}`);

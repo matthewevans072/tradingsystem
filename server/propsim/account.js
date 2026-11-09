@@ -31,17 +31,19 @@ export function applyTrade({ bal, mll, dayPnl, dll, trade, tickValue, exec, cap 
 
 // A plan from matrix-1.json's accounts: { plan, size, profitTarget, maxLoss, lockedMll, consistency, dailyLossLimit,
 // evalContracts, fundedScaling | fundedContracts, fundedDll, payout, fee }.
-function fundedCap(plan, profitAtClose) {
+// fundedCap, fundedDll and stage are exported for the live account (server/propsim/live.js), which applies these same
+// rules one session at a time; no change to any result.
+export function fundedCap(plan, profitAtClose) {
   if (plan.fundedScaling) { for (const [below, c] of plan.fundedScaling) if (below == null || profitAtClose < below) return c; }
   return plan.fundedContracts ?? plan.evalContracts;
 }
-function fundedDll(plan, maxClose) {
+export function fundedDll(plan, maxClose) {
   if (!plan.fundedDll) return null;
   return maxClose > plan.fundedDll.trailBalance ? plan.fundedDll.scaleShare * (maxClose - plan.size) : plan.fundedDll.fixed;
 }
 
 // One stage on the account from session index i0: returns { outcome, end, ... }.
-function stage({ kind, plan, dayTrades, i0, horizon, lastIndex, tickValue, exec }) {
+export function stage({ kind, plan, dayTrades, i0, horizon, lastIndex, tickValue, exec }) {
   let bal = plan.size, maxClose = plan.size, mll = plan.size - plan.maxLoss;
   const days = [];
   let roomUsed = 0, dllDays = 0, trades = 0;
