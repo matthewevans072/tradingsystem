@@ -166,3 +166,58 @@ completed trades 1795; LucidFlex 50K pass rate 0.0502, payouts 14, expected net 
 **Its verification** (read-only, from the stored trades of ps-code-2026-11-09-1): stopped trades whose MAE exceeded the stop-fill distance: F1-NQ 17 of 19, F1-ES 11 of 13, F2-NQ 715 of 880, F2-ES 387 of 796, F3-NQ 179 of 199, F3-ES 118 of 196, LB-NQ 1,001 of 1,116, LB-ES 679 of 1,149. Example (F2-NQ): a 4-tick stop that filled 7 ticks from the entry was charged 9 ticks. A pattern in the results pointed to it: LB-NQ used a median 98% of the drawdown room with no breach, while F2-NQ breached 479 times under the same sizing rule.
 
 **The correction** (ps-code-2026-11-09-2): on the bar where the stop is hit, the worst point is the stop fill; the bar's extreme is counted only on bars where the position stays open. `tests/propsim.test.js` pins it (a stopped trade's worst point is 12 ticks, not the bar low's 13), and a planted bug that reintroduces the defect is caught (the harness: 20 of 20). Random results and test rows are now keyed by code revision (store migration 2, additive), so this run's rows stay beside the defective revision's. Nothing in CAMPAIGN-1.md or matrix-1.json changes; the replacement reruns the whole frozen matrix. This uses the first of the campaign's two defect replacements. The report's wording was also corrected ("behind by N points" for a negative difference; no "-0.0"); no figure changes because of that.
+
+## 14 | 2026-11-09 | **Frozen for campaign 1**
+
+code revision: `ps-code-2026-11-09-2`; engine `ps-engine-1`; campaign commit: `067f7098c8d686cd62dfbd1f96135f87c826c4e4`; HEAD `92fde1af7f32f38a381c36d657c8e04881e5fb02`; data hash: `44144eb2414c0ef690cab95158d654fd4b3d817afafd4906846651867f4ded9a` (QQQ and SPY 1-minute regular-session bars, 2018-06-01 to 2022-12-30). stand-in, regular hours only, not futures. Implementation ends here.
+
+## 15 | 2026-11-09 | **Run** run id: 9, config: F1-NQ, status: done
+
+completed trades 46; LucidFlex 50K pass rate 0, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0. stand-in, regular hours only, not futures; exploratory.
+
+## 16 | 2026-11-09 | **Run** run id: 10, config: F1-ES, status: done
+
+completed trades 36; LucidFlex 50K pass rate 0, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0. stand-in, regular hours only, not futures; exploratory.
+
+## 17 | 2026-11-09 | **Run** run id: 11, config: F2-NQ, status: done
+
+completed trades 1227; LucidFlex 50K pass rate 0.0246, payouts 6, expected net per attempt US$-172.21 (before the fee US$2.79); LucidPro 50K pass rate 0.0274. stand-in, regular hours only, not futures; exploratory.
+
+## 18 | 2026-11-09 | **Run** run id: 12, config: F2-ES, status: done
+
+completed trades 1068; LucidFlex 50K pass rate 0.0073, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0.0073. stand-in, regular hours only, not futures; exploratory.
+
+## 19 | 2026-11-09 | **Run** run id: 13, config: F3-NQ, status: done
+
+completed trades 278; LucidFlex 50K pass rate 0, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0. stand-in, regular hours only, not futures; exploratory.
+
+## 20 | 2026-11-09 | **Run** run id: 14, config: F3-ES, status: done
+
+completed trades 254; LucidFlex 50K pass rate 0.0265, payouts 0, expected net per attempt US$-175 (before the fee US$0); LucidPro 50K pass rate 0.0265. stand-in, regular hours only, not futures; exploratory.
+
+## 21 | 2026-11-09 | **Run** run id: 15, config: LB-NQ, status: done
+
+completed trades 1738; LucidFlex 50K pass rate 0.0995, payouts 49, expected net per attempt US$-140.11 (before the fee US$34.89); LucidPro 50K pass rate 0.1068. stand-in, regular hours only, not futures; exploratory.
+
+## 22 | 2026-11-09 | **Run** run id: 16, config: LB-ES, status: done
+
+completed trades 1795; LucidFlex 50K pass rate 0.0502, payouts 14, expected net per attempt US$-166.99 (before the fee US$8.01); LucidPro 50K pass rate 0.0593. stand-in, regular hours only, not futures; exploratory.
+
+## 23 | 2026-11-09 | **Campaign 1 complete (ps-code-2026-11-09-2, the replacement): NONE** (simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid; stand-in, regular hours only, not futures; exploratory)
+
+Frozen record entry 14 (HEAD 92fde1a, data hash 44144eb2...); runs entries 15 to 22, 2026-11-09T16:34Z to 16:35Z, none failed; random twins (8 × 1,000 seeds) and the month resampling complete at 16:45:03Z, 10.3 minutes of execution. Report `reports/campaign-1.md`.
+
+| Config | Trades | LucidFlex 50K pass rate (passes of 1,096) | Random twins' mean | Month-resampled p | Holm p | First payouts | Net per attempt after the US$175 fee (before it) | LucidPro 50K pass rate |
+|---|---|---|---|---|---|---|---|---|
+| F1-NQ | 46 | 0.0% (0) | 0.0% | insufficient sample | — | 0 | -US$175.00 (US$0.00) | 0.0% |
+| F1-ES | 36 | 0.0% (0) | 0.0% | insufficient sample | — | 0 | -US$175.00 (US$0.00) | 0.0% |
+| F2-NQ | 1,227 | 2.5% (27) | 2.5% | 0.5621 | 1.0000 | 6 | -US$172.21 (US$2.79) | 2.7% |
+| F2-ES | 1,068 | 0.7% (8) | 0.4% | 0.3682 | 1.0000 | 0 | -US$175.00 (US$0.00) | 0.7% |
+| F3-NQ | 278 | 0.0% (0) | 3.2% | 1.0000 | 1.0000 | 0 | -US$175.00 (US$0.00) | 0.0% |
+| F3-ES | 254 | 2.6% (29) | 0.9% | 0.1433 | 1.0000 | 0 | -US$175.00 (US$0.00) | 2.6% |
+| LB-NQ | 1,738 | 9.9% (109) | 11.8% | 0.7452 | 1.0000 | 49 | -US$140.11 (US$34.89) | 10.7% |
+| LB-ES | 1,795 | 5.0% (55) | 5.0% | 0.5369 | 1.0000 | 14 | -US$166.99 (US$8.01) | 5.9% |
+
+**Outcome: NONE.** No configuration beat its matched random entries by more than chance; every configuration lost money per attempt after the assumed fee; the ICT families passed no more often than the plain level break, and on NQ less often. A configuration that passes sometimes but no more often than random has shown no edge.
+
+**A property of the frozen sizing rule, stated plainly:** no evaluation in any configuration failed on the drawdown. Sizing at 25% of the remaining room shrinks positions as the room shrinks, so a losing account approaches its limit without reaching it, stops being able to fund a contract, and times out at 60 sessions (987 to 1,096 time-outs per configuration). Real fixed-size trading would breach instead; this changes the failure mode, not the pass comparison, because the random twins use the same rule. A different sizing rule would be a new campaign document.

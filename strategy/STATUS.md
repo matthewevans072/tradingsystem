@@ -1,6 +1,6 @@
 # Status (plain English)
 
-Updated 2026-11-07 by the assistant, as master work order version 3 section 8 asks (after each phase milestone, campaign or worker problem). Every historical result below is a **simulated development result on prices other programmes have already examined, not validated**; the forward account's figures are a **running simulated result, not validated**. A working system and a profitable strategy are separate milestones; nothing here claims the second. `AUTONOMY.md` holds the owner's standing rules and the precedence table.
+Updated 2026-11-09 by the assistant, as master work order version 3 section 8 asks (after each phase milestone, campaign or worker problem). Every historical result below is a **simulated development result on prices other programmes have already examined, not validated**; the forward account's figures are a **running simulated result, not validated**. A working system and a profitable strategy are separate milestones; nothing here claims the second. `AUTONOMY.md` holds the owner's standing rules and the precedence table.
 
 ## What works now
 
@@ -10,6 +10,7 @@ Updated 2026-11-07 by the assistant, as master work order version 3 section 8 as
 - **Phase C1, running:** the forward account (news-forward), its worker and the Task Scheduler entries (see "Worker health").
 - **Phase C2, stopped:** CNBC's publisher's terms forbid automated data-gathering tools (below).
 - **event-swing** campaign 1: NONE (2026-11-06).
+- **prop-sim, Phase 1 done (2026-11-09):** ICT structure strategies in a simulated funded-account evaluation (simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid), on stand-in data (QQQ and SPY as NQ and ES, regular hours only, not futures). Outcome NONE. Phase 2 (the live simulated account) is next.
 - **Tests:** news-replay 17 of 17, news-forward 4 of 4; the news-replay planted-bug check catches 37 of 37 bugs.
 
 ## Finished experiments: the four answers
@@ -30,6 +31,15 @@ Seven configurations: news plans with immediate entry (D-A), price-only pullback
 3. **How much risk and exposure?** The faster exits cut drawdown from 15.88% (X1) to 5.16% to 8.21%, and average exposure from 19.12% to between 3.51% and 8.92% invested.
 4. **How strong is the evidence?** Strong that leaving sooner beat the existing exits on these news sessions (p 0.0003 after Holm); none that the volume profile adds anything (p 0.56); still a development result on a heavily used period, and every exit lost against its exposure-matched hold.
 
+### prop-sim campaign 1: ICT strategies in a simulated LucidFlex 50K evaluation (2018-06-01 to 2022-12-30; stand-in, regular hours only, not futures)
+
+Simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid. One evaluation attempt started on each of 1,096 sessions for each strategy; each was compared with 1,000 sets of random entries using the same number of trades, stops, sizes and rules.
+
+1. **How often did it pass, and did it make money after fees?** Rarely, and no. The plain level break on NQ passed most often (9.9% of attempts; 4.5% reached a first payout); the ICT setups passed 0% to 2.6%. Every strategy lost money per attempt after the assumed US$175 fee (the best, the NQ level break, about -US$140; before the fee it averaged US$34.89). The sweep-then-shift setup traded too rarely to judge (46 and 36 trades).
+2. **Did it beat random entries and the plain level break?** No. None beat its random entries by more than chance (p from 0.14 to 1.00; 1.00 after Holm for all). On NQ the ICT setups passed less often than the plain level break; on ES the order-block setup passed 2.6% against the level break's 5.0%. Passing sometimes but no more often than random is no edge.
+3. **How much risk did it take?** Losing attempts used nearly all of the US$2,000 drawdown room (a median 80% to 99% for the tested strategies), with losing streaks of up to 28 trades. No attempt failed on the drawdown itself: the frozen sizing rule shrinks positions as the room shrinks, so losing accounts stalled near the limit and ran out of time instead. LucidPro's daily loss limit stopped trading on up to 114 attempt-days.
+4. **How strong is the evidence?** Against an edge, fairly clear on this data: about 250 to 1,800 trades per tested strategy, the pre-registered random comparison resampled by month, and Holm over eight. But the bars are ETF stand-ins (no overnight session, no futures roll), the period was already examined by sweep-bos and the ICT Lab, and one defect was found and corrected after the first run (the corrected run gave the same outcome; log entry 13).
+
 ### event-swing campaign 1 (earnings events, 2016-01-04 to 2021-12-31)
 
 1. **Money:** 14 of 16 configurations made money in simulation (A1 +US$36,774.81, D0 +US$7,408.12); none qualifies. 2. **Controls and holding:** none beat holding the ten stocks (+US$68,099.09); the news-based variants did not improve on the price-only rule D0. 3. **Risk:** drawdowns from 0.95% to 34.28%. 4. **Evidence:** weak; the placebo could not be drawn for families B to D (log entry 55); nothing significant after Holm.
@@ -48,8 +58,11 @@ CNBC's terms are Versant Media's. Their Prohibited Actions, section 12 "No Data 
 ## What's next
 
 1. Phase C1 runs on its own from Monday 2026-11-09; its running result appears on the Research page.
-2. Phase B3 (the research queue): any new campaign needs its own pre-registered document; at most two a week, 24 configurations each; pause after four in a row with no candidate. The obvious next question, a price-only "leave sooner" exit on the immediate entry, would be a new recorded experiment, not a change to the forward account.
+2. prop-sim Phase 2: the live simulated funded account on Alpaca's free real-time IEX feed (QQQ and SPY), with a worker and a dashboard; it runs the frozen strategy without changing it.
+3. Phase B3 (the research queue): any new campaign needs its own pre-registered document; at most two a week, 24 configurations each; pause after four in a row with no candidate. The obvious next question, a price-only "leave sooner" exit on the immediate entry, would be a new recorded experiment, not a change to the forward account.
 
 ## What I need from you
 
-Nothing required. Optional: whether you want C2 pursued another way, and whether you want an event-swing campaign 2 with a placebo that can be drawn.
+One question (prop-sim, asked once as the order says): **real CME futures data (Option A)**. Databento's published pay-as-you-go pricing puts 1-minute NQ, ES, MNQ and MES bars for 2018-06-01 to 2022-12-30 (MNQ and MES from 2019-05-06), all hours, at an estimated US$0.20 to US$4, inside the US$125 free credit a new account gets. The exact figure needs Databento's cost tool, which needs an account and an API key in `.env` (a new credential). If you want it: create the account, put the key in `.env` as `DATABENTO_API_KEY`, and say yes; I then quote the exact cost before buying anything. **Live CME data for Phase 2 (option a)** would be US$199 a month (Databento Standard); Phase 2 is being built on the free option (b) unless you say otherwise.
+
+Optional: whether you want C2 pursued another way, and whether you want an event-swing campaign 2 with a placebo that can be drawn.
