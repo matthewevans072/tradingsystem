@@ -550,3 +550,7 @@ registerNewsReplayRoutes(r, HttpError);
 // ---------- news-forward (simulation only, real workspace only, read-only; server/newsforward/service.js) ----------
 import { registerNewsForwardRoutes } from './newsforward/service.js';
 registerNewsForwardRoutes(r, HttpError);
+
+// ---------- prop-sim (simulation only, real workspace only, read-only; server/propsim/service.js) ----------
+import { registerPropSimRoutes } from './propsim/service.js';
+registerPropSimRoutes(r, HttpError);

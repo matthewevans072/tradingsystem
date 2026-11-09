@@ -66,7 +66,16 @@
     "nf:resume": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs resume",
     "nf:stop": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs stop",
     "nf:worker": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs worker",
-    "nf:tasks": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs tasks"
+    "nf:tasks": "node --disable-warning=ExperimentalWarning scripts/newsforward.mjs tasks",
+    "ps:download": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs download",
+    "ps:check": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs check",
+    "ps:freeze": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs freeze",
+    "ps:run": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs run",
+    "ps:start": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs start",
+    "ps:stop": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs stop",
+    "ps:status": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs status",
+    "ps:report": "node --disable-warning=ExperimentalWarning scripts/propsim.mjs report",
+    "ps:planted": "node --disable-warning=ExperimentalWarning scripts/propsim-planted.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.137.0"

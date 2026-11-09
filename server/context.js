@@ -14,6 +14,7 @@ import { attachResearch } from './research/service.js';
 import { attachEventSwing } from './eventswing/service.js';
 import { attachNewsReplay } from './newsreplay/service.js';
 import { attachNewsForward } from './newsforward/service.js';
+import { attachPropSim } from './propsim/service.js';
 
 export function dbFileFor(cfg, mode) {
   return path.join(cfg.dataDir, mode === 'demo' ? 'demo.sqlite' : 'signal-desk.sqlite');
@@ -38,6 +39,8 @@ export function createContext(cfg, mode = 'real', { fetchImpl, file } = {}) {
   attachNewsReplay(ctx);
   // news-forward (simulation only): the forward account's database, read-only here; the demo gets a stub.
   attachNewsForward(ctx);
+  // prop-sim (simulation only): its own database, read-only here; the demo gets a stub.
+  attachPropSim(ctx);
   if (mode === 'demo') {
     seedDemo(db);
     ctx.ready = primeDemo(ctx);

@@ -245,3 +245,14 @@ How it runs:
 - **What must stay true:** your PC on and not asleep, and the worker running. If the PC is off or asleep during the session, the plans for that time are recorded late when it next runs and can never trade; nothing is filled in afterwards.
 - **The data:** Alpaca's free feed, delayed 16 minutes, and SEC filings. Nothing before 2026-10-22 is used, so for the first weeks the plans are "no trade" (the rules need 21 earlier closes).
 - `npm run nf:verify` re-derives every recorded plan from the data that existed when it was recorded and checks the chain.
+
+## 20. prop-sim: ICT strategies in a simulated funded-account evaluation (simulation only)
+
+*Simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid.* No real account, no login, no broker, no orders, no real money.
+
+The question: if the ICT structure setups (a sweep of the previous day's or week's level, a market structure shift, a fair value gap; a break of structure and an inverse fair value gap; a level break and an order block) traded a 50K funded-account evaluation, how often would they pass, how often reach a first payout, and what would each attempt return after the evaluation fee, compared with random entries under the same risk rules? Passing sometimes is not evidence; only beating the random entries by more than chance is.
+
+- **The rules** are in `strategy/prop-sim/LUCID-RULES-2026-11-09.json`, read from Lucid's help center with the source sentence for each rule. Where a rule was unclear, both readings are recorded and the stricter one is simulated. Lucid's price pages could not be read by the tool, so the evaluation fees are unverified third-party figures, and every result is also given before fees.
+- **The data** for campaign 1 is a stand-in: QQQ and SPY 1-minute bars (regular hours only) converted to NQ and ES points at fixed ratios, labelled "stand-in, regular hours only, not futures". Real CME futures data (Option A) would cost a few dollars from Databento and needs your yes (and an API key) first.
+- **Commands:** `npm run ps:check` (every gate condition), `npm run ps:run -- --confirm` (runs everything in this window; resumable), `npm run ps:status`, `npm run ps:report` (writes `strategy/prop-sim/reports/campaign-1.md`). Results also appear on the Research page.
+- The period 2018 to 2022 was already used by sweep-bos and the ICT Lab on the same market: every result is exploratory.
