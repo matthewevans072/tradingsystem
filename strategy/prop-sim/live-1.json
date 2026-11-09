@@ -1,0 +1,24 @@
+{
+  "name": "ps-live-1",
+  "document": "LIVE-1.md",
+  "label": "simulated using Lucid Trading's published rules as read on 2026-11-09; not affiliated with or endorsed by Lucid",
+  "running": "running simulated result, not validated",
+  "phase1": { "matrix": "matrix-1.json", "codeRevision": "ps-code-2026-11-09-2", "outcome": "NONE" },
+  "traded": "LB-NQ",
+  "shown": ["F1-NQ", "F2-NQ", "F3-NQ"],
+  "account": "primary",
+  "feed": {
+    "provider": "Alpaca Market Data API (free plan)",
+    "origin": "https://data.alpaca.markets",
+    "feed": "iex",
+    "adjustment": "raw",
+    "symbol": "QQQ",
+    "market": "NQ",
+    "label": "Alpaca's free real-time IEX feed (IEX is a small share of the market's volume, not the consolidated tape); stand-in, regular hours only, not futures"
+  },
+  "dataFrom": "2026-11-10",
+  "timing": { "pollSecondsAfterMinute": 5, "retryEverySeconds": 5, "liveGraceSeconds": 90, "bucketWaitSeconds": 45, "decisionGraceSeconds": 120, "finalAfterCloseMinutes": 20 },
+  "gapRule": "from the first unobserved minute of a session: nothing decided or traded for the rest of that session; a working order cancelled; an open position closed at the close of the last live bar before the gap, less 1 tick",
+  "horizons": "matrix-1.json horizons (60 evaluation sessions, 120 funded sessions)",
+  "attempts": "one at a time; evaluation, then on a pass the funded stage to the first payout, a breach or its horizon; the next evaluation starts at the next session after the attempt ends"
+}
